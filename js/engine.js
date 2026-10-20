@@ -122,7 +122,7 @@ function addDivision(club, game, tier, roster) {
   club.divisions[game] = { tier, players: [] };
   roster.forEach(([h, n, r, a], i) => {
     const p = makePlayer(h, n, r, a, game, i, club.id);
-    p.starter = true; addPlayer(p); club.divisions[game].players.push(p.id);
+    p.starter = i < GAMES[game].size; addPlayer(p); club.divisions[game].players.push(p.id);
   });
 }
 // club indépendant : un joueur (ou un duo) qui joue sous son propre nom
@@ -455,14 +455,17 @@ function aiFillRoster(clubId, game) {
   if (!c || !d) return;
   const want = g.size >= 3 ? g.size + 1 : g.size;
   const [lo, hi] = TIER_RATING[d.tier - 1];
+  let added = 0;
   while (clubPlayers(clubId, game).length < want) {
+    added++;
     const fa = Object.values(S.players).filter(p => !p.club && p.game === game && p.rating <= hi + 2)
       .sort((a, b) => b.rating - a.rating)[0];
     const p = fa && fa.rating >= lo - 6 ? fa : genPlayer(game, lo, hi, 17, 26);
     if (!S.players[p.id]) addPlayer(p);
     joinClub(p, c, salaryDemand(p, c), randi(1, 3));
   }
-  autoStarters(clubId, game);
+  // les titulaires réels restent en place, sauf s'il a fallu compléter l'effectif
+  if (added || clubPlayers(clubId, game).filter(p => p.starter).length < GAMES[game].size) autoStarters(clubId, game);
   if (c.solo) c.name = soloName(c, game);
 }
 function toggleStarter(pid) {

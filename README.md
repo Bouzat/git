@@ -43,6 +43,15 @@ Trois formats de compétition :
 
 ## Données
 
+Les effectifs Valorant (48 équipes, octobre 2026) viennent de **vlr.gg** et les âges réels de **Wikidata**, via les outils du dossier `tools/` :
+
+```bash
+python3 tools/fetch_vlr.py data/vlr_teams.json      # classements et effectifs Valorant
+sh tools/fetch_wikidata.sh data/wd_players.csv       # dates de naissance des joueurs pros
+python3 tools/build_live.py data js/data_live.js     # génère js/data_live.js
+```
+
+
 - **697 joueurs réels.** Les effectifs de la plupart des grandes équipes ont été recoupés dans la presse esport 2026 (Worlds, LEC/LCK/LPL, Major de Cologne, EWC, VCT Champions, TI 2026, RLCS, OWCS, CDL, PGS, FNCS, Capcom Cup, FC Pro). Ils sont marqués « ✓ 2026 » dans la fiche du club ; les autres (« ≈ non vérifié ») viennent de mes connaissances et peuvent être dépassés.
 - **Divisions des clubs** : chaque organisation a toutes ses divisions réelles 2026 (ex. Falcons : 18 jeux, Vitality avec Bigetron, Karmine Corp en TFT et Trackmania). Quand l'effectif réel d'une division est introuvable, ses joueurs sont inventés et la division est marquée « * » (pointillés).
 - **Âges** : réels quand ils ont pu être vérifiés (sources 2026 pour une partie des joueurs Fortnite, années de naissance connues pour les stars) ; sinon l'âge est estimé et affiché avec un « ~ ».
@@ -77,6 +86,8 @@ Les offres arrivent au fil des semaines, et vous pouvez démarcher des marques d
 index.html      page du jeu
 css/style.css   styles
 js/data.js      jeux, clubs, joueurs réels
+js/data_live.js effectifs et âges récupérés automatiquement (généré)
+tools/          scripts de récupération des données
 js/engine.js    simulation (matchs, économie, mercato, saisons)
 js/ui.js        interface
 ```

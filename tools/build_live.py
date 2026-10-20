@@ -1,0 +1,125 @@
+# Construit js/data_live.js à partir des données récupérées (VLR, Wikidata…).
+# Usage : python3 tools/build_live.py <dossier des données> js/data_live.js
+import csv, json, os, re, subprocess, sys, unicodedata, zlib
+SRC, OUT = sys.argv[1], sys.argv[2]
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# données actuelles du jeu (orgs, notes connues des joueurs)
+cur = json.loads(subprocess.run(["node", "-e", f"""
+const fs=require('fs');eval(fs.readFileSync({json.dumps(os.path.join(ROOT, 'js/data.js'))},'utf8')+';global.X={{ORGS,ROSTERS,SOLOS}}');
+console.log(JSON.stringify(X))"""], capture_output=True, text=True, check=True).stdout)
+ORGS = cur["ORGS"]
+
+def norm(s):
+    s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode()
+    return re.sub(r"[^a-z0-9]", "", s.lower())
+known_rating = {}
+for g, lst in cur["ROSTERS"].items():
+    for org, ps, *_ in lst:
+        for p in ps: known_rating[(g, norm(p[0]))] = p[2]
+
+# âges : Wikidata (pseudo + jeu)
+GAMEKEYS = {"val": ["valorant"], "lol": ["league of legends"], "cs2": ["counter-strike"], "dota": ["dota"], "rl": ["rocket league"], "ow": ["overwatch"],
+            "r6": ["rainbow six"], "cod": ["call of duty"], "mlbb": ["mobile legends"], "fn": ["fortnite"], "apex": ["apex"], "pubg": ["pubg", "playerunknown"],
+            "fc": ["fifa", "ea sports fc"], "sf6": ["street fighter"], "sc2": ["starcraft"], "tk8": ["tekken"], "hok": ["honor of kings"], "chess": ["chess"]}
+ages = {}
+wd = os.path.join(SRC, "wd_players.csv")
+if os.path.exists(wd):
+    for r in csv.DictReader(open(wd, encoding="utf-8")):
+        for n in (r["label"], r["alias"], r["nick"]):
+            if not n: continue
+            for g, keys in GAMEKEYS.items():
+                if any(k in (r["gameLabel"] or "").lower() for k in keys):
+                    ages.setdefault((g, norm(n)), set()).add(r["birth"][:10])
+def age_of(g, h):
+    b = ages.get((g, norm(h)))
+    if not b or len(b) != 1: return 0
+    y, m, d = map(int, next(iter(b)).split("-"))
+    return 2026 - y - (1 if (m, d) > (10, 20) else 0)   # âge au 20 octobre 2026
+
+# correspondance nom d'équipe -> org existante
+ALIASES = {"fnatic": "fnatic", "kiwoomdrx": "drx", "leviatan": "lev", "fluxow7m": "w7m", "nongshimredforce": "ns", "gentlemates": "m8",
+           "kruesports": "kru", "allgamers": "al", "dplusesports": "dk", "teamheretics": "heretics", "g2esports": "g2", "geng": "geng"}
+by_name = {norm(v[0]): k for k, v in ORGS.items()}
+by_name.update({norm(v[1]): k for k, v in ORGS.items() if len(v[1]) > 2})
+def org_for(name):
+    n = norm(name)
+    return ALIASES.get(n) or by_name.get(n)
+
+live_orgs, rosters = {}, {}
+FILLER_WORDS = {"esports", "esport", "team", "gaming", "club", "e-sports", "the", "gg"}
+def make_tag(name):
+    words = [w for w in re.findall(r"[A-Za-z0-9]+", name) if w.lower() not in FILLER_WORDS]
+    if not words: words = re.findall(r"[A-Za-z0-9]+", name) or ["TEAM"]
+    return ("".join(w[0] for w in words) if len(words) >= 2 else words[0][:4]).upper()[:4]
+def hcolor(s): return "hsl(%d 60%% 52%%)" % (zlib.crc32(s.encode()) % 360)
+
+# ---------- Valorant (vlr.gg) ----------
+# qualifiés pour VALORANT Champions 2026 et équipes partenaires de la VCT 2026 (sources : esports.gg, Dot Esports, Wikipedia)
+VAL_CHAMPIONS = {norm(x) for x in ["TYLOO", "JD Gaming", "EDward Gaming", "Xi Lai Gaming", "Global Esports", "Nongshim RedForce", "Paper Rex", "T1",
+    "Karmine Corp", "Team Liquid", "FUT Esports", "Team Vitality", "100 Thieves", "LOUD", "NRG", "G2 Esports"]}
+VAL_PARTNERS = {norm(x) for x in ["Cloud9", "Sentinels", "ENVY", "LEVIATÁN", "MIBR", "FURIA", "KRÜ Esports", "Evil Geniuses", "FNATIC", "Team Heretics",
+    "BBL Esports", "GIANTX", "Gentle Mates", "Natus Vincere", "Gen.G", "DetonatioN FocusMe", "VARREL", "KIWOOM DRX", "Rex Regum Qeon", "ZETA DIVISION",
+    "Team Secret", "FULL SENSE", "All Gamers", "Bilibili Gaming", "FunPlus Phoenix", "Nova Esports", "Titan Esports Club", "Dragon Ranger Gaming", "Wolves Esports", "Trace Esports"]}
+vlr = os.path.join(SRC, "vlr_teams.json")
+if os.path.exists(vlr):
+    TOP = {"europe": 88, "north-america": 87, "brazil": 86, "asia-pacific": 86, "korea": 85, "china": 85, "japan": 82, "la-s": 78, "la-n": 77, "mena": 76, "oceania": 74}
+    CC = {"europe": "FR", "north-america": "US", "brazil": "BR", "asia-pacific": "SG", "korea": "KR", "china": "CN", "japan": "JP", "la-s": "AR", "la-n": "MX", "mena": "SA", "oceania": "AU"}
+    teams = []
+    for t in json.load(open(vlr, encoding="utf-8")):
+        if re.search(r"academy|junior|spark|orchid", t["name"], re.I): continue
+        active = [p for p in t["roster"] if p["role"] not in ("inactive",)]
+        if len([p for p in active if p["role"] != "sub"]) < 3: continue
+        rating = max(62, TOP[t["region"]] - (t["rank"] - 1) * 0.9)
+        n = norm(t["name"])
+        rating += 6 if n in VAL_CHAMPIONS else 3 if n in VAL_PARTNERS else -3
+        org = org_for(t["name"])
+        if not org:
+            org = "v_" + t["slug"].replace("-", "")[:20]
+            fame = int(max(15, min(70, (rating - 60) * 2.2)))
+            live_orgs[org] = [t["name"], make_tag(t["name"]), CC[t["region"]], hcolor(t["name"]), fame]
+        ps = []
+        for p in sorted(active, key=lambda p: p["role"] == "sub")[:6]:
+            r = known_rating.get(("val", norm(p["h"])))
+            if r is None: r = int(round(rating + (zlib.crc32(p["h"].encode()) % 6) - 3))
+            ps.append([p["h"], p["cc"] if len(p["cc"]) == 2 else "", min(97, r), age_of("val", p["h"])])
+        teams.append((rating + sum(x[2] for x in ps[:5]) / 50, org, ps, n in VAL_CHAMPIONS or n in VAL_PARTNERS))
+    teams.sort(key=lambda x: -x[0])
+    # toutes les équipes de la VCT, puis les meilleures équipes Challengers jusqu'à 48 équipes
+    keep = [t for t in teams if t[3]] + [t for t in teams if not t[3]]
+    keep = sorted(keep[:max(48, sum(1 for t in teams if t[3]))], key=lambda x: -x[0])
+    rosters["val"] = [[org, ps, 1] for _, org, ps, _ in keep]
+
+# âges réels (Wikidata) pour tous les joueurs déjà présents dans data.js
+age_fix = {}
+for g, lst in cur["ROSTERS"].items():
+    for org, ps, *_ in lst:
+        for p in ps:
+            a = age_of(g, p[0]) if g in GAMEKEYS else 0
+            if a and a != p[3]: age_fix[g + "|" + p[0]] = a
+for g, lst in cur["SOLOS"].items():
+    for x in lst:
+        r = x[1] if isinstance(x[0], str) and isinstance(x[1], list) else x if isinstance(x[0], list) else [x]
+        for p in r:
+            a = age_of(g, p[0]) if g in GAMEKEYS else 0
+            if a and a != p[3]: age_fix[g + "|" + p[0]] = a
+print("ages corrigés :", len(age_fix), file=sys.stderr)
+
+with open(OUT, "w", encoding="utf-8") as f:
+    f.write("// Généré par tools/build_live.py — effectifs récupérés sur les sites de données (VLR…).\n")
+    f.write("// Ces données remplacent celles de data.js pour les jeux concernés.\n")
+    f.write("const LIVE_ORGS = " + json.dumps(live_orgs, ensure_ascii=False) + ";\n")
+    f.write("const LIVE_ROSTERS = " + json.dumps(rosters, ensure_ascii=False) + ";\n")
+    f.write("// âges réels (Wikidata, au 20 octobre 2026) : jeu|pseudo -> âge\n")
+    f.write("const LIVE_AGES = " + json.dumps(age_fix, ensure_ascii=False) + ";\n")
+    f.write("""Object.assign(ORGS, LIVE_ORGS);
+for (const [g, l] of Object.entries(LIVE_ROSTERS)) ROSTERS[g] = l;
+// applique les âges réels à tous les effectifs
+const fixAge = (g, p) => { const a = LIVE_AGES[g + "|" + p[0]]; if (a) p[3] = a; };
+for (const [g, l] of Object.entries(ROSTERS)) for (const [, ps] of l) ps.forEach(p => fixAge(g, p));
+for (const [g, l] of Object.entries(SOLOS)) for (const x of l) {
+  const r = typeof x[0] === "string" && Array.isArray(x[1]) ? x[1] : Array.isArray(x[0]) ? x : [x];
+  r.forEach(p => fixAge(g, p));
+}
+""")
+print({g: len(l) for g, l in rosters.items()}, "new orgs:", len(live_orgs), file=sys.stderr)
