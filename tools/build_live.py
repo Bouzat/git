@@ -277,6 +277,95 @@ if os.path.isdir(VDIR) and "val" in rosters:
     print("Valorant (sheet) : %d pays complétés, %d nouvelles équipes (%d joueurs), %d agents libres réels"
           % (fixed, len(new_teams), sum(len(t[1]) for t in new_teams), len(fa)), file=sys.stderr)
 
+# ---------- Google Sheet de l'utilisateur, format Liquipedia générique (Rocket League…) ----------
+# Fichiers « portail » (pays -> ID, nom réel, équipe) et fichiers « équipes » (équipe -> ID, nom réel, rôle).
+COUNTRY_ISO = {"Albania": "AL", "Argentina": "AR", "Australia": "AU", "Austria": "AT", "Belarus": "BY", "Belgium": "BE", "Bosnia and Herzegovina": "BA",
+    "Brazil": "BR", "Bulgaria": "BG", "Canada": "CA", "Chile": "CL", "Colombia": "CO", "Croatia": "HR", "Cuba": "CU", "Czechia": "CZ", "Denmark": "DK",
+    "Dominican Republic": "DO", "Ecuador": "EC", "Egypt": "EG", "England": "GB", "Fiji": "FJ", "Finland": "FI", "France": "FR", "Germany": "DE",
+    "Greece": "GR", "Guernsey": "GG", "Hungary": "HU", "Iceland": "IS", "India": "IN", "Iraq": "IQ", "Ireland": "IE", "Italy": "IT", "Jersey": "JE",
+    "Kazakhstan": "KZ", "Latvia": "LV", "Lithuania": "LT", "Luxembourg": "LU", "Malta": "MT", "Mexico": "MX", "Morocco": "MA", "Netherlands": "NL",
+    "New Zealand": "NZ", "Northern Ireland": "GB", "Norway": "NO", "Pakistan": "PK", "Paraguay": "PY", "Peru": "PE", "Poland": "PL", "Portugal": "PT",
+    "Puerto Rico": "PR", "Romania": "RO", "Russia": "RU", "Saudi Arabia": "SA", "Scotland": "GB", "Serbia": "RS", "Slovakia": "SK", "Slovenia": "SI",
+    "South Africa": "ZA", "Spain": "ES", "Sudan": "SD", "Sweden": "SE", "Switzerland": "CH", "Turkey": "TR", "Ukraine": "UA", "United Kingdom": "GB",
+    "United States": "US", "Uruguay": "UY", "Venezuela": "VE", "Wales": "GB"}
+STAFF_ROLES = re.compile(r"coach|manager|analyst|staff", re.I)
+# propriétaires et créateurs de contenu listés avec leur organisation dans les portails, mais qui ne jouent pas en compétition
+NOT_PLAYERS = {"gotaga", "brawks", "squeezie", "kameto", "ibai", "psyonixcory", "psyonixian", "psyonixschuyler", "gumerprod"}
+COLLEGE_RE = re.compile(r"universit|college|\bstate\b|institute|\bUCF\b|\bTUD\b|\bDCU\b|\bSETU\b|\bUEA\b|\bUoB\b|\bVUB\b|\bPXL\b|Roehampton|"
+                        r"Loughborough|Keele|Exeter|Salford|Warwick|Portsmouth|Bournemouth|Erasmus|Lackawanna|Penn State|Academics", re.I)
+def sheet_game(game, folder, size, top_names, keep_existing):
+    """Équipes (nouvelles ou complétées), pays et agents libres réels d'un jeu à partir des fichiers de l'utilisateur."""
+    entries, team_rows = [], []
+    for f in sorted(os.listdir(folder)):
+        lines = list(csv.reader(open(os.path.join(folder, f), encoding="utf-8")))
+        if any(r[:3] == ["ID", "Real Name", "Team"] for r in lines):        # portail par pays
+            cc = None
+            for r in lines:
+                r = (r + [""] * 4)[:4]
+                if r[0] in COUNTRY_ISO and not any(r[1:]): cc = COUNTRY_ISO[r[0]]; continue
+                if r[0] in ("Players", "ID", "Staff & Talents") or r[0].startswith("Player Portal") or not r[0].strip() or not cc: continue
+                entries.append((r[0].strip(), cc, r[2].strip()))
+        else:                                                               # blocs par équipe
+            team = None
+            for i, r in enumerate(lines):
+                r = (r + [""] * 3)[:3]
+                if r[0] == "ID": continue
+                if i + 1 < len(lines) and lines[i + 1][:1] == ["ID"]: team = r[0].strip(); continue
+                if team and r[0].strip() and not STAFF_ROLES.search(r[2]): team_rows.append((r[0].strip(), team, r[2].strip()))
+    cc_of = {}
+    for h, c, t in entries: cc_of.setdefault(norm(h), []).append((c, norm(t)))
+    def country(h, team=""):
+        l = cc_of.get(norm(h), [])
+        m = [c for c, t in l if t and t == norm(team)]
+        return m[0] if m else (l[0][0] if l else "")
+    existing = [(list(x) + [0])[:3] for x in cur["ROSTERS"].get(game, [])]   # [org, effectif, vérifié]
+    by_org = {x[0]: x for x in existing}
+    used = {norm(p[0]) for x in existing if x[2] for p in x[1]}            # effectifs vérifiés : intouchables
+    teams = {}
+    for h, t, role in team_rows: teams.setdefault(t, {"src": "teams", "ps": []})["ps"].append(h)
+    for h, c, t in entries:
+        if t and t.lower() not in ("retired", "1"): teams.setdefault(t, {"src": "portal", "ps": []})["ps"].append(h)
+    order = sorted(teams, key=lambda t: (bool(COLLEGE_RE.search(t)), teams[t]["src"] == "portal"))
+    new, replaced = [], 0
+    for t in order:
+        hs = []
+        for h in teams[t]["ps"]:
+            if norm(h) not in used and norm(h) not in NOT_PLAYERS and norm(h) not in {norm(x) for x in hs}: hs.append(h)
+        if len(hs) < 2: continue
+        org = org_for(t)
+        if org in by_org and (by_org[org][2] or len(hs) < size): continue  # effectif vérifié, ou info trop maigre pour remplacer
+        nt = norm(t)
+        base = 82 if nt in top_names or org in top_names else 62 if COLLEGE_RE.search(t) else 72 if teams[t]["src"] == "teams" else 67
+        ps = []
+        for h in hs[:size + 1]:
+            used.add(norm(h))
+            r = known_rating.get((game, norm(h))) or base + (zlib.crc32(h.encode()) % 7) - 3
+            ps.append([h, country(h, t), r, age_of(game, h)])
+        if org in by_org:                                                    # effectif non vérifié remplacé par la feuille
+            by_org[org][1], by_org[org][2] = ps, 1; replaced += 1; continue
+        if not org:
+            org = "%s_%s" % (game, nt[:20])
+            ccs = [p[1] for p in ps if p[1]]
+            live_orgs.setdefault(org, [t, make_tag(t), max(set(ccs), key=ccs.count) if ccs else "US", hcolor(t), int(max(8, min(45, (base - 58) * 2.2)))])
+        new.append([org, ps, 1])
+    out = existing + new
+    out.sort(key=lambda x: -sum(sorted((p[2] for p in x[1]), reverse=True)[:size]) / max(1, min(size, len(x[1]))))
+    fa, seen = [], set()
+    for h, c, t in entries:
+        n = norm(h)
+        if n in used or n in seen or n in NOT_PLAYERS: continue
+        seen.add(n)
+        fa.append([h, c, 58 + zlib.crc32(h.encode()) % 11, age_of(game, h)])
+    print("%s (sheet) : %d équipes au total, %d nouvelles, %d complétées, %d agents libres réels" % (game, len(out), len(new), replaced, len(fa)), file=sys.stderr)
+    return out, fa
+
+RL_DIR = os.path.join(ROOT, "tools/sources/rocketleague")
+if os.path.isdir(RL_DIR):
+    RL_TOP = {norm(x) for x in ["Karmine Corp", "Team Vitality", "Team Falcons", "NRG", "Gentle Mates", "Dignitas", "Spacestation Gaming", "M80",
+              "Shopify Rebellion", "SK Gaming", "Geekay Esports", "FUT Esports", "Twisted Minds", "FURIA", "MIBR", "GameWard", "Man City Esports",
+              "Team Liquid", "G2 Esports", "Team BDS", "Moist Esports", "Wildcard", "PWR", "Elevate"]} | {"m8", "kc", "vitality", "falcons", "nrg", "tm", "furia", "liquid", "g2", "bds"}
+    rosters["rl"], free_agents["rl"] = sheet_game("rl", RL_DIR, 3, RL_TOP, True)
+
 # ---------- Fortnite (esportsearnings : nationalité, âge, duos du Major 1 2026) ----------
 solos = {}
 eef = os.path.join(SRC, "ee_fortnite.json")

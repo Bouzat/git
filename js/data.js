@@ -22,7 +22,7 @@ const GAMES = {
           tiers: ["Game Changers — élite (Championship)", "Game Changers régionaux (EMEA · NA · Brésil · Pacifique)", "Game Changers Academy · Open"] },
   dota: { name: "Dota 2",            short: "DOTA", icon: "🛡️", fmt: "team", size: 5, roles: ["Carry", "Mid", "Offlane", "Soft Sup", "Hard Sup"], prize: 3000000, mult: 0.9, color: "#a72714",
           tiers: ["The International · Riyadh Masters · PGL", "DreamLeague Division 2 · CCT Dota", "Open Qualifiers"] },
-  rl:   { name: "Rocket League",     short: "RL",   icon: "🚗", fmt: "team", size: 3, roles: ["Striker", "Playmaker", "Défenseur"], prize: 1000000, mult: 0.6, color: "#0f7bff",
+  rl:   { name: "Rocket League",     short: "RL",   icon: "🚗", fmt: "team", size: 3, tierSizes: [16, 32], roles: ["Striker", "Playmaker", "Défenseur"], prize: 1000000, mult: 0.6, color: "#0f7bff",
           tiers: ["RLCS Majors", "RLCS Open Regionals", "Ranked Cups 3v3"] },
   ow:   { name: "Overwatch 2",       short: "OW2",  icon: "🦾", fmt: "team", size: 5, roles: ["Tank", "DPS", "DPS", "Support", "Support"], prize: 800000, mult: 0.6, color: "#f99e1a",
           tiers: ["OWCS World Finals", "OWCS Regional Open", "Open Cups"] },

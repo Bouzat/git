@@ -299,7 +299,8 @@ function newWorld(opts) {
       const c = orgClub(orgId);
       if (c.divisions[game]) continue;
       const t1Max = (GAMES[game].tierSizes || [LEAGUE_SIZE])[0] + 2;
-      const tier = c.fame >= 70 && byTier[0].length < t1Max ? 1 : 2;
+      // équipe aux joueurs inventés : en tier 1 seulement si les vraies équipes ne suffisent pas à le remplir
+      const tier = c.fame >= 70 && byTier[0].length < t1Max && entries.length + solos.length < sizes[0] ? 1 : 2;
       const [lo, hi] = TIER_RATING[tier - 1], g = GAMES[game];
       const roster = Array.from({ length: g.size }, () => [genHandle(), c.country, randi(lo + 2, hi), randi(18, 26)]);
       addDivision(c, game, tier, roster);
@@ -1049,7 +1050,7 @@ function advanceWeek() {
     S.over = true;
     mail("❌ Licencié", `Le conseil d'administration a perdu confiance. ${S.ceo} est démis de ses fonctions de CEO de ${u.name}.`, "board");
   }
-  save();
+  scheduleSave();
   return report;
 }
 function crown(L, winner, runnerUp, detail) {
@@ -1510,6 +1511,13 @@ function unpackSave(s) {
   let o = 0; for (const c of chunks) { all.set(c, o); o += c.length; }
   return new TextDecoder().decode(all);
 }
+// la sauvegarde (sérialisation + compression, ~0,3 s pour un monde complet) part juste après l'affichage de la semaine
+function scheduleSave() {
+  if (typeof setTimeout !== "function") return save();
+  clearTimeout(scheduleSave.t);
+  scheduleSave.t = setTimeout(save, 30);
+}
+if (typeof window !== "undefined" && window.addEventListener) window.addEventListener("beforeunload", () => { if (scheduleSave.t) save(); });
 function readSave() { const s = localStorage.getItem(SAVE_KEY); return s ? unpackSave(s) : null; }
 function save() {
   try { localStorage.setItem(SAVE_KEY, packSave(JSON.stringify(S))); S.saveError = false; }
