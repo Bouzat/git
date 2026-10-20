@@ -520,7 +520,7 @@ function playLobby(L, entrants, nGames) {
 function advanceWeek() {
   if (S.over) return;
   const u = user();
-  const report = { matches: [], lobbies: [], income: {}, expenses: {}, events: [] };
+  const report = { matches: [], lobbies: [], tournaments: [], income: {}, expenses: {}, events: [] };
   const w = S.week, R = REGULAR_WEEKS;
   const pay = (id, amount) => { S.clubs[id].budget += amount; if (id === u.id) report.income.prize = (report.income.prize || 0) + amount; };
 
@@ -579,6 +579,8 @@ function advanceWeek() {
       crown(L, f.winner, f.loser, `${f.sa}-${f.sb} · MVP ${f.mvp}`);
     }
   }
+
+  runTournaments(w, report, pay);
 
   // économie du club joueur
   const fac = u.facilities;
@@ -639,6 +641,69 @@ function crown(L, winner, runnerUp, detail) {
   S.titles.push({ season: S.season, game: L.game, tier: L.tier, club: champ.solo ? soloName(champ, L.game) : champ.name, clubId: champ.id });
   if (winner === S.userId) mail(`🏆 CHAMPIONS ! ${label}`, `${user().name} remporte le <b>${label}</b> (${TIER_LABEL[L.tier - 1]}) face à ${S.clubs[runnerUp] ? S.clubs[runnerUp].name : "?"} — ${detail}.`, "trophy");
 }
+// ---------- tournois à cashprize ----------
+const CLUB_SHARE = 0.5;
+const PLACE_SHARE = [0.35, 0.18, 0.09, 0.09, 0.045, 0.045, 0.045, 0.045, 0.0125, 0.0125, 0.0125, 0.0125, 0.0125, 0.0125, 0.0125, 0.0125];
+const ROUND_NAME = { 2: "Finale", 4: "Demi-finale", 8: "Quart de finale", 16: "Huitième de finale" };
+function tournamentPool(game, tiers) {
+  return [...tiers].flatMap(t => S.leagues[lkey(game, +t)].teams).filter(id => S.clubs[id] && divOf(id, game));
+}
+// le club du joueur participe-t-il ? (open : dès qu'il est dans un tier admis ; invitation : s'il fait partie des mieux classés)
+function tournamentField(game, tiers, size) {
+  const g = GAMES[game], u = user();
+  const pool = tournamentPool(game, tiers).map(id => ({ id, s: teamStrength(id, game).str + S.clubs[id].fame * 0.05 })).sort((a, b) => b.s - a.s).map(x => x.id);
+  let n = Math.min(size, pool.length);
+  if (g.fmt !== "br") n = n >= 2 ? 2 ** Math.floor(Math.log2(n)) : 0;
+  const field = pool.slice(0, n);
+  if (tiers !== "1" && n > 1 && pool.includes(u.id) && !field.includes(u.id)) field[n - 1] = u.id;
+  return field;
+}
+function runTournaments(w, report, pay) {
+  const u = user();
+  S.tourResults = S.tourResults || [];
+  for (const [game, list] of Object.entries(TOURNAMENTS)) for (const [name, week, prize, tiers, size] of list) {
+    if (week !== w) continue;
+    const g = GAMES[game], field = tournamentField(game, tiers, size);
+    if (field.length < 2) continue;
+    let order;
+    if (g.fmt === "br") {
+      const lob = playLobby({ game, tier: Math.max(...[...tiers].map(Number)) }, field, 6);
+      order = lob.ranked;
+      if (field.includes(u.id)) report.lobbies.push({ game, tier: u.divisions[game].tier, ...lob, stage: name, mine: lob.res[u.id], rank: lob.ranked.indexOf(u.id) + 1 });
+    } else {
+      // élimination directe : 1er contre dernier, BO3 puis finale en BO5
+      let round = field.slice();
+      const out = [];
+      while (round.length > 1) {
+        const next = [], losers = [];
+        for (let i = 0; i < round.length / 2; i++) {
+          const a = round[i], b = round[round.length - 1 - i];
+          const r = playSeries(game, a, b, round.length === 2 ? 5 : 3);
+          next.push(r.winner); losers.push(r.loser);
+          if (a === u.id || b === u.id) report.matches.push({ ...r, game, tier: u.divisions[game].tier, stage: `${name} — ${ROUND_NAME[round.length] || "Tour"}` });
+        }
+        out.unshift(losers);
+        round = next;
+      }
+      order = round.concat(out.flat());
+    }
+    // le club garde la moitié des gains, le reste revient aux joueurs
+    order.forEach((id, i) => pay(id, Math.round(prize * (PLACE_SHARE[i] || 0) * CLUB_SHARE)));
+    const champ = S.clubs[order[0]];
+    champ.fame = clamp(champ.fame + (prize >= 1e6 ? 4 : prize >= 1e5 ? 2 : 0.5), 0, 100);
+    champ.fans = Math.round(champ.fans * (prize >= 1e6 ? 1.05 : 1.01));
+    champ.titles.push(`${name} ${S.season}`);
+    S.titles.push({ season: S.season, game, tier: 0, name, club: champ.solo ? soloName(champ, game) : champ.name, clubId: champ.id });
+    const mine = order.indexOf(u.id) + 1;
+    S.tourResults.push({ season: S.season, week: w, game, name, prize, n: field.length, top: order.slice(0, 4), mine: mine || null });
+    if (mine) {
+      const won = Math.round(prize * (PLACE_SHARE[mine - 1] || 0) * CLUB_SHARE);
+      report.tournaments.push({ game, name, place: mine, n: field.length, prize: won, winner: order[0] });
+      if (mine === 1) mail(`🏆 ${name} remporté !`, `${u.name} remporte le <b>${name} ${S.season}</b> (${GAMES[game].name}) et empoche ${money(won)}.`, "trophy");
+    }
+  }
+}
+
 // classement final d'un circuit (pour le bilan et les montées/descentes)
 function finalOrder(L) {
   const st = standings(L.key).map(x => x.id);
@@ -730,6 +795,7 @@ function endSeason() {
     if (!ts.length) continue;
     c.fame = clamp(c.fame + (TIER_FAME_TARGET[Math.min(...ts) - 1] - c.fame) * (c.ai ? 0.08 : 0.15), 1, 100);
   }
+  S.tourResults = (S.tourResults || []).filter(t => t.season >= S.season - 1);
   S.season++;
   newSeasonSetup(false);
   return { ok, moves };

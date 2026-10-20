@@ -216,9 +216,9 @@ const ROSTERS = {
   ],
 };
 
-// Duo Fortnite : D(note, [pseudo, pays], [pseudo, pays], org optionnelle)
+// Duo Fortnite : D(note, [pseudo, pays, âge?], [pseudo, pays, âge?], org optionnelle)
 function D(r, a, b, org) {
-  const duo = [[a[0], a[1], r, 0], [b[0], b[1], Math.max(60, r - 1), 0]];
+  const duo = [[a[0], a[1], r, a[2] || 0], [b[0], b[1], Math.max(60, r - 1), b[2] || 0]];
   return org ? [org, duo] : duo;
 }
 // Joueur solo signé dans une organisation : O(org, pseudo, pays, note, âge)
@@ -244,23 +244,23 @@ const SOLOS = {
   // classés d'après leurs résultats. Pays inconnu = "" ; âge 0 = tiré au hasard.
   fn: [
     // ---- Europe ----
-    D(94, ["SwizzY",""], ["Pixie",""]), D(93, ["Shxrk",""], ["t3eny",""]), D(92, ["Sky",""], ["Scroll",""]),
-    D(92, ["vic0","FR"], ["Malibuca",""], "big"), D(89, ["Tjino",""], ["PabloWingu",""]), D(88, ["Charyy",""], ["Kami","PL"]),
-    D(88, ["FoCuS",""], ["Th0masHD","DE"]), D(87, ["Cr1nge",""], ["Twi",""]), D(86, ["IDrop",""], ["Ghonzo",""]),
+    D(94, ["SwizzY",""], ["Pixie",""]), D(93, ["Shxrk","RO",15], ["t3eny",""]), D(92, ["Sky",""], ["Scroll",""]),
+    D(92, ["vic0","FR"], ["Malibuca","RU"], "big"), D(89, ["Tjino",""], ["PabloWingu",""]), D(88, ["Charyy",""], ["Kami","PL",21]),
+    D(88, ["FoCuS",""], ["Th0masHD","DK",24]), D(87, ["Cr1nge",""], ["Twi",""]), D(86, ["IDrop",""], ["Ghonzo",""]),
     D(86, ["Darm",""], ["Demus",""]), D(85, ["Velo",""], ["Zynox",""]), D(85, ["Chap",""], ["Flickzy",""]),
     D(85, ["SShur4",""], ["Repairs",""]), D(85, ["Syaaz",""], ["Scaryy",""]), D(85, ["Japko",""], ["Panzer",""]),
-    D(84, ["Rax",""], ["JannisZ",""]), D(83, ["Tidi",""], ["Julle",""]), D(83, ["Fant",""], ["Hlechis",""]),
+    D(84, ["Rax","IT",15], ["JannisZ",""], "m8"), D(83, ["Tidi",""], ["Julle",""]), D(83, ["Fant",""], ["Hlechis",""]),
     D(83, ["Nebs",""], ["Nxthan",""]), D(83, ["Pixx",""], ["Firen",""]),
     // ---- NA Central ----
-    D(91, ["Peterbot","US"], ["Pollo","US"]), D(90, ["Clix","US"], ["Rapid",""]), D(89, ["Acorn","US"], ["Boltz",""], "tm"),
-    D(89, ["Ritual",""], ["Cold",""]), D(89, ["Ajerss",""], ["Veno","GB"]), D(88, ["Higgs",""], ["Curve",""]),
-    D(86, ["Muz",""], ["Rise",""]), D(86, ["VicterV",""], ["Queasy",""]), D(85, ["Kingaling",""], ["Kraez",""]),
+    D(91, ["Peterbot","US",19], ["Pollo","US"]), D(90, ["Clix","US",21], ["Rapid",""]), D(89, ["Acorn","US"], ["Boltz",""], "tm"),
+    D(89, ["Ritual",""], ["Cold","",19]), D(89, ["Ajerss",""], ["Veno","GB",21]), D(88, ["Higgs",""], ["Curve","US",15]),
+    D(86, ["Muz",""], ["Rise","CA",24]), D(86, ["VicterV",""], ["Queasy","RS",24]), D(85, ["Kingaling",""], ["Kraez",""]),
     D(85, ["josh",""], ["Eomzo","US"]), D(84, ["Golden",""], ["Ozone",""]), D(83, ["Shadow",""], ["Vergo",""]),
     D(83, ["Bugha","US"], ["Braydz",""]), D(82, ["Moneymaker",""], ["Fnajen",""]), D(82, ["Reet","US"], ["Cooper","US"]),
     D(81, ["Xavi",""], ["Aminished",""]), D(81, ["Visxals",""], ["Threats",""]), D(80, ["Dash",""], ["Noxy",""]),
     D(80, ["angel",""], ["BatmanJoe",""]), D(80, ["Sails",""], ["verT",""]),
     // ---- NA West ----
-    D(84, ["EpikWhale",""], ["PXMP",""]), D(82, ["phoenix",""], ["Retro",""]), D(81, ["Inact",""], ["ZLink",""]), D(79, ["Compton",""], ["Snevy",""]),
+    D(84, ["EpikWhale",""], ["PXMP",""]), D(82, ["phoenix",""], ["Retro","CA",15]), D(81, ["Inact",""], ["ZLink",""]), D(79, ["Compton",""], ["Snevy",""]),
     // ---- Brésil ----
     D(85, ["916Gon","BR"], ["Night","BR"], "furia"), D(84, ["Mack","BR"], ["Diguera","BR"]), D(83, ["Nuti","BR"], ["Gabzera","BR"]), D(82, ["Lewa","BR"], ["Romero","BR"]),
     // ---- Asie ----
@@ -268,7 +268,7 @@ const SOLOS = {
     // ---- Moyen-Orient ----
     D(82, ["FKS",""], ["Hero",""]), D(80, ["7man1x",""], ["Controller",""]),
     // ---- Océanie ----
-    D(81, ["Resignz","AU"], ["Tinka","AU"]), D(80, ["Solvey","AU"], ["Sazers","AU"]), D(77, ["Spookz","AU"], ["Deymo","AU"]),
+    D(81, ["Resignz","AU"], ["Tinka","AU"]), D(80, ["Solvey","AU",15], ["Sazers","AU"]), D(77, ["Spookz","AU"], ["Deymo","AU"]),
   ],
 };
 
@@ -289,7 +289,7 @@ const FILLER_NAMES = [
 ];
 
 const COUNTRIES = {
-  IN:"Inde", KH:"Cambodge", RO:"Roumanie", MK:"Macédoine du Nord",   FR:"France", BE:"Belgique", CH:"Suisse", CA:"Canada", US:"États-Unis", GB:"Royaume-Uni", DE:"Allemagne", ES:"Espagne",
+  RS:"Serbie",   IN:"Inde", KH:"Cambodge", RO:"Roumanie", MK:"Macédoine du Nord",   FR:"France", BE:"Belgique", CH:"Suisse", CA:"Canada", US:"États-Unis", GB:"Royaume-Uni", DE:"Allemagne", ES:"Espagne",
   IT:"Italie", PT:"Portugal", NL:"Pays-Bas", KR:"Corée du Sud", CN:"Chine", JP:"Japon", BR:"Brésil", AR:"Argentine",
   MA:"Maroc", DZ:"Algérie", TN:"Tunisie", SN:"Sénégal", CI:"Côte d'Ivoire", SA:"Arabie saoudite", AE:"Émirats arabes unis",
   PL:"Pologne", SE:"Suède", DK:"Danemark", NO:"Norvège", FI:"Finlande", UA:"Ukraine", RU:"Russie", TR:"Turquie",
@@ -303,4 +303,45 @@ const NAME_PARTS = {
       "hex","ion","jolt","karma","lumen","mira","nero","onyx","prism","raze","sage","talon","umbra","viper","wisp","zed","astro","bane","crux",
       "dante","enzo","fyre","gale","hiro","ivo","juno","kenzo","loki","milo","nox","oslo","pax","rook","sora","taz","uzi","vito","wyn","yaro"],
   b: ["", "", "", "x", "0", "z", "y", "er", "ix", "99", "on", "ka", "o", "i", "7", "us", "ie", "an", "fps", "tv"],
+};
+
+// =====================================================================
+//  Tournois à cashprize (en plus des ligues). Dotations ≈ réelles, converties en €.
+//  [nom, semaine (1-13), dotation, tiers admis ("1" = invitations tier 1, "12", "23", "3"), places]
+// =====================================================================
+const TOURNAMENTS = {
+  lol: [["First Stand", 3, 1000000, "1", 8], ["Open Tour Cup", 4, 15000, "3", 16], ["Mid-Season Invitational (MSI)", 6, 2000000, "1", 8],
+        ["Esports World Cup — LoL", 8, 2000000, "1", 8], ["EMEA Masters", 9, 300000, "2", 16], ["Coupe de France LoL", 10, 20000, "23", 16],
+        ["Worlds (Championnat du monde)", 13, 5000000, "1", 16]],
+  cs2: [["IEM Kraków", 2, 1000000, "1", 16], ["FACEIT Cash Cup", 3, 5000, "3", 16], ["BLAST Open", 4, 400000, "1", 8], ["ESL Challenger League", 5, 100000, "2", 8],
+        ["Major (printemps)", 6, 1250000, "1", 16], ["ESEA Cash Cup", 7, 2000, "3", 16], ["Esports World Cup — CS2", 8, 1250000, "1", 16],
+        ["CCT Series", 9, 50000, "2", 16], ["IEM Cologne Major", 10, 1250000, "1", 16], ["BLAST World Final", 12, 1000000, "1", 8]],
+  val: [["VCT Masters (1)", 4, 1000000, "1", 8], ["Premier Cash Cup", 5, 5000, "3", 16], ["Challengers Finals", 6, 200000, "2", 8],
+        ["VCT Masters (2)", 8, 1000000, "1", 8], ["Esports World Cup — Valorant", 9, 1250000, "1", 8], ["Red Bull Home Ground", 10, 100000, "12", 8],
+        ["VALORANT Champions", 13, 2250000, "1", 16]],
+  dota: [["DreamLeague", 2, 1000000, "1", 16], ["PGL Wallachia", 4, 1000000, "1", 16], ["CCT Dota", 5, 100000, "2", 8], ["BLAST Slam", 6, 1000000, "1", 8],
+         ["Open Qualifier Cup", 7, 5000, "3", 16], ["Esports World Cup — Dota 2", 8, 5000000, "1", 16], ["The International", 12, 2500000, "1", 16]],
+  rl: [["RLCS Open Cup", 3, 50000, "2", 16], ["RLCS Major (1)", 4, 350000, "1", 16], ["3v3 Cash Cup", 6, 2000, "3", 16], ["RLCS Major (2)", 8, 350000, "1", 16],
+       ["Esports World Cup — Rocket League", 9, 1000000, "1", 16], ["RLCS World Championship", 12, 1000000, "1", 16]],
+  ow: [["OWCS Open", 4, 10000, "2", 8], ["OWCS Midseason Championship", 6, 500000, "1", 8], ["Open Cup", 7, 1000, "3", 8],
+       ["Esports World Cup — Overwatch", 9, 2000000, "1", 8], ["OWCS World Finals", 12, 1000000, "1", 8]],
+  r6: [["Six Invitational", 3, 3000000, "1", 16], ["Challenger Cup", 5, 50000, "2", 8], ["Open Cup", 6, 2000, "3", 16], ["R6 Major (1)", 7, 750000, "1", 16],
+       ["Esports World Cup — R6", 9, 2000000, "1", 16], ["R6 Major (2)", 11, 750000, "1", 16]],
+  cod: [["CDL Major (1)", 3, 500000, "1", 8], ["Challengers Cup", 5, 50000, "2", 8], ["CDL Major (2)", 6, 500000, "1", 8], ["Amateur Cash Cup", 7, 2000, "3", 16],
+        ["CDL Major (3)", 9, 500000, "1", 8], ["CDL Championship (Champs)", 12, 2000000, "1", 8]],
+  mlbb: [["Open Cup", 4, 2000, "3", 16], ["MPL Invitational", 5, 300000, "1", 8], ["MDL Cup", 6, 50000, "2", 8],
+         ["Mid Season Cup (EWC)", 8, 3000000, "1", 16], ["M World Championship", 13, 1000000, "1", 16]],
+  fn: [["Victory Cup", 2, 1000, "3", 12], ["Cash Cup", 3, 15000, "23", 30], ["FNCS Major (1)", 4, 600000, "12", 33], ["Victory Cup", 5, 1000, "3", 12],
+       ["Cash Cup", 6, 15000, "23", 30], ["FNCS Major (2)", 8, 600000, "12", 33], ["Victory Cup", 9, 1000, "3", 12], ["Cash Cup", 10, 15000, "23", 30],
+       ["FNCS Global Championship", 12, 2000000, "1", 16]],
+  apex: [["ALGS Open", 4, 1000000, "12", 20], ["Online Cup", 6, 1000, "3", 12], ["ALGS Challenger Cup", 7, 20000, "2", 12],
+         ["ALGS Midseason (EWC)", 9, 2000000, "1", 12], ["ALGS Championship", 12, 2000000, "1", 12]],
+  pubg: [["PGS (1)", 3, 500000, "1", 12], ["Scrim Cup", 5, 1000, "3", 12], ["PGS (2)", 7, 500000, "1", 12], ["PUBG Nations Cup", 9, 500000, "12", 16],
+         ["PUBG Global Championship (PGC)", 12, 1000000, "1", 12]],
+  fc: [["FUT Champions Cup", 3, 2000, "3", 16], ["FC Pro Open", 4, 250000, "12", 16], ["eLigue 1 / eChampions", 5, 50000, "2", 16],
+       ["eChampions League", 6, 280000, "1", 16], ["FC Pro World Championship (EWC)", 9, 1000000, "1", 16]],
+  sf6: [["Online Locals", 3, 500, "3", 16], ["Capcom Cup", 4, 1000000, "1", 16], ["Capcom Pro Tour Premier", 6, 30000, "2", 16],
+        ["EVO", 8, 250000, "12", 16], ["Esports World Cup — SF6", 9, 1000000, "1", 16], ["Evo France", 11, 100000, "12", 16]],
+  sc2: [["IEM Katowice", 3, 500000, "1", 16], ["Weekly Cup", 5, 500, "3", 16], ["ESL Masters", 6, 50000, "2", 16],
+        ["Esports World Cup — StarCraft II", 8, 700000, "1", 16], ["HomeStory Cup", 10, 50000, "12", 16]],
 };

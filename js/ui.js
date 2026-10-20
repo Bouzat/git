@@ -106,7 +106,7 @@ function render() {
   const u = user();
   document.documentElement.style.setProperty("--club", u.color);
   const unread = S.inbox.filter(m => !m.read).length;
-  const navs = [["dash", "🏠 Tableau de bord"], ["roster", "👥 Effectifs"], ["market", "💱 Mercato"], ["comp", "🏆 Compétitions"],
+  const navs = [["dash", "🏠 Tableau de bord"], ["roster", "👥 Effectifs"], ["market", "💱 Mercato"], ["comp", "🏆 Compétitions"], ["tours", "📅 Tournois"],
     ["finance", "💰 Finances"], ["facilities", "🏗️ Infrastructures"], ["inbox", "✉️ Messagerie"], ["world", "🌍 Clubs & palmarès"]];
   const phase = S.week <= REGULAR_WEEKS ? `Semaine ${S.week}/${REGULAR_WEEKS}` : S.week === REGULAR_WEEKS + 1 ? "Playoffs" : "Grandes finales";
   $app.innerHTML = `<div class="game">
@@ -126,7 +126,7 @@ function render() {
         <div class="spacer"></div>
         ${S.over ? `<button class="danger" data-act="quit">Partie terminée — Menu</button>` : `<button class="primary" data-act="next">Semaine suivante ▶</button>`}
       </div>
-      ${({ dash: viewDash, roster: viewRoster, market: viewMarket, comp: viewComp, finance: viewFinance, facilities: viewFacilities, inbox: viewInbox, world: viewWorld })[UI.view]()}
+      ${({ dash: viewDash, roster: viewRoster, market: viewMarket, comp: viewComp, tours: viewTours, finance: viewFinance, facilities: viewFacilities, inbox: viewInbox, world: viewWorld })[UI.view]()}
     </main></div>`;
 }
 
@@ -170,6 +170,7 @@ function viewDash() {
     <div class="card"><h3>📅 Résultats de la semaine passée</h3>${lastHtml}</div>
   </div>
   <h3 style="margin-top:20px">Divisions</h3><div class="grid g3">${divCards}</div>
+  <h3 style="margin-top:20px">Prochains tournois</h3><div class="card">${upcomingTours(5) || "<p class='muted'>Aucun tournoi à venir pour vos jeux cette saison.</p>"}</div>
   <h3 style="margin-top:20px">Derniers messages</h3><div class="card" style="padding:0">${mails || "<p class='muted' style='padding:12px'>Rien de neuf.</p>"}</div>`;
 }
 function matchRow(r) {
@@ -311,6 +312,48 @@ function viewComp() {
     </div>`;
 }
 
+// ---------- tournois ----------
+const accessLabel = t => ({ "1": "Invitation (tier 1)", "12": "Tiers 1 et 2", "2": "Tier 2", "23": "Open (tiers 2-3)", "3": "Open (tier 3)" }[t] || t);
+function tourStatus(game, name, week) {
+  const r = (S.tourResults || []).find(x => x.season === S.season && x.game === game && x.name === name && x.week === week);
+  if (!r) return null;
+  return r;
+}
+function myEligibility(game, tiers, size) {
+  const d = user().divisions[game];
+  if (!d) return "<span class='muted'>—</span>";
+  if (!tiers.includes(String(d.tier))) return "<span class='muted'>Non éligible</span>";
+  if (tiers !== "1") return "<span class='ok'>Qualifié</span>";
+  return tournamentField(game, tiers, size).includes(S.userId) ? "<span class='ok'>Invité</span>" : "<span class='warn'>Hors invitations</span>";
+}
+function upcomingTours(limit) {
+  const u = user(), rows = [];
+  for (const g of Object.keys(u.divisions)) for (const [name, week, prize, tiers, size] of TOURNAMENTS[g] || [])
+    if (week >= S.week && tiers.includes(String(u.divisions[g].tier))) rows.push({ g, name, week, prize, tiers, size });
+  return rows.sort((a, b) => a.week - b.week).slice(0, limit).map(t => `<div class="match-br">S${t.week} · ${GAMES[t.g].icon} <b>${esc(t.name)}</b> · ${money(t.prize)} · ${myEligibility(t.g, t.tiers, t.size)}</div>`).join("");
+}
+function tourRow(t) {
+  const g = GAMES[t.game];
+  return `<div class="lobby"><div><b>${g.icon} ${esc(t.name)}</b> — ${t.place === 1 ? "<b class='win'>🏆 VAINQUEUR</b>" : `<b>${t.place}e</b> sur ${t.n}`}</div>
+    <div>Gains : <b>${money(t.prize)}</b>${t.place > 1 ? ` · vainqueur : ${displayName(t.winner, t.game)}` : ""}</div></div>`;
+}
+function viewTours() {
+  const u = user();
+  if (!UI.tourGame) UI.tourGame = "mine";
+  const games = UI.tourGame === "mine" ? (Object.keys(u.divisions).length ? Object.keys(u.divisions) : Object.keys(GAMES)) : UI.tourGame === "all" ? Object.keys(GAMES) : [UI.tourGame];
+  const tabs = [["mine", "Mes jeux"], ["all", "Tous"]].concat(Object.keys(GAMES).map(k => [k, GAMES[k].icon + " " + GAMES[k].short]))
+    .map(([k, l]) => `<button class="tab small ${UI.tourGame === k ? "active" : ""}" data-act="tour-game" data-v="${k}">${l}</button>`).join("");
+  const rows = games.flatMap(g => (TOURNAMENTS[g] || []).map(t => [g, ...t])).sort((a, b) => a[2] - b[2] || b[3] - a[3]).map(([g, name, week, prize, tiers, size]) => {
+    const r = tourStatus(g, name, week);
+    const status = r ? `🏆 ${displayName(r.top[0], g)}${r.mine ? ` · <b>vous : ${r.mine}e</b>` : ""}` : week < S.week ? "<span class='muted'>Annulé</span>" : week === S.week ? "<b class='warn'>Cette semaine</b>" : "À venir";
+    return `<tr class="${r && r.mine === 1 ? "me" : ""}"><td>S${week}</td><td>${gchip(g)}</td><td><b>${esc(name)}</b></td><td>${money(prize)}</td><td>${accessLabel(tiers)}</td><td>${r ? r.n : tournamentField(g, tiers, size).length}${GAMES[g].fmt === "br" ? " " + GAMES[g].unit + "s" : ""}</td><td>${myEligibility(g, tiers, size)}</td><td>${status}</td></tr>`;
+  }).join("");
+  return `<h2>📅 Tournois de la saison ${S.season}</h2>
+    <p class="muted" style="margin-top:-6px">En plus des ligues, les grands tournois à cashprize. Les tournois sur invitation prennent les meilleures équipes du tier 1 ; les opens accueillent tous les clubs des tiers admis. Dotations approximatives ; le club touche 50 % des gains, le reste revient aux joueurs.</p>
+    <div class="tabs">${tabs}</div>
+    <div class="card table-wrap"><table><tr><th>Sem.</th><th>Jeu</th><th>Tournoi</th><th>Dotation</th><th>Accès</th><th>Places</th><th>Vous</th><th>Résultat</th></tr>${rows}</table></div>`;
+}
+
 // ---------- finances ----------
 function viewFinance() {
   const u = user(), last = S.lastWeek;
@@ -369,10 +412,10 @@ function viewWorld() {
   const divs = c => Object.entries(c.divisions).map(([g, d]) => `<span class="chip" style="border-color:${GAMES[g].color}">${GAMES[g].icon} ${GAMES[g].short} <small class="muted">T${d.tier}</small></span>`).join(" ");
   const rows = clubs.map((c, i) => `<tr class="${c.id === S.userId ? "me" : ""}"><td>${i + 1}</td><td><span style="color:${c.color}">■</span> <b data-act="club-info" data-v="${c.id}" style="cursor:pointer">${esc(c.name)}</b></td><td>${flag(c.country)}</td>
     <td>${c.fame.toFixed(1)}</td><td>${c.fans.toLocaleString("fr-FR")}</td><td>${divs(c)}</td><td>${c.titles.length ? "🏆 × " + c.titles.length : ""}</td></tr>`).join("");
-  const hist = S.titles.slice().reverse().slice(0, 80).map(t => `<tr><td>${t.season}</td><td>${gchip(t.game)}</td><td>${tchip(t.tier)}</td><td class="${t.clubId === S.userId ? "ok" : ""}"><b>${esc(t.club)}</b></td></tr>`).join("");
+  const hist = S.titles.slice().reverse().slice(0, 80).map(t => `<tr><td>${t.season}</td><td>${gchip(t.game)}</td><td>${t.tier ? tchip(t.tier) + " Ligue" : `<span class="chip">🏆 ${esc(t.name)}</span>`}</td><td class="${t.clubId === S.userId ? "ok" : ""}"><b>${esc(t.club)}</b></td></tr>`).join("");
   return `<h2>Clubs & palmarès</h2><div class="grid g2">
     <div class="card table-wrap"><h3>Classement mondial des clubs (notoriété)</h3><table><tr><th>#</th><th>Club</th><th></th><th>Notoriété</th><th>Fans</th><th>Divisions</th><th>Titres</th></tr>${rows}</table></div>
-    <div class="card table-wrap"><h3>Palmarès</h3>${hist ? `<table><tr><th>Saison</th><th>Jeu</th><th>Tier</th><th>Champion</th></tr>${hist}</table>` : "<p class='muted'>Aucun titre décerné pour l'instant.</p>"}</div></div>`;
+    <div class="card table-wrap"><h3>Palmarès</h3>${hist ? `<table><tr><th>Saison</th><th>Jeu</th><th>Compétition</th><th>Champion</th></tr>${hist}</table>` : "<p class='muted'>Aucun titre décerné pour l'instant.</p>"}</div></div>`;
 }
 function clubInfo(id) {
   const c = S.clubs[id];
@@ -406,6 +449,7 @@ const ACTIONS = {
   "roster-game": v => { UI.rosterGame = v; render(); },
   "comp-game": v => { UI.compGame = v; const d = user().divisions[v]; UI.compTier = d ? d.tier : 1; render(); },
   "comp-tier": v => { UI.compTier = +v; render(); },
+  "tour-game": v => { UI.tourGame = v; render(); },
   "goto-market": v => { UI.market.game = v; UI.view = "market"; render(); },
   "open-div": v => {
     const [game, t] = v.split("|"), tier = +t, g = GAMES[game];
@@ -493,7 +537,7 @@ function playWeek() {
   const missing = Object.keys(u.divisions).filter(g => clubPlayers(u.id, g).length < GAMES[g].size);
   const rep = advanceWeek();
   pendingEvents = rep.events.slice();
-  const res = rep.matches.map(matchRow).join("") + rep.lobbies.map(lobbyRow).join("") || "<p class='muted'>Pas de match pour votre club cette semaine.</p>";
+  const res = rep.tournaments.map(tourRow).join("") + rep.matches.map(matchRow).join("") + rep.lobbies.map(lobbyRow).join("") || "<p class='muted'>Pas de match pour votre club cette semaine.</p>";
   const fin = Object.values(rep.income).reduce((a, b) => a + b, 0) - Object.values(rep.expenses).reduce((a, b) => a + b, 0);
   const se = rep.seasonEnd;
   modal(`<h2>${se ? "🏁 Fin de la saison " + rep.season : `Saison ${rep.season} · Semaine ${rep.week}`}</h2>${res}

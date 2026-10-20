@@ -42,9 +42,13 @@ Trois formats de compétition :
 ## Données
 
 - **697 joueurs réels.** Les effectifs de la plupart des grandes équipes ont été recoupés dans la presse esport 2026 (Worlds, LEC/LCK/LPL, Major de Cologne, EWC, VCT Champions, TI 2026, RLCS, OWCS, CDL, PGS, FNCS, Capcom Cup, FC Pro). Ils sont marqués « ✓ 2026 » dans la fiche du club ; les autres (« ≈ non vérifié ») viennent de mes connaissances et peuvent être dépassés.
-- **Âges** : calculés d'après l'année de naissance quand je la connais ; sinon l'âge est estimé et affiché avec un « ~ ».
+- **Âges** : réels quand ils ont pu être vérifiés (sources 2026 pour une partie des joueurs Fortnite, années de naissance connues pour les stars) ; sinon l'âge est estimé et affiché avec un « ~ ».
 - **Potentiel** : marge de progression selon l'âge (un joueur de 25 ans ou plus a atteint son plafond), affichée par votre staff avec une marge d'erreur qui diminue avec le niveau du coaching.
 - Tout est modifiable dans `js/data.js` (format joueur : `[pseudo, nationalité, note, âge]`).
+
+## Tournois à cashprize
+
+En plus des ligues, chaque jeu a son calendrier de grands tournois (onglet **Tournois**) : First Stand, MSI et Worlds en LoL ; IEM, BLAST, les deux Majors et l'EWC en CS2 ; Masters et Champions en Valorant ; The International, DreamLeague et l'EWC en Dota 2 ; FNCS Majors et Global Championship en Fortnite ; Capcom Cup et EVO en SF6… plus des cash cups pour les petites scènes. Les tournois sur invitation prennent les meilleures équipes du tier 1, les opens accueillent tous les clubs des tiers admis. Le club garde 50 % des gains.
 
 ## Sponsors
 
