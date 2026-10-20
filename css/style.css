@@ -93,3 +93,14 @@ tr:hover td { background: #ffffff06; }
   .main { padding: 0 16px 40px; }
   .logo { font-size: 32px; }
 }
+
+/* ---------- tiers, battle royale ---------- */
+.chip.tier { font-weight: 700; }
+.chip.t1 { border-color: #ffd166; color: #ffd166; }
+.chip.t2 { border-color: #b8c2d6; color: #b8c2d6; }
+.chip.t3 { border-color: #d08b5b; color: #d08b5b; }
+.sub { font-size: 12px; text-align: center; margin-top: -4px; margin-bottom: 6px; }
+.lobby { display: flex; flex-direction: column; gap: 3px; padding: 10px 0; border-bottom: 1px solid #1c2338; }
+.match-br { padding: 7px 0; border-bottom: 1px solid #1c2338; font-size: 13px; }
+.open-div { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px; border: 1px solid var(--line); border-radius: 10px; flex-wrap: wrap; }
+.open-div > div:first-child { min-width: 0; }

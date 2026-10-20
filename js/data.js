@@ -1,131 +1,261 @@
 // =====================================================================
-//  ESPORTS MANAGER — Base de données (saison 2025-26, approximative)
-//  Les effectifs évoluent vite : modifiez librement ce fichier.
+//  ESPORTS MANAGER — Base de données
+//  Effectifs établis de mémoire (scène ≈ 2025-26) : ils sont forcément
+//  approximatifs, l'esport bouge vite. Tout est modifiable ici.
 //  Format joueur : [pseudo, nationalité (ISO), note /100, âge]
 //  L'ordre des joueurs suit l'ordre des rôles du jeu.
 // =====================================================================
 
+// fmt : "team" (séries BO3/BO5), "br" (battle royale en lobby), "duel" (1 contre 1)
 const GAMES = {
-  lol:  { name: "League of Legends", short: "LoL",  icon: "⚔️", size: 5, roles: ["Top", "Jungle", "Mid", "ADC", "Support"], league: "LoL World Circuit", prize: 3000000, entry: 450000, mult: 1.0, color: "#c89b3c" },
-  cs2:  { name: "Counter-Strike 2",  short: "CS2",  icon: "🔫", size: 5, roles: ["IGL", "AWP", "Entry", "Rifler", "Lurker"], league: "CS2 Pro League", prize: 2500000, entry: 350000, mult: 1.0, color: "#de9b35", rounds: 13 },
-  val:  { name: "Valorant",          short: "VAL",  icon: "🎯", size: 5, roles: ["Duelliste", "Initiateur", "Contrôleur", "Sentinelle", "Flex"], league: "VCT Champions Tour", prize: 2000000, entry: 300000, mult: 0.9, color: "#ff4655", rounds: 13 },
-  dota: { name: "Dota 2",            short: "DOTA", icon: "🛡️", size: 5, roles: ["Carry", "Mid", "Offlane", "Soft Sup", "Hard Sup"], league: "Dota Pro Circuit", prize: 3000000, entry: 350000, mult: 0.9, color: "#a72714" },
-  rl:   { name: "Rocket League",     short: "RL",   icon: "🚗", size: 3, roles: ["Striker", "Playmaker", "Défenseur"], league: "RLCS", prize: 1000000, entry: 120000, mult: 0.6, color: "#0f7bff" },
-  ow:   { name: "Overwatch 2",       short: "OW2",  icon: "🦾", size: 5, roles: ["Tank", "DPS", "DPS", "Support", "Support"], league: "OW Champions Series", prize: 800000, entry: 120000, mult: 0.6, color: "#f99e1a" },
-  r6:   { name: "Rainbow Six Siege", short: "R6",   icon: "🧨", size: 5, roles: ["IGL", "Entry", "Flex", "Support", "Anchor"], league: "R6 Pro League", prize: 800000, entry: 120000, mult: 0.55, color: "#4a90d9", rounds: 7 },
-  cod:  { name: "Call of Duty",      short: "COD",  icon: "💥", size: 4, roles: ["AR", "SMG", "SMG", "Flex"], league: "Call of Duty League", prize: 1000000, entry: 200000, mult: 0.7, color: "#5b8c3a" },
-  apex: { name: "Apex Legends",      short: "APEX", icon: "🪂", size: 3, roles: ["IGL", "Fragger", "Support"], league: "ALGS", prize: 700000, entry: 100000, mult: 0.5, color: "#da292a" },
-  fn:   { name: "Fortnite",          short: "FN",   icon: "🏗️", size: 1, roles: ["Solo"], league: "FNCS Solo", prize: 1500000, entry: 60000, mult: 0.6, color: "#9d4dbb" },
-  fc:   { name: "EA Sports FC",      short: "FC",   icon: "⚽", size: 1, roles: ["Solo"], league: "FC Pro World", prize: 500000, entry: 40000, mult: 0.4, color: "#00d26a" },
-  sf6:  { name: "Street Fighter 6",  short: "SF6",  icon: "🥊", size: 1, roles: ["Solo"], league: "Capcom Pro Tour", prize: 400000, entry: 30000, mult: 0.35, color: "#f2c200" },
-  sc2:  { name: "StarCraft II",      short: "SC2",  icon: "👾", size: 1, roles: ["Solo"], league: "SC2 World Tour", prize: 300000, entry: 30000, mult: 0.35, color: "#00a8e8" },
-  mlbb: { name: "Mobile Legends",    short: "MLBB", icon: "📱", size: 5, roles: ["EXP", "Jungle", "Mid", "Gold", "Roam"], league: "MLBB World League", prize: 800000, entry: 100000, mult: 0.6, color: "#2b6cff" },
-  pubg: { name: "PUBG",              short: "PUBG", icon: "🍳", size: 4, roles: ["IGL", "Fragger", "Scout", "Support"], league: "PUBG Global Series", prize: 600000, entry: 80000, mult: 0.45, color: "#f2a900" },
+  lol:  { name: "League of Legends", short: "LoL",  icon: "⚔️", fmt: "team", size: 5, roles: ["Top", "Jungle", "Mid", "ADC", "Support"], prize: 3000000, mult: 1.0, color: "#c89b3c",
+          tiers: ["LoL Elite (LCK · LPL · LEC · LTA)", "Ligues régionales (LFL · Prime League · LCK CL · ERL)", "Open Tour (scène amateur)"] },
+  cs2:  { name: "Counter-Strike 2",  short: "CS2",  icon: "🔫", fmt: "team", size: 5, roles: ["IGL", "AWP", "Entry", "Rifler", "Lurker"], prize: 2500000, mult: 1.0, color: "#de9b35", rounds: 13,
+          tiers: ["Circuit Majors (BLAST · IEM · ESL Pro League)", "ESL Challenger · CCT · European Pro League", "ESEA Open · FACEIT Cups"] },
+  val:  { name: "Valorant",          short: "VAL",  icon: "🎯", fmt: "team", size: 5, roles: ["Duelliste", "Initiateur", "Contrôleur", "Sentinelle", "Flex"], prize: 2000000, mult: 0.9, color: "#ff4655", rounds: 13,
+          tiers: ["VCT International (EMEA · Pacific · Americas · China)", "VCT Challengers", "Premier · Open Cups"] },
+  dota: { name: "Dota 2",            short: "DOTA", icon: "🛡️", fmt: "team", size: 5, roles: ["Carry", "Mid", "Offlane", "Soft Sup", "Hard Sup"], prize: 3000000, mult: 0.9, color: "#a72714",
+          tiers: ["The International · Riyadh Masters · PGL", "DreamLeague Division 2 · CCT Dota", "Open Qualifiers"] },
+  rl:   { name: "Rocket League",     short: "RL",   icon: "🚗", fmt: "team", size: 3, roles: ["Striker", "Playmaker", "Défenseur"], prize: 1000000, mult: 0.6, color: "#0f7bff",
+          tiers: ["RLCS Majors", "RLCS Open Regionals", "Ranked Cups 3v3"] },
+  ow:   { name: "Overwatch 2",       short: "OW2",  icon: "🦾", fmt: "team", size: 5, roles: ["Tank", "DPS", "DPS", "Support", "Support"], prize: 800000, mult: 0.6, color: "#f99e1a",
+          tiers: ["OWCS World Finals", "OWCS Regional Open", "Open Cups"] },
+  r6:   { name: "Rainbow Six Siege", short: "R6",   icon: "🧨", fmt: "team", size: 5, roles: ["IGL", "Entry", "Flex", "Support", "Anchor"], prize: 800000, mult: 0.55, color: "#4a90d9", rounds: 7,
+          tiers: ["Six Invitational · Majors", "Regional League Challenger", "Open Cups"] },
+  cod:  { name: "Call of Duty",      short: "COD",  icon: "💥", fmt: "team", size: 4, roles: ["AR", "SMG", "SMG", "Flex"], prize: 1000000, mult: 0.7, color: "#5b8c3a",
+          tiers: ["Call of Duty League (CDL)", "CoD Challengers", "Amateur Cups"] },
+  mlbb: { name: "Mobile Legends",    short: "MLBB", icon: "📱", fmt: "team", size: 5, roles: ["EXP", "Jungle", "Mid", "Gold", "Roam"], prize: 800000, mult: 0.6, color: "#2b6cff",
+          tiers: ["MPL · M-Series World Championship", "MDL (Development League)", "Open Cups"] },
+  fn:   { name: "Fortnite",          short: "FN",   icon: "🏗️", fmt: "br", size: 2, lobby: 50, gamesPerWeek: 4, roles: ["Fragger", "IGL"], prize: 1500000, mult: 0.6, color: "#9d4dbb", unit: "duo",
+          tiers: ["FNCS Grand Finals (duos)", "FNCS Divisional Cups", "Cash Cups"] },
+  apex: { name: "Apex Legends",      short: "APEX", icon: "🪂", fmt: "br", size: 3, lobby: 20, gamesPerWeek: 4, roles: ["IGL", "Fragger", "Support"], prize: 700000, mult: 0.5, color: "#da292a", unit: "trio",
+          tiers: ["ALGS Pro League", "ALGS Challenger Circuit", "Online Tournaments"] },
+  pubg: { name: "PUBG",              short: "PUBG", icon: "🍳", fmt: "br", size: 4, lobby: 16, gamesPerWeek: 4, roles: ["IGL", "Fragger", "Scout", "Support"], prize: 600000, mult: 0.45, color: "#f2a900", unit: "squad",
+          tiers: ["PUBG Global Series · PGC", "PUBG Nations · Regional Series", "Open Scrims"] },
+  fc:   { name: "EA Sports FC",      short: "FC",   icon: "⚽", fmt: "duel", size: 1, roles: ["Solo"], prize: 500000, mult: 0.4, color: "#00d26a",
+          tiers: ["FC Pro World Championship", "FC Pro Open · eLigue 1", "FUT Champions Cups"] },
+  sf6:  { name: "Street Fighter 6",  short: "SF6",  icon: "🥊", fmt: "duel", size: 1, roles: ["Solo"], prize: 400000, mult: 0.35, color: "#f2c200",
+          tiers: ["Capcom Cup · EVO", "Capcom Pro Tour Premier", "Online Locals"] },
+  sc2:  { name: "StarCraft II",      short: "SC2",  icon: "👾", fmt: "duel", size: 1, roles: ["Solo"], prize: 300000, mult: 0.35, color: "#00a8e8",
+          tiers: ["EWC · IEM Katowice", "ESL Masters", "Weekly Cups"] },
 };
 
-// Clubs réels : fame (notoriété /100), divisions & effectifs
-const CLUBS = [
-  { id: "t1", name: "T1", tag: "T1", country: "KR", color: "#e2012d", fame: 95, rosters: {
-    lol: [["Doran","KR",87,25],["Oner","KR",90,23],["Faker","KR",96,30],["Gumayusi","KR",91,24],["Keria","KR",94,23]] } },
-  { id: "geng", name: "Gen.G", tag: "GEN", country: "KR", color: "#aa8a00", fame: 88, rosters: {
-    lol: [["Kiin","KR",91,26],["Canyon","KR",92,24],["Chovy","KR",95,25],["Ruler","KR",93,27],["Duro","KR",85,23]],
-    val: [["t3xture","KR",86,24],["Meteor","KR",84,25],["Karon","KR",83,23],["Lakia","KR",81,26],["Munchkin","KR",84,27]] } },
-  { id: "hle", name: "Hanwha Life Esports", tag: "HLE", country: "KR", color: "#f37321", fame: 82, rosters: {
-    lol: [["Zeus","KR",93,22],["Peanut","KR",88,28],["Zeka","KR",90,23],["Viper","KR",92,25],["Delight","KR",87,24]] } },
-  { id: "blg", name: "Bilibili Gaming", tag: "BLG", country: "CN", color: "#00a1d6", fame: 80, rosters: {
-    lol: [["Bin","CN",93,22],["Beichuan","CN",84,22],["Knight","CN",93,25],["Elk","CN",91,24],["ON","CN",85,22]] } },
-  { id: "g2", name: "G2 Esports", tag: "G2", country: "DE", color: "#f40404", fame: 88, rosters: {
-    lol: [["BrokenBlade","DE",86,26],["SkewMond","FR",84,21],["Caps","DK",90,26],["Hans Sama","FR",87,26],["Labrov","GR",82,24]],
-    cs2: [["huNter-","BA",84,30],["malbsMd","GT",85,22],["HeavyGod","IL",84,23],["SunPayus","ES",82,26],["MATYS","SK",80,21]],
-    val: [["valyn","US",83,24],["trent","US",86,22],["jawgemo","US",86,26],["leaf","US",84,22],["JonahP","CA",82,23]],
-    rl:  [["Atomic","US",86,22],["BeastMode","US",86,22],["daniel","US",87,19]] } },
-  { id: "fnatic", name: "Fnatic", tag: "FNC", country: "GB", color: "#ff5900", fame: 86, rosters: {
-    lol: [["Oscarinin","ES",83,22],["Razork","ES",85,25],["Poby","KR",83,21],["Upset","DE",87,26],["Mikyx","SI",84,27]],
-    val: [["Boaster","GB",84,30],["Chronicle","RU",88,23],["Alfajer","TR",87,20],["kaajak","PL",84,20],["crashies","US",83,27]] } },
-  { id: "kc", name: "Karmine Corp", tag: "KC", country: "FR", color: "#0a8fd8", fame: 84, rosters: {
-    lol: [["Canna","KR",85,25],["Yike","SE",84,24],["Vladi","GR",85,21],["Caliste","FR",86,19],["Targamas","BE",83,25]],
-    rl:  [["Vatira","FR",91,19],["Atow","BE",88,22],["dralii","FR",87,20]] } },
-  { id: "vitality", name: "Team Vitality", tag: "VIT", country: "FR", color: "#f5e600", fame: 87, rosters: {
-    lol: [["Naak Nako","SE",80,22],["Lyncas","LT",81,21],["Humanoid","CZ",85,25],["Carzzy","CZ",82,23],["Fleshy","PL",79,21]],
-    cs2: [["apEX","FR",85,33],["ZywOo","FR",97,25],["flameZ","IL",88,22],["mezii","GB",86,27],["ropz","EE",92,26]],
-    rl:  [["Zen","FR",93,19],["Alpha54","FR",88,24],["Radosin","FR",86,23]] } },
-  { id: "liquid", name: "Team Liquid", tag: "TL", country: "NL", color: "#0c2340", fame: 85, rosters: {
-    lol:  [["Impact","KR",82,30],["UmTi","KR",80,26],["APA","US",82,22],["Yeon","US",83,23],["CoreJJ","KR",85,31]],
-    dota: [["miCKe","SE",89,26],["Nisha","PL",91,25],["33","IL",88,27],["Boxi","SE",86,27],["Insania","SE",87,29]] } },
-  { id: "navi", name: "Natus Vincere", tag: "NAVI", country: "UA", color: "#ffe500", fame: 85, rosters: {
-    cs2: [["Aleksib","FI",86,28],["iM","RO",87,23],["b1t","UA",88,22],["jL","LT",89,25],["w0nderful","UA",89,21]] } },
-  { id: "faze", name: "FaZe Clan", tag: "FAZE", country: "US", color: "#e43d30", fame: 84, rosters: {
-    cs2: [["karrigan","DK",83,35],["rain","NO",84,31],["broky","LV",87,24],["frozen","SK",87,23],["EliGE","US",85,28]],
-    cod: [["Simp","US",90,24],["aBeZy","US",89,25],["Cellium","US",88,24],["Drazah","US",87,22]] } },
-  { id: "spirit", name: "Team Spirit", tag: "TS", country: "RS", color: "#9aa5b1", fame: 83, rosters: {
-    cs2:  [["chopper","RU",84,28],["donk","RU",96,19],["sh1ro","RU",91,24],["zont1x","UA",85,22],["tN1R","RU",84,23]],
-    dota: [["Yatoro","UA",93,22],["Larl","RU",89,22],["Collapse","RU",92,24],["rue","RU",85,22],["Miposhka","RU",88,30]] } },
-  { id: "mouz", name: "MOUZ", tag: "MOUZ", country: "DE", color: "#e3001b", fame: 76, rosters: {
-    cs2: [["Brollan","SE",84,23],["torzsi","HU",88,23],["Jimpphat","FI",86,19],["xertioN","IL",87,22],["Spinx","IL",86,25]] } },
-  { id: "falcons", name: "Team Falcons", tag: "FLC", country: "SA", color: "#00a650", fame: 86, rosters: {
-    cs2:  [["NiKo","BA",92,28],["m0NESY","RU",94,20],["kyxsan","MK",82,28],["TeSeS","DK",84,25],["Magisk","DK",83,27]],
-    dota: [["skiter","SK",91,26],["Malr1ne","KZ",91,21],["ATF","JO",89,21],["Cr1t-","DK",86,29],["Sneyking","US",85,30]],
-    rl:   [["trk511","SA",89,20],["Kiileerrz","FR",88,20],["Rw9","SA",88,22]] } },
-  { id: "aurora", name: "Aurora Gaming", tag: "AUR", country: "RS", color: "#7b2ff7", fame: 70, rosters: {
-    cs2: [["XANTARES","TR",86,30],["woxic","TR",85,27],["MAJ3R","TR",80,34],["Wicadia","TR",84,19],["jottAAA","TR",83,20]] } },
-  { id: "mongolz", name: "The MongolZ", tag: "MNG", country: "MN", color: "#d4af37", fame: 74, rosters: {
-    cs2: [["bLitz","MN",84,26],["Techno4K","MN",85,23],["910","MN",87,23],["mzinho","MN",86,19],["Senzu","MN",85,20]] } },
-  { id: "sentinels", name: "Sentinels", tag: "SEN", country: "US", color: "#ce0037", fame: 80, rosters: {
-    val: [["zekken","US",87,21],["johnqt","MA",84,26],["N4RRATE","US",85,21],["Zellsis","US",83,27],["Sacy","BR",83,28]] } },
-  { id: "prx", name: "Paper Rex", tag: "PRX", country: "SG", color: "#ff3f7f", fame: 78, rosters: {
-    val: [["f0rsakeN","ID",88,21],["something","RU",88,23],["d4v41","MY",85,26],["Jinggg","SG",86,22],["mindfreak","ID",82,26]] } },
-  { id: "heretics", name: "Team Heretics", tag: "TH", country: "ES", color: "#ffd100", fame: 78, rosters: {
-    val: [["Boo","LT",84,26],["MiniBoo","LT",88,20],["RieNs","TR",84,22],["benjyfishy","GB",85,21],["Wo0t","TR",87,20]] } },
-  { id: "edg", name: "EDward Gaming", tag: "EDG", country: "CN", color: "#1f1f1f", fame: 75, rosters: {
-    val: [["CHICHOO","CN",85,24],["ZmjjKK","CN",89,21],["nobody","CN",83,27],["Smoggy","CN",82,23],["S1Mon","CN",83,24]] } },
-  { id: "100t", name: "100 Thieves", tag: "100T", country: "US", color: "#e00000", fame: 76, rosters: {
-    val: [["Asuna","US",84,22],["Cryocells","US",85,23],["bang","US",82,22],["Boostio","US",81,25],["eeiu","US",83,22]] } },
-  { id: "koi", name: "Movistar KOI", tag: "MKOI", country: "ES", color: "#6a1b9a", fame: 74, rosters: {
-    lol: [["Myrwn","ES",82,21],["Elyoya","ES",85,25],["Jojopyun","CA",85,21],["Supa","ES",83,22],["Alvaro","ES",82,23]] } },
-  { id: "c9", name: "Cloud9", tag: "C9", country: "US", color: "#00aeef", fame: 77, rosters: {
-    lol: [["Thanatos","KR",83,21],["Blaber","US",84,26],["Quid","KR",83,22],["Zven","DK",83,29],["Vulcan","CA",84,27]] } },
-  { id: "bds", name: "Team BDS", tag: "BDS", country: "CH", color: "#ff2d6f", fame: 70, rosters: {
-    lol: [["Adam","FR",80,23],["Sheo","FR",80,23],["nuc","FR",82,24],["Ice","KR",81,22],["Parus","TR",79,22]],
-    rl:  [["M0nkey M00n","FR",87,23],["Seikoo","FR",86,21],["Extra","FR",84,21]] } },
-  { id: "gg", name: "Gaimin Gladiators", tag: "GG", country: "GB", color: "#ff6b00", fame: 70, rosters: {
-    dota: [["dyrachyo","RU",88,26],["Quinn","US",87,25],["Ace","DK",86,30],["tOfu","DE",85,29],["Seleri","DE",84,29]] } },
-  { id: "betboom", name: "BetBoom Team", tag: "BB", country: "RU", color: "#ff1e56", fame: 68, rosters: {
-    dota: [["Pure","RU",89,21],["gpk","RU",89,24],["MieRo","RU",85,25],["Save-","MD",86,28],["Kataomi","RU",83,24]] } },
-  { id: "xg", name: "Xtreme Gaming", tag: "XG", country: "CN", color: "#ffcc00", fame: 72, rosters: {
-    dota: [["Ame","CN",89,28],["Xm","CN",87,24],["Xxs","CN",86,26],["XinQ","CN",88,27],["xNova","MY",85,28]] } },
-  { id: "optic", name: "OpTic Gaming", tag: "OPTC", country: "US", color: "#92c83e", fame: 78, rosters: {
-    cod: [["Shotzzy","US",91,24],["Dashy","CA",89,25],["Pred","AU",89,23],["Kenny","US",87,24]] } },
-  { id: "gentlemates", name: "Gentle Mates", tag: "M8", country: "FR", color: "#e5007e", fame: 65, rosters: {
-    rl: [["Rise","GB",85,23],["juicy","FR",84,20],["ExoTiiK","FR",84,24]] } },
-];
-
-// Joueurs réels libres (agents libres / retraités en reprise / joueurs sans club modélisé)
-const FREE_AGENTS = {
-  lol:  [["ShowMaker","KR",89,25],["Deft","KR",88,29],["Uzi","CN",85,28],["Perkz","HR",84,27],["Bwipo","BE",84,26],["Rekkles","SE",80,29],["Jankos","PL",80,30],["Doublelift","US",76,32]],
-  cs2:  [["s1mple","UA",89,28],["device","DK",86,30],["Twistzz","CA",87,26],["electroNic","RU",84,27],["Jame","RU",84,27],["shox","FR",79,33],["kennyS","FR",78,30],["ScreaM","BE",80,31],["Ex3rcice","FR",81,24]],
-  val:  [["aspas","BR",90,23],["Derke","FI",88,23],["Demon1","US",87,23],["TenZ","CA",82,25],["ScreaM","BE",80,31],["Nats","RU",86,25],["Less","BR",85,20],["Sayf","SE",85,25]],
-  dota: [["Topson","FI",87,27],["Ceb","FR",82,33],["N0tail","DK",80,32],["Puppey","EE",80,35],["Ana","AU",86,26],["Arteezy","CA",85,29]],
-  rl:   [["Kaydop","FR",85,27],["Fairy Peak","FR",83,27],["jstn","US",84,25],["SquishyMuffinz","CA",82,26]],
-  ow:   [["Proper","KR",92,22],["Hanbin","KR",90,25],["Fielder","KR",89,24],["Viol2t","KR",88,25],["LIP","KR",89,24],["Shu","KR",87,27],["Profit","KR",85,28],["Fleta","KR",86,27],["ChiYo","KR",87,24],["Fearless","KR",85,26],["Kevster","SE",84,25]],
-  r6:   [["Shaiiko","FR",88,25],["BriD","FR",84,27],["Beaulo","CA",85,24],["Pengu","DK",82,29],["Nesk","BR",86,24],["Kantoraketti","FI",85,26],["Paluh","BR",85,26],["Jstn","US",84,26]],
-  cod:  [["HyDra","FR",87,24],["Ghosty","US",85,24],["Kremp","US",84,26],["Abuzah","US",86,23],["Crimsix","US",82,31],["Scump","US",80,30]],
-  apex: [["ImperialHal","US",89,26],["Genburten","CA",88,24],["Hakis","SE",86,23],["Sweet","US",86,25],["Verhulst","US",84,24],["Reps","US",85,26],["Zer0","US",83,27],["Dropped","US",84,27]],
-  fn:   [["Peterbot","US",93,18],["Pollo","US",90,17],["Queasy","SI",88,20],["Malibuca","HR",87,19],["Veno","GB",87,19],["Bugha","US",86,23],["MrSavage","NO",86,21],["Clix","US",85,21],["Mongraal","GB",83,21]],
-  fc:   [["Anders Vejrgang","DK",92,20],["Tekkz","GB",88,25],["ManuBachoore","NL",87,28],["PHzin","BR",87,22],["Umut","DE",86,26]],
-  sf6:  [["MenaRD","DO",91,27],["Kakeru","JP",89,24],["Kawano","JP",89,25],["Punk","US",89,26],["Xiaohai","CN",87,31],["Angrybird","AE",87,35],["Tokido","JP",86,40],["Problem X","GB",86,31],["Daigo","JP",85,44],["Phenom","NO",85,33]],
-  sc2:  [["Serral","FI",95,27],["Clem","FR",93,23],["Maru","KR",92,28],["Reynor","IT",91,23],["herO","KR",90,31],["Dark","KR",89,30],["MaxPax","DK",89,21],["Oliveira","CN",87,25]],
-  mlbb: [["Kairi","PH",90,21],["OhMyV33nus","PH",88,27],["Sanz","ID",86,23],["Butsss","ID",85,24],["Lemon","ID",84,27]],
-  pubg: [["TGLTN","AU",88,26],["Pio","KR",87,26],["Inonix","KR",86,26],["Fexx","DE",84,25]],
+// Organisations réelles : [nom, tag, pays, couleur, notoriété /100]
+const ORGS = {
+  t1: ["T1", "T1", "KR", "#e2012d", 95], geng: ["Gen.G", "GEN", "KR", "#aa8a00", 88], hle: ["Hanwha Life Esports", "HLE", "KR", "#f37321", 82],
+  dk: ["Dplus KIA", "DK", "KR", "#1d1d1b", 78], kt: ["KT Rolster", "KT", "KR", "#e4002b", 74], drx: ["DRX", "DRX", "KR", "#5a8dee", 70],
+  ns: ["Nongshim RedForce", "NS", "KR", "#de2027", 60], bfx: ["BNK FearX", "BFX", "KR", "#f5a623", 58],
+  blg: ["Bilibili Gaming", "BLG", "CN", "#00a1d6", 80], tes: ["Top Esports", "TES", "CN", "#ff4a1c", 76], al: ["Anyone's Legend", "AL", "CN", "#c7a76c", 70],
+  jdg: ["JD Gaming", "JDG", "CN", "#c8102e", 74], wbg: ["Weibo Gaming", "WBG", "CN", "#e6162d", 68], edg: ["EDward Gaming", "EDG", "CN", "#6b6b6b", 75],
+  xg: ["Xtreme Gaming", "XG", "CN", "#ffcc00", 70],
+  g2: ["G2 Esports", "G2", "DE", "#f40404", 88], fnatic: ["Fnatic", "FNC", "GB", "#ff5900", 86], kc: ["Karmine Corp", "KC", "FR", "#0a8fd8", 84],
+  vitality: ["Team Vitality", "VIT", "FR", "#f5e600", 87], koi: ["Movistar KOI", "MKOI", "ES", "#6a1b9a", 74], bds: ["Team BDS", "BDS", "CH", "#ff2d6f", 68],
+  gx: ["GIANTX", "GX", "ES", "#ffd400", 60], heretics: ["Team Heretics", "TH", "ES", "#ffd100", 78], m8: ["Gentle Mates", "M8", "FR", "#e5007e", 66],
+  mouz: ["MOUZ", "MOUZ", "DE", "#e3001b", 76], navi: ["Natus Vincere", "NAVI", "UA", "#ffe500", 85], spirit: ["Team Spirit", "TS", "RS", "#9aa5b1", 83],
+  aurora: ["Aurora Gaming", "AUR", "RS", "#7b2ff7", 70], vp: ["Virtus.pro", "VP", "RU", "#ff6a13", 72], betboom: ["BetBoom Team", "BB", "RU", "#ff1e56", 66],
+  parivision: ["PARIVISION", "PARI", "RU", "#00c2ff", 58], astralis: ["Astralis", "AST", "DK", "#e30613", 74], heroic: ["HEROIC", "HERO", "DK", "#ff4f00", 64],
+  gl: ["GamerLegion", "GL", "DE", "#00ff9c", 58], big: ["BIG", "BIG", "DE", "#00a3e0", 56], b8: ["B8", "B8", "UA", "#ffd200", 52], tdm: ["3DMAX", "3DMAX", "FR", "#00e1ff", 58],
+  falcons: ["Team Falcons", "FLC", "SA", "#00a650", 86], liquid: ["Team Liquid", "TL", "NL", "#0c2340", 85], faze: ["FaZe Clan", "FAZE", "US", "#e43d30", 82],
+  c9: ["Cloud9", "C9", "US", "#00aeef", 76], sentinels: ["Sentinels", "SEN", "US", "#ce0037", 80], nrg: ["NRG", "NRG", "US", "#ff6b00", 74],
+  "100t": ["100 Thieves", "100T", "US", "#e00000", 76], optic: ["OpTic Gaming", "OPTC", "US", "#92c83e", 78], fly: ["FlyQuest", "FLY", "US", "#0f9d58", 66],
+  tsm: ["TSM", "TSM", "US", "#e6e6e6", 66], furia: ["FURIA", "FUR", "BR", "#bfbfbf", 72], loud: ["LOUD", "LOUD", "BR", "#13ff00", 72],
+  pain: ["paiN Gaming", "PNG", "BR", "#ff0033", 66], mibr: ["MIBR", "MIBR", "BR", "#ffffff", 64], w7m: ["w7m esports", "W7M", "BR", "#0045ff", 58],
+  lev: ["Leviatán", "LEV", "AR", "#00b5e2", 62], prx: ["Paper Rex", "PRX", "SG", "#ff3f7f", 78], rrq: ["Rex Regum Qeon", "RRQ", "ID", "#ffb400", 66],
+  onic: ["ONIC", "ONIC", "ID", "#fff200", 68], zeta: ["ZETA DIVISION", "ZETA", "JP", "#0a0a0a", 62], fut: ["FUT Esports", "FUT", "TR", "#e30a17", 58],
+  mongolz: ["The MongolZ", "MNG", "MN", "#d4af37", 74], tm: ["Twisted Minds", "TWIS", "SA", "#7a4dff", 56], cr: ["Crazy Raccoon", "CR", "JP", "#ff3c3c", 62],
+  nigma: ["Nigma Galaxy", "NGX", "AE", "#9b30ff", 60], gg: ["Gaimin Gladiators", "GG", "GB", "#ff6b00", 66], ssg: ["Spacestation Gaming", "SSG", "US", "#ffa800", 56],
+  ultra: ["Toronto Ultra", "TOR", "CA", "#7c3aed", 60], breach: ["Boston Breach", "BOS", "US", "#00a651", 56], ravens: ["Carolina Royal Ravens", "CAR", "US", "#2b5cff", 54],
+  nysl: ["New York Subliners", "NYSL", "US", "#ff5b00", 56], alliance: ["Alliance", "ALL", "SE", "#24292e", 58], dz: ["DarkZero Esports", "DZ", "US", "#8e44ad", 52],
+  danawa: ["DN Freecs", "DNF", "KR", "#ff4f00", 52], s2: ["Soniqs", "SQ", "US", "#00c3ff", 48], echo: ["Team Liquid PH", "TLPH", "PH", "#0c2340", 60],
+  blacklist: ["Blacklist International", "BLCK", "PH", "#222", 56],
 };
 
-// Clubs fictifs pour compléter les circuits
-const FILLER_CLUBS = [
-  ["Nebula Esports","NEB","#6c5ce7","FR"],["Iron Wolves","IRW","#636e72","DE"],["Crimson Owls","CRO","#d63031","GB"],
-  ["Polar Gaming","PLR","#74b9ff","SE"],["Atlas Esports","ATL","#00b894","US"],["Vortex Club","VTX","#e17055","ES"],
-  ["Solar Kings","SOL","#fdcb6e","BR"],["Shadow Foxes","SFX","#2d3436","JP"],["Neon Tigers","NEO","#fd79a8","KR"],
-  ["Titan Squad","TTN","#0984e3","CA"],["Blue Hydra","HYD","#00cec9","IT"],["Rogue Pixels","RGP","#a29bfe","PL"],
-  ["Desert Lions","DSL","#e1b12c","MA"],["Sakura Spirit","SKR","#ff9ff3","JP"],["Andes Condors","AND","#10ac84","AR"],
-  ["Viking Raiders","VKR","#576574","NO"],["Golden Dragons","GDR","#feca57","CN"],["Savanna Kings","SVK","#ee5253","SN"],
+// Effectifs par jeu, du plus fort au moins fort.
+// Les 12 premiers démarrent en tier 1, les 12 suivants en tier 2.
+const ROSTERS = {
+  lol: [
+    ["geng", [["Kiin","KR",91,26],["Canyon","KR",92,24],["Chovy","KR",95,25],["Ruler","KR",93,27],["Duro","KR",85,23]]],
+    ["t1", [["Doran","KR",87,25],["Oner","KR",90,23],["Faker","KR",96,30],["Gumayusi","KR",91,24],["Keria","KR",94,23]]],
+    ["hle", [["Zeus","KR",93,22],["Peanut","KR",88,28],["Zeka","KR",90,23],["Viper","KR",92,25],["Delight","KR",87,24]]],
+    ["blg", [["Bin","CN",93,22],["Beichuan","CN",84,22],["Knight","CN",93,25],["Elk","CN",91,24],["ON","CN",85,22]]],
+    ["al", [["Flandre","CN",86,27],["Tarzan","KR",88,26],["Shanks","CN",86,23],["Hope","CN",87,24],["Kael","KR",85,24]]],
+    ["tes", [["369","CN",88,24],["Kanavi","KR",89,25],["Creme","CN",87,22],["JackeyLove","CN",89,25],["Hang","CN",85,24]]],
+    ["g2", [["BrokenBlade","DE",86,26],["SkewMond","FR",84,21],["Caps","DK",90,26],["Hans Sama","FR",87,26],["Labrov","GR",82,24]]],
+    ["dk", [["Siwoo","KR",84,20],["Lucid","KR",86,21],["ShowMaker","KR",89,25],["Aiming","KR",88,25],["BeryL","KR",86,28]]],
+    ["kt", [["PerfecT","KR",85,21],["Cuzz","KR",86,26],["Bdd","KR",88,26],["deokdam","KR",86,25],["Peter","KR",84,24]]],
+    ["jdg", [["Xiaoxu","CN",84,21],["JunJia","CN",84,23],["HongQ","CN",84,22],["GALA","CN",88,24],["Vampire","CN",83,22]]],
+    ["fnatic", [["Oscarinin","ES",83,22],["Razork","ES",85,25],["Poby","KR",83,21],["Upset","DE",87,26],["Mikyx","SI",84,27]]],
+    ["kc", [["Canna","KR",85,25],["Yike","SE",84,24],["Vladi","GR",85,21],["Caliste","FR",86,19],["Targamas","BE",83,25]]],
+    ["fly", [["Bwipo","BE",84,26],["Inspired","PL",86,23],["Quad","KR",84,23],["Massu","US",83,21],["Busio","US",83,21]]],
+    ["koi", [["Myrwn","ES",82,21],["Elyoya","ES",85,25],["Jojopyun","CA",85,21],["Supa","ES",83,22],["Alvaro","ES",82,23]]],
+    ["vitality", [["Naak Nako","SE",80,22],["Lyncas","LT",81,21],["Humanoid","CZ",85,25],["Carzzy","CZ",82,23],["Fleshy","PL",79,21]]],
+    ["liquid", [["Impact","KR",82,30],["UmTi","KR",80,26],["APA","US",82,22],["Yeon","US",83,23],["CoreJJ","KR",85,31]]],
+    ["wbg", [["Breathe","CN",85,24],["Tian","CN",86,25],["Xiaohu","CN",86,27],["Light","CN",85,24],["Crisp","CN",85,27]]],
+    ["c9", [["Thanatos","KR",83,21],["Blaber","US",84,26],["Quid","KR",83,22],["Zven","DK",83,29],["Vulcan","CA",84,27]]],
+    ["drx", [["Rich","KR",81,28],["Sponge","KR",80,22],["ucal","KR",82,24],["Teddy","KR",83,27],["Andil","KR",80,23]]],
+    ["ns", [["Kingen","KR",83,25],["GIDEON","KR",81,23],["Calix","KR",80,21],["Jiwoo","KR",83,21],["Lehends","KR",83,27]]],
+    ["bfx", [["Clear","KR",80,23],["Raptor","KR",80,22],["VicLa","KR",82,22],["Diable","KR",80,21],["Kellin","KR",80,25]]],
+    ["gx", [["Lot","FR",79,23],["Closer","TR",80,23],["Jackies","CZ",80,22],["Noah","KR",80,23],["Jun","KR",80,24]]],
+    ["bds", [["Adam","FR",80,23],["Sheo","FR",80,23],["nuc","FR",82,24],["Ice","KR",81,22],["Parus","TR",79,22]]],
+    ["pain", [["Wizer","KR",79,24],["CarioK","BR",80,25],["dyNquedo","BR",80,27],["TitaN","BR",81,24],["Kuri","KR",78,24]]],
+    ["loud", [["Robo","BR",78,27],["Croc","KR",79,27],["Tinowns","BR",79,28],["Route","KR",80,26],["RedBert","BR",77,26]]],
+    ["furia", [["Guigo","BR",77,25],["Tatu","BR",77,23],["Tutsz","BR",77,22],["Ayu","BR",78,22],["JoJo","BR",77,23]]],
+  ],
+  cs2: [
+    ["vitality", [["apEX","FR",85,33],["ZywOo","FR",97,25],["flameZ","IL",88,22],["mezii","GB",86,27],["ropz","EE",92,26]]],
+    ["mouz", [["Brollan","SE",84,23],["torzsi","HU",88,23],["Jimpphat","FI",86,19],["xertioN","IL",87,22],["Spinx","IL",86,25]]],
+    ["spirit", [["chopper","RU",84,28],["sh1ro","RU",91,24],["donk","RU",96,19],["zont1x","UA",85,22],["tN1R","RU",84,23]]],
+    ["navi", [["Aleksib","FI",86,28],["w0nderful","UA",89,21],["iM","RO",87,23],["jL","LT",89,25],["b1t","UA",88,22]]],
+    ["falcons", [["kyxsan","MK",82,28],["m0NESY","RU",94,20],["NiKo","BA",92,28],["TeSeS","DK",84,25],["Magisk","DK",83,27]]],
+    ["mongolz", [["bLitz","MN",84,26],["910","MN",87,23],["Techno4K","MN",85,23],["mzinho","MN",86,19],["Senzu","MN",85,20]]],
+    ["furia", [["FalleN","BR",80,34],["molodoy","KZ",84,20],["YEKINDAR","LV",86,26],["KSCERATO","BR",86,26],["yuurih","BR",85,26]]],
+    ["faze", [["karrigan","DK",83,35],["broky","LV",87,24],["frozen","SK",87,23],["EliGE","US",85,28],["jcobbb","PL",83,22]]],
+    ["g2", [["huNter-","BA",84,30],["malbsMd","GT",85,22],["HeavyGod","IL",84,23],["SunPayus","ES",82,26],["MATYS","SK",80,21]]],
+    ["aurora", [["MAJ3R","TR",80,34],["woxic","TR",85,27],["XANTARES","TR",86,30],["Wicadia","TR",84,19],["jottAAA","TR",83,20]]],
+    ["liquid", [["NAF","CA",84,27],["ultimate","PL",84,20],["Twistzz","CA",87,26],["siuhy","PL",82,22],["NertZ","IL",83,23]]],
+    ["tdm", [["Maka","FR",80,24],["Graviti","FR",82,23],["Lucky","FR",83,23],["Ex3rcice","FR",82,24],["bodyy","FR",80,26]]],
+    ["pain", [["biguzera","BR",80,28],["nqz","BR",82,20],["dav1deuS","CL",81,22],["snow","BR",80,22],["dgt","UY",80,23]]],
+    ["astralis", [["HooXi","DK",79,30],["stavn","DK",84,23],["device","DK",85,30],["jabbi","DK",83,23],["Staehr","DK",82,22]]],
+    ["vp", [["FL4MUS","RU",80,21],["ICY","KZ",81,21],["electroNic","RU",84,27],["fame","RU",82,22],["FL1T","RU",82,24]]],
+    ["100t", [["rain","NO",82,32],["poiii","FR",80,22],["sirah","US",79,22],["Ag1l","PT",80,24],["fl0m","US",78,25]]],
+    ["mibr", [["exit","BR",79,27],["brnz4n","BR",80,23],["insani","BR",81,22],["saffee","BR",82,30],["Lucaozy","BR",80,22]]],
+    ["gl", [["Snax","PL",78,32],["REZ","SE",81,28],["Tauson","DK",80,20],["PR","PT",79,22],["ztr","SE",79,22]]],
+    ["betboom", [["Boombl4","RU",79,27],["zorte","RU",79,23],["s1ren","RU",80,22],["Magnojez","RU",79,22],["d1Ledez","RU",78,20]]],
+    ["big", [["tabseN","DE",80,31],["syrsoN","DE",80,28],["JDC","DE",79,21],["faven","DE",79,22],["Krimbo","DE",79,24]]],
+    ["b8", [["npl","UA",78,25],["headtr1ck","UA",80,22],["kensizor","UA",79,21],["alex666","UA",78,24],["esenthial","UA",78,20]]],
+  ],
+  val: [
+    ["fnatic", [["Chronicle","RU",88,23],["Boaster","GB",84,30],["Alfajer","TR",87,20],["kaajak","PL",84,20],["crashies","US",83,27]]],
+    ["g2", [["trent","US",86,22],["valyn","US",83,24],["jawgemo","US",86,26],["leaf","US",84,22],["JonahP","CA",82,23]]],
+    ["prx", [["something","RU",88,23],["f0rsakeN","ID",88,21],["d4v41","MY",85,26],["Jinggg","SG",86,22],["mindfreak","ID",82,26]]],
+    ["heretics", [["MiniBoo","LT",88,20],["Boo","LT",84,26],["RieNs","TR",84,22],["benjyfishy","GB",85,21],["Wo0t","TR",87,20]]],
+    ["sentinels", [["zekken","US",87,21],["johnqt","MA",84,26],["N4RRATE","US",85,21],["Zellsis","US",83,27],["Sacy","BR",83,28]]],
+    ["geng", [["Karon","KR",83,23],["t3xture","KR",86,24],["Foxy9","KR",84,22],["Lakia","KR",81,26],["Munchkin","KR",84,27]]],
+    ["edg", [["ZmjjKK","CN",89,21],["CHICHOO","CN",85,24],["nobody","CN",83,27],["Smoggy","CN",82,23],["S1Mon","CN",83,24]]],
+    ["mibr", [["aspas","BR",89,23],["tex","BR",83,22],["Verno","BR",82,22],["artzin","BR",82,22],["zeek","BR",81,24]]],
+    ["vitality", [["Derke","FI",88,23],["Kicks","EE",83,24],["Sayf","SE",85,25],["Less","BR",85,20],["ceNder","LT",82,22]]],
+    ["t1", [["iZu","KR",83,21],["stax","KR",83,26],["BuZz","KR",85,22],["Meteor","KR",84,25],["Sylvan","KR",82,22]]],
+    ["nrg", [["brawk","US",83,24],["Ethan","US",83,26],["s0m","US",84,23],["mada","CA",84,22],["skuba","US",81,23]]],
+    ["drx", [["MaKo","KR",85,23],["Flashback","KR",83,22],["free1ng","KR",82,22],["HYUNMIN","KR",80,20],["BeYN","KR",81,22]]],
+    ["100t", [["Asuna","US",84,22],["Cryocells","US",85,23],["bang","US",82,22],["Boostio","US",81,25],["eeiu","US",83,22]]],
+    ["liquid", [["kamyk","PL",82,21],["nAts","RU",86,25],["Keiko","GB",82,21],["paTiTek","PL",82,23],["purp0","RU",81,23]]],
+    ["lev", [["kiNgg","CL",84,22],["Mazino","CL",82,23],["C0M","US",82,24],["Sato","BR",81,24],["Neon","PH",80,24]]],
+    ["rrq", [["Monyet","ID",82,19],["Jemkin","RU",84,19],["xffero","ID",80,23],["Lmemore","ID",80,22],["crazyguy","VN",81,26]]],
+    ["zeta", [["Laz","JP",80,29],["Dep","JP",82,25],["SugarZ3ro","JP",80,25],["Xdll","JP",79,22],["CLZ","JP",79,22]]],
+    ["c9", [["OXY","US",84,20],["v1c","US",81,22],["Xeppaa","US",82,25],["runi","US",80,21],["jakee","US",80,21]]],
+    ["fut", [["qRaxs","TR",82,22],["MrFaliN","TR",81,22],["yetujey","TR",80,22],["xeus","TR",82,22],["cNed","TR",82,24]]],
+    ["kc", [["marteen","CZ",80,21],["tomaszy","PT",79,21],["sh1n","FR",79,24],["SUYGETSU","RU",82,24],["Avez","EG",79,22]]],
+  ],
+  dota: [
+    ["spirit", [["Yatoro","UA",93,22],["Larl","RU",89,22],["Collapse","RU",92,24],["rue","RU",85,22],["Miposhka","RU",88,30]]],
+    ["falcons", [["skiter","SK",91,26],["Malr1ne","KZ",91,21],["ATF","JO",89,21],["Cr1t-","DK",86,29],["Sneyking","US",85,30]]],
+    ["liquid", [["miCKe","SE",89,26],["Nisha","PL",91,25],["33","IL",88,27],["Boxi","SE",86,27],["Insania","SE",87,29]]],
+    ["xg", [["Ame","CN",89,28],["Xm","CN",87,24],["Xxs","CN",86,26],["XinQ","CN",88,27],["xNova","MY",85,28]]],
+    ["betboom", [["Pure","RU",89,21],["gpk","RU",89,24],["MieRo","RU",85,25],["Save-","MD",86,28],["Kataomi","RU",83,24]]],
+    ["parivision", [["Satanic","RU",88,19],["No[o]ne","UA",86,28],["DM","RU",86,26],["Dukalis","RU",84,24],["9Class","RU",83,25]]],
+    ["gg", [["dyrachyo","RU",88,26],["Quinn","US",87,25],["Ace","DK",86,30],["tOfu","DE",85,29],["Seleri","DE",84,29]]],
+    ["aurora", [["Nightfall","RU",86,22],["kiyotaka","UA",85,22],["TORONTOTOKYO","RU",85,27],["Mira","UA",84,26],["Panto","RU",83,22]]],
+    ["nigma", [["Miracle-","JO",85,28],["SumaiL","PK",84,26],["Ghost","EG",80,25],["GH","LB",83,29],["KuroKy","DE",80,32]]],
+    ["heroic", [["Yuma","PE",82,24],["4nalog","PE",80,24],["Wisper","PE",82,25],["Scofield","PE",80,26],["KJ","PE",79,27]]],
+  ],
+  rl: [
+    ["kc", [["Vatira","FR",91,19],["Atow","BE",88,22],["dralii","FR",87,20]]],
+    ["vitality", [["Zen","FR",93,19],["Alpha54","FR",88,24],["Radosin","FR",86,23]]],
+    ["falcons", [["trk511","SA",89,20],["Kiileerrz","FR",88,20],["Rw9","SA",88,22]]],
+    ["nrg", [["Atomic","US",86,22],["BeastMode","US",86,22],["daniel","US",87,19]]],
+    ["bds", [["M0nkey M00n","FR",87,23],["Seikoo","FR",86,21],["Extra","FR",84,21]]],
+    ["m8", [["Rise","GB",85,23],["juicy","FR",84,20],["ExoTiiK","FR",84,24]]],
+    ["furia", [["yANXNZ","BR",85,21],["Lostt","BR",84,21],["drufinho","BR",84,21]]],
+    ["g2", [["Chronic","US",82,24],["Joyo","GB",83,21],["Archie","GB",81,20]]],
+    ["tm", [["Nwpo","SA",82,21],["Ahmad","SA",82,22],["Kassio","SA",81,21]]],
+    ["liquid", [["Kaydop","FR",83,27],["Fairy Peak","FR",82,27],["Squishy","CA",80,26]]],
+  ],
+  ow: [
+    ["falcons", [["Hanbin","KR",90,25],["Proper","KR",92,22],["Stalk3r","KR",87,24],["Fielder","KR",89,24],["ChiYo","KR",87,24]]],
+    ["cr", [["MAX","KR",86,24],["LIP","KR",89,24],["Viol2t","KR",88,25],["Shu","KR",87,27],["Junbin","KR",85,23]]],
+    ["tm", [["Mer1t","KR",86,22],["Sp9rk1e","KR",85,22],["Fearless","KR",85,26],["Kevster","SE",84,25],["Profit","KR",85,28]]],
+    ["geng", [["Fleta","KR",86,27],["Smurf","KR",84,27],["Kai","KR",84,23],["Rascal","KR",82,29],["Ria","KR",82,23]]],
+    ["liquid", [["Hydron","US",80,22],["Shy","KR",80,24],["Sugarfree","US",81,25],["Masaa","FI",82,27],["Rupal","US",80,23]]],
+    ["ssg", [["Seicoe","US",80,22],["Coluge","US",82,26],["Danteh","US",80,27],["Moth","US",79,30],["Landon","US",79,22]]],
+  ],
+  r6: [
+    ["bds", [["Shaiiko","FR",88,25],["BriD","FR",84,27],["LikEfac","FR",83,26],["Yuzus","FR",82,24],["Elemzje","PL",83,24]]],
+    ["w7m", [["Nesk","BR",86,24],["Dodez","BR",83,22],["Jv92","BR",83,24],["Volpz","BR",82,23],["Kheyze","BR",81,23]]],
+    ["faze", [["cameram4n","BR",84,26],["Bullet1","BR",83,25],["soulz1","BR",83,22],["VITAKING","BR",82,22],["Kds","BR",81,24]]],
+    ["g2", [["Kantoraketti","FI",85,26],["Prano","DE",82,24],["Doki","GB",81,25],["Stompn","GB",82,27],["Hungry","DE",81,26]]],
+    ["ssg", [["Beaulo","CA",85,24],["Rexen","US",81,24],["Hotancold","US",81,27],["Ecl9pse","US",80,23],["Gryxr","US",80,24]]],
+    ["furia", [["Paluh","BR",85,26],["HerdsZ","BR",82,23],["Jnx","BR",81,24],["Nade","BR",80,23],["FelipoX","BR",81,24]]],
+  ],
+  cod: [
+    ["optic", [["Shotzzy","US",91,24],["Dashy","CA",89,25],["Pred","AU",89,23],["Kenny","US",87,24]]],
+    ["faze", [["Simp","US",90,24],["aBeZy","US",89,25],["Cellium","US",88,24],["Drazah","US",87,22]]],
+    ["100t", [["Ghosty","US",86,24],["HyDra","FR",88,24],["Envoy","US",84,24],["Kremp","US",84,26]]],
+    ["heretics", [["MettalZ","GB",85,23],["RenKoR","ES",84,24],["SupeRs","ES",85,25],["Lucky","NL",84,24]]],
+    ["ultra", [["CleanX","DK",85,24],["Insight","US",83,24],["JoeDeceives","US",82,22],["Hicksy","GB",82,22]]],
+    ["falcons", [["Cammy","GB",84,24],["Exnid","GB",83,22],["Abuzah","US",86,23],["Nastie","US",82,22]]],
+    ["breach", [["Snoopy","US",83,22],["Purj","US",83,23],["Owakening","US",81,23],["Beans","US",81,25]]],
+    ["ravens", [["Gwinn","US",82,22],["Vivid","US",82,23],["Craze","US",81,24],["SlasheR","US",80,31]]],
+    ["nysl", [["Sib","US",81,22],["Kismet","US",82,23],["Skyz","US",80,23],["Priestahh","US",81,24]]],
+    ["m8", [["Assault","US",81,22],["Estreal","US",80,22],["Bance","GB",80,25],["Neptune","US",80,23]]],
+  ],
+  mlbb: [
+    ["onic", [["Butsss","ID",86,24],["Kairi","PH",90,21],["Sanz","ID",86,23],["CW","ID",84,25],["Kiboy","ID",85,23]]],
+    ["echo", [["Sanford","PH",85,23],["KarlTzy","PH",88,23],["Sanji","PH",84,22],["Bennyqt","PH",85,22],["Jaypee","PH",84,24]]],
+    ["rrq", [["Dyrennn","ID",83,22],["Sutsujin","ID",84,22],["Clayyy","ID",83,23],["Skylar","ID",85,22],["Idok","ID",83,24]]],
+    ["blacklist", [["Edward","PH",82,24],["Wise","PH",84,26],["OhMyV33nus","PH",88,27],["Hadji","PH",82,25],["Oheb","PH",83,23]]],
+    ["falcons", [["FlapTzy","PH",83,23],["KyleTzy","PH",84,22],["Pheww","PH",83,26],["Super Marco","PH",84,22],["Owgwen","PH",82,22]]],
+  ],
+  apex: [
+    ["tsm", [["ImperialHal","US",89,26],["Verhulst","US",84,24],["Reps","US",85,26]]],
+    ["falcons", [["Genburten","CA",88,24],["Zer0","US",83,27],["Dropped","US",84,27]]],
+    ["alliance", [["Hakis","SE",86,23],["Effect","SE",82,23],["Uxako","SE",81,22]]],
+    ["nrg", [["Sweet","US",86,25],["Nafen","US",82,23],["Rpr","US",83,25]]],
+    ["dz", [["Zaine","US",82,24],["Xynew","US",82,23],["Hardecki","US",81,22]]],
+    ["gg", [["Flxnked","GB",82,22],["Monsoon","GB",81,22],["Mande","GB",80,23]]],
+  ],
+  pubg: [
+    ["danawa", [["Pio","KR",87,26],["Inonix","KR",86,26],["Loki","KR",83,24],["Taemin","KR",82,23]]],
+    ["s2", [["TGLTN","AU",88,26],["Shrimzy","US",82,25],["Kickstart","US",83,27],["Hwinn","US",83,25]]],
+    ["tm", [["Fexx","DE",84,25],["Bestoloch","RU",83,24],["Lu","CN",82,24],["Perfect1ks","RU",82,23]]],
+    ["falcons", [["Xmpl","RU",83,24],["Feyerist","RU",84,25],["Sh1n","RU",82,22],["Alexzz","RU",82,23]]],
+  ],
+};
+
+// Joueurs indépendants (sans organisation) : ils jouent sous leur propre nom.
+// Pour Fortnite, chaque entrée est un duo.
+const SOLOS = {
+  fc: [["Anders Vejrgang","DK",92,20],["Tekkz","GB",88,25],["ManuBachoore","NL",87,28],["PHzin","BR",87,22],["Umut","DE",86,26],
+       ["Obrun2002","BR",85,23],["Nicolas99fc","ES",85,24],["Diogo","PT",84,24],["Fouma","FR",82,23],["Hashtag Rhys","GB",82,26],
+       ["Neymarzinho","BR",80,22],["DaXe","FR",80,27]],
+  sf6: [["MenaRD","DO",91,27],["Kakeru","JP",89,24],["Kawano","JP",89,25],["Punk","US",89,26],["Xiaohai","CN",87,31],["Angrybird","AE",87,35],
+        ["Tokido","JP",86,40],["Problem X","GB",86,31],["Daigo","JP",85,44],["Phenom","NO",85,33],["Leshar","GB",86,28],["Itabashi Zangief","JP",85,32],
+        ["Tachikawa","JP",85,33],["Big Bird","AE",84,34],["Higuchi","JP",85,28],["NuckleDu","US",84,30],["iDom","US",84,30],["EndingWalker","JP",86,28],
+        ["Fuudo","JP",83,38],["Mago","JP",84,40],["Shuto","JP",86,24],["Blaz","CL",84,28],["Dual Kevin","US",82,29],["Luffy","FR",80,37]],
+  sc2: [["Serral","FI",95,27],["Clem","FR",93,23],["Maru","KR",92,28],["Reynor","IT",91,23],["herO","KR",90,31],["Dark","KR",89,30],
+        ["MaxPax","DK",89,21],["Oliveira","CN",87,25],["Classic","KR",87,31],["Cure","KR",87,30],["ByuN","KR",85,31],["Solar","KR",86,30],
+        ["SHIN","KR",85,25],["Rogue","KR",85,30],["Zoun","KR",85,26],["Astrea","US",82,26],["Lambo","DE",82,24],["Elazer","PL",82,28],
+        ["ShoWTimE","DE",83,29],["Spirit","PL",81,27],["MaNa","PL",80,30],["Harstem","NL",80,30],["Gerald","SE",80,26],["Trigger","CA",79,24]],
+  fn: [[["Peterbot","US",93,18],["Pollo","US",90,17]], [["Queasy","SI",88,20],["Malibuca","HR",87,19]], [["Veno","GB",87,19],["Mongraal","GB",83,21]],
+       [["Bugha","US",86,23],["Clix","US",85,21]], [["MrSavage","NO",86,21],["Vico","FR",84,19]], [["Rezon","FR",84,22],["Kami","PL",84,20]],
+       [["Setty","DE",83,20],["Chapix","US",84,18]], [["Khanada","US",83,21],["Acorn","US",83,20]], [["Cooper","US",84,18],["Eomzo","US",83,19]],
+       [["Th0masHD","DE",83,21],["Werex","FR",82,19]], [["Swizzy","GB",82,20],["Wolfiez","GB",82,20]], [["Mero","US",83,20],["Reet","US",82,20]],
+       [["Tayson","SI",84,22],["Shxrk","SE",82,20]], [["Kurama","FR",80,24],["Pixie","FR",80,22]]],
+};
+
+// Clubs fictifs pour compléter les circuits (surtout les petites scènes)
+const FILLER_NAMES = [
+  ["Nebula Esports","NEB","#6c5ce7","FR"],["Iron Wolves","IRW","#636e72","DE"],["Crimson Owls","CRO","#d63031","GB"],["Polar Gaming","PLR","#74b9ff","SE"],
+  ["Atlas Esports","ATL","#00b894","US"],["Vortex Club","VTX","#e17055","ES"],["Solar Kings","SOL","#fdcb6e","BR"],["Shadow Foxes","SFX","#4b5563","JP"],
+  ["Neon Tigers","NEO","#fd79a8","KR"],["Titan Squad","TTN","#0984e3","CA"],["Blue Hydra","HYD","#00cec9","IT"],["Rogue Pixels","RGP","#a29bfe","PL"],
+  ["Desert Lions","DSL","#e1b12c","MA"],["Sakura Spirit","SKR","#ff9ff3","JP"],["Andes Condors","AND","#10ac84","AR"],["Viking Raiders","VKR","#7f8fa6","NO"],
+  ["Golden Dragons","GDR","#feca57","CN"],["Savanna Kings","SVK","#ee5253","SN"],["Lyon Gaming Club","LGC","#e84118","FR"],["Marseille Oursins","OMR","#00a8ff","FR"],
+  ["Bruxelles Arena","BXA","#fbc531","BE"],["Genève Eagles","GVE","#c23616","CH"],["Montréal Moose","MTL","#273c75","CA"],["Casablanca Storm","CSB","#44bd32","MA"],
+  ["Dakar Lions","DKL","#e1b12c","SN"],["Abidjan Elephants","ABJ","#f39c12","CI"],["Tunis Falcons","TNF","#c0392b","TN"],["Alger Phoenix","ALP","#16a085","DZ"],
+  ["Berlin Bears","BRB","#2f3640","DE"],["Madrid Toros","MDT","#e74c3c","ES"],["Milano Lupi","MIL","#8e44ad","IT"],["Lisboa Navigators","LSB","#2980b9","PT"],
+  ["Amsterdam Tulips","AMS","#ff7f50","NL"],["Warsaw Wings","WAW","#d35400","PL"],["Stockholm Ghosts","STO","#95a5a6","SE"],["Helsinki Frost","HEL","#3498db","FI"],
+  ["Seoul Phantoms","SPH","#9b59b6","KR"],["Tokyo Ronin","TKR","#c0392b","JP"],["Shanghai Pandas","SHP","#2ecc71","CN"],["Riyadh Hawks","RYH","#27ae60","SA"],
+  ["Dubai Mirage","DXB","#f1c40f","AE"],["São Paulo Jaguars","SPJ","#f39c12","BR"],["Buenos Aires Tango","BAT","#5dade2","AR"],["Austin Outlaws","AUS","#a04000","US"],
+  ["Chicago Wind","CHI","#2874a6","US"],["Vancouver Orcas","VAN","#1abc9c","CA"],["Istanbul Sultans","IST","#e74c3c","TR"],["Kyiv Defenders","KYV","#f4d03f","UA"],
 ];
 
 const COUNTRIES = {
@@ -133,12 +263,14 @@ const COUNTRIES = {
   IT:"Italie", PT:"Portugal", NL:"Pays-Bas", KR:"Corée du Sud", CN:"Chine", JP:"Japon", BR:"Brésil", AR:"Argentine",
   MA:"Maroc", DZ:"Algérie", TN:"Tunisie", SN:"Sénégal", CI:"Côte d'Ivoire", SA:"Arabie saoudite", AE:"Émirats arabes unis",
   PL:"Pologne", SE:"Suède", DK:"Danemark", NO:"Norvège", FI:"Finlande", UA:"Ukraine", RU:"Russie", TR:"Turquie",
+  PH:"Philippines", ID:"Indonésie", AU:"Australie", MX:"Mexique", CL:"Chili",
 };
 
 // Syllabes pour générer des pseudos réalistes
 const NAME_PARTS = {
   a: ["zen","kai","rex","nova","blitz","vex","lynx","fury","zero","ace","myth","sky","drak","jin","ryu","volt","echo","flux","grim","haze",
       "kyro","mako","nyx","orb","pyro","quill","rift","sly","tox","vyn","wrath","xeno","yuki","zap","bolt","cypher","dusk","ember","frost","glitch",
-      "hex","ion","jolt","karma","lumen","mira","nero","onyx","prism","raze","sage","talon","umbra","viper","wisp","zed","astro","bane","crux"],
-  b: ["", "", "", "x", "0", "z", "y", "er", "ix", "99", "on", "ka", "o", "i", "7", "us", "ie", "an"],
+      "hex","ion","jolt","karma","lumen","mira","nero","onyx","prism","raze","sage","talon","umbra","viper","wisp","zed","astro","bane","crux",
+      "dante","enzo","fyre","gale","hiro","ivo","juno","kenzo","loki","milo","nox","oslo","pax","rook","sora","taz","uzi","vito","wyn","yaro"],
+  b: ["", "", "", "x", "0", "z", "y", "er", "ix", "99", "on", "ka", "o", "i", "7", "us", "ie", "an", "fps", "tv"],
 };
