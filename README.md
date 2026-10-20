@@ -31,17 +31,24 @@ Trois formats de compétition :
 ## Ce que vous gérez
 
 - **Effectifs** : titulaires / remplaçants, prolongations, ventes, libérations, ouverture et fermeture de divisions.
-- **Mercato** : 700+ joueurs pros réels rangés dans leurs équipes, des pros indépendants (FGC, StarCraft, Fortnite…) et des milliers d'agents libres générés. Les stars refusent les clubs trop modestes.
+- **Mercato** : 697 joueurs pros réels rangés dans leurs équipes, des pros indépendants (FGC, StarCraft, Fortnite…) et des milliers d'agents libres générés. Les stars refusent les clubs trop modestes.
 - **Joueurs** : note, potentiel, âge, forme, moral, salaire, contrat. Les jeunes progressent, les vétérans déclinent.
 - **Finances** : sponsors, merch/stream, cashprizes, salaires, frais de fonctionnement selon le tier.
 - **Infrastructures** : Gaming House, staff de coaching, cellule d'analyse, studio de contenu, académie.
-- **Événements** : sponsors (du kebab du coin à Red Bull), polémiques, créateurs de contenu, bootcamps, investisseurs…
+- **Sponsors négociables** : du kebab du coin à Red Bull, avec contre-offres.
+- **Événements**, polémiques, créateurs de contenu, bootcamps, investisseurs…
 - **Conseil d'administration** : un objectif par saison. Confiance à 0 % ou dettes trop lourdes = licenciement.
 
 ## Données
 
-Les effectifs ont été établis de mémoire (scène ≈ 2025-26) : ils sont **approximatifs** et certains sont sûrement dépassés.
-Tout est modifiable dans `js/data.js` (format joueur : `[pseudo, nationalité, note, âge]`).
+- **697 joueurs réels.** Les effectifs de la plupart des grandes équipes ont été recoupés dans la presse esport 2026 (Worlds, LEC/LCK/LPL, Major de Cologne, EWC, VCT Champions, TI 2026, RLCS, OWCS, CDL, PGS, FNCS, Capcom Cup, FC Pro). Ils sont marqués « ✓ 2026 » dans la fiche du club ; les autres (« ≈ non vérifié ») viennent de mes connaissances et peuvent être dépassés.
+- **Âges** : calculés d'après l'année de naissance quand je la connais ; sinon l'âge est estimé et affiché avec un « ~ ».
+- **Potentiel** : marge de progression selon l'âge (un joueur de 25 ans ou plus a atteint son plafond), affichée par votre staff avec une marge d'erreur qui diminue avec le niveau du coaching.
+- Tout est modifiable dans `js/data.js` (format joueur : `[pseudo, nationalité, note, âge]`).
+
+## Sponsors
+
+Les offres arrivent au fil des semaines, et vous pouvez démarcher des marques depuis l'onglet Finances (une fois par semaine). Chaque offre se négocie : contre-proposez un montant et une durée, la marque se rapproche de votre demande jusqu'à son plafond secret, mais elle peut rompre si vous êtes trop gourmand ou si les discussions s'éternisent.
 
 ## Structure
 

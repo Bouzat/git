@@ -205,8 +205,8 @@ function viewRoster() {
   const nSt = ps.filter(p => p.starter).length;
   const rows = ps.map(p => `<tr>
     <td>${p.starter ? "⭐" : "<span class='muted'>banc</span>"}</td>
-    <td>${flag(p.nat)} <b>${esc(p.handle)}</b></td><td>${p.role}</td><td>${p.age}</td><td>${R(p.rating)}</td>
-    <td class="muted">${p.pot > p.rating + 2 ? "↗ " + estPot(p) : "—"}</td>
+    <td>${flag(p.nat)} <b>${esc(p.handle)}</b></td><td>${p.role}</td><td>${ageTxt(p)}</td><td>${R(p.rating)}</td>
+    <td>${potTxt(p)}</td>
     <td>${bar(p.form)}</td><td>${bar(p.morale)}</td>
     <td>${money(p.salary)}/sem</td><td class="${p.years <= 1 ? "warn" : ""}">${p.years} an(s)</td><td>${money(playerValue(p))}</td>
     <td style="white-space:nowrap">
@@ -224,6 +224,11 @@ function viewRoster() {
     ${open}`;
 }
 // le potentiel affiché est une estimation : plus le staff est bon, plus elle est précise
+const ageTxt = p => p.ageKnown === false ? `<span class="muted" title="Âge réel inconnu, estimé">~${p.age}</span>` : p.age;
+function potTxt(p) {
+  const e = estPot(p);
+  return e > p.rating ? `<span class="pot" title="Potentiel estimé par votre staff (plus précis avec un meilleur coaching)">↗ ${e}</span>` : `<span class="muted" title="A atteint son plafond">${e}</span>`;
+}
 function estPot(p) {
   const h = [...p.id].reduce((a, c) => a + c.charCodeAt(0), 0);
   const err = Math.max(0, 3 - user().facilities.coaching);
@@ -250,7 +255,7 @@ function viewMarket() {
     const keen = interestCheck(p);
     const btn = !c ? `<button class="small primary" data-act="sign" data-v="${p.id}">Signer</button>`
       : `<button class="small" data-act="offer" data-v="${p.id}" ${keen ? "" : "disabled title='Votre club n&#39;est pas assez connu pour ce joueur'"}>${keen ? (c.solo ? "Recruter" : "Offre") + " (~" + money(askingPrice(p)) + ")" : "🔒 Hors de portée"}</button>`;
-    return `<tr><td>${flag(p.nat)} <b>${esc(p.handle)}</b></td><td>${gchip(p.game)}</td><td>${p.role}</td><td>${p.age}</td><td>${R(p.rating)}</td>
+    return `<tr><td>${flag(p.nat)} <b>${esc(p.handle)}</b></td><td>${gchip(p.game)}</td><td>${p.role}</td><td>${ageTxt(p)}</td><td>${R(p.rating)}</td><td>${potTxt(p)}</td>
       <td>${where}</td><td>${money(playerValue(p))}</td><td>${money(salaryDemand(p, u))}/sem</td><td>${btn}</td></tr>`;
   }).join("");
   return `<h2>Mercato</h2>
@@ -263,7 +268,7 @@ function viewMarket() {
       <span class="muted">${total} joueur(s)${total > 150 ? " (150 affichés)" : ""}</span>
     </div>
     <p class="muted" style="font-size:12px;margin-top:-4px">Agent libre : sans contrat, signature directe. Indépendant : pro sans organisation, il demande une prime. Sous contrat : il faut payer une indemnité de transfert à son club.</p>
-    <div class="card table-wrap"><table><tr><th>Joueur</th><th>Jeu</th><th>Rôle</th><th>Âge</th><th>Note</th><th>Statut</th><th>Valeur</th><th>Salaire demandé</th><th></th></tr>${rows}</table></div>`;
+    <div class="card table-wrap"><table><tr><th>Joueur</th><th>Jeu</th><th>Rôle</th><th>Âge</th><th>Note</th><th>Potentiel</th><th>Statut</th><th>Valeur</th><th>Salaire demandé</th><th></th></tr>${rows}</table></div>`;
 }
 
 // ---------- compétitions ----------
@@ -335,7 +340,7 @@ function viewFinance() {
     <div class="card"><h3>Revenus (semaine passée)</h3><table>${lines(last && last.income, incL) || "<tr><td class='muted'>-</td></tr>"}</table></div>
     <div class="card"><h3>Dépenses (semaine passée)</h3><table>${lines(last && last.expenses, expL) || "<tr><td class='muted'>-</td></tr>"}</table></div>
   </div>
-  <div class="card" style="margin-top:16px"><h3>Contrats de sponsoring</h3>${deals ? `<table>${deals}</table>` : "<p class='muted'>Aucun contrat spécifique. Les offres arrivent au fil des semaines selon votre notoriété.</p>"}</div>`;
+  <div class="card" style="margin-top:16px"><div class="toolbar"><h3 style="margin:0;flex:1">Contrats de sponsoring</h3><button class="small primary" data-act="prospect">📞 Démarcher un sponsor</button></div>${deals ? `<table>${deals}</table>` : "<p class='muted'>Aucun contrat spécifique. Les offres arrivent au fil des semaines selon votre notoriété.</p>"}</div>`;
 }
 
 // ---------- infrastructures ----------
@@ -371,7 +376,7 @@ function viewWorld() {
 }
 function clubInfo(id) {
   const c = S.clubs[id];
-  const divs = Object.entries(c.divisions).map(([g, d]) => `<h3 style="margin-top:12px">${GAMES[g].icon} ${GAMES[g].name} · ${TIER_LABEL[d.tier - 1]}</h3><div class="table-wrap"><table>${clubPlayers(id, g).sort((a, b) => b.starter - a.starter || b.rating - a.rating).map(p => `<tr><td>${p.starter ? "⭐" : ""}</td><td>${flag(p.nat)} ${esc(p.handle)}</td><td class="muted">${p.role}</td><td>${p.age} ans</td><td>${R(p.rating)}</td></tr>`).join("")}</table></div>`).join("");
+  const divs = Object.entries(c.divisions).map(([g, d]) => `<h3 style="margin-top:12px">${GAMES[g].icon} ${GAMES[g].name} · ${TIER_LABEL[d.tier - 1]} ${d.verified ? "<span class='ok' title='Effectif recoupé dans des sources 2026'>✓ 2026</span>" : c.filler ? "" : "<span class='muted' title='Effectif établi de mémoire, peut être dépassé'>≈ non vérifié</span>"}</h3><div class="table-wrap"><table>${clubPlayers(id, g).sort((a, b) => b.starter - a.starter || b.rating - a.rating).map(p => `<tr><td>${p.starter ? "⭐" : ""}</td><td>${flag(p.nat)} ${esc(p.handle)}</td><td class="muted">${p.role}</td><td>${ageTxt(p)} ans</td><td>${R(p.rating)}</td><td>${potTxt(p)}</td></tr>`).join("")}</table></div>`).join("");
   modal(`<div style="display:flex;gap:12px;align-items:center">${badge(c)}<div><h2 style="margin:0">${esc(c.name)} ${flag(c.country)}</h2><span class="muted">${c.solo ? "Pro indépendant · " : ""}Notoriété ${c.fame.toFixed(1)} · ${c.fans.toLocaleString("fr-FR")} fans${c.titles.length ? " · 🏆 " + c.titles.map(esc).join(", ") : ""}</span></div></div>${divs}<div class="actions"><button data-act="close-modal">Fermer</button></div>`);
 }
 
@@ -450,6 +455,37 @@ const ACTIONS = {
   "close-modal": () => closeModal(),
 };
 
+// ---------- négociation de sponsors ----------
+let SP = null;
+function sponsorModal(o, intro) {
+  SP = o;
+  const total = o.weekly * o.weeks;
+  const hist = o.history.map((h, i) => `<li>Tour ${i + 1} : vous demandez ${money(h.ask)}/sem sur ${h.weeks} sem.</li>`).join("");
+  modal(`<h2>🤝 ${esc(o.brand)}</h2><p>${intro}</p>
+    <div class="offer"><div><span class="muted">Offre actuelle</span><b>${money(o.weekly)}/sem</b></div><div><span class="muted">Durée</span><b>${o.weeks} semaines</b></div><div><span class="muted">Total</span><b>${money(total)}</b></div></div>
+    ${hist ? `<ul class="muted" style="font-size:13px">${hist}</ul>` : ""}
+    <div style="display:flex;gap:12px;flex-wrap:wrap">
+      <div class="form-row" style="flex:1;min-width:140px"><label for="sp-ask">Votre demande (€/semaine)</label><input id="sp-ask" type="number" step="50" min="0" value="${round50(o.weekly * 1.25)}"></div>
+      <div class="form-row"><label for="sp-weeks">Durée</label><select id="sp-weeks">${[8, 13, 20, 26, 39, 52].map(w => `<option value="${w}" ${Math.abs(w - o.weeks) < 4 ? "selected" : ""}>${w} semaines</option>`).join("")}</select></div>
+    </div>
+    <p class="muted" style="font-size:12px">Demander trop peut faire fuir la marque. Un contrat plus long rapporte plus au total, mais la marque paiera un peu moins par semaine.</p>
+    <div class="actions"><button data-act="sp-refuse">Refuser</button><button data-act="sp-counter">Contre-proposer</button><button class="primary" data-act="sp-accept">Accepter ${money(o.weekly)}/sem</button></div>`);
+}
+ACTIONS["sp-accept"] = () => { signSponsor(SP, SP.weekly, SP.weeks); toast(`Contrat ${SP.brand} signé !`); SP = null; save(); render(); ACTIONS["next-event"](); };
+ACTIONS["sp-refuse"] = () => { mail(`Offre déclinée : ${SP.brand}`, `Vous avez refusé l'offre de ${SP.brand} (${money(SP.weekly)}/sem).`, "event"); SP = null; save(); render(); ACTIONS["next-event"](); };
+ACTIONS["sp-counter"] = () => {
+  const ask = +document.getElementById("sp-ask").value, weeks = +document.getElementById("sp-weeks").value;
+  const r = negotiateSponsor(SP, ask, weeks);
+  if (r.status === "accept") { signSponsor(SP, r.weekly, r.weeks); toast(`${SP.brand} accepte : ${money(r.weekly)}/sem !`); SP = null; save(); render(); return ACTIONS["next-event"](); }
+  if (r.status === "walk") { mail(`Négociation rompue : ${SP.brand}`, `${SP.brand} a mis fin aux discussions.`, "event"); toast(`${SP.brand} quitte la table des négociations.`); SP = null; save(); render(); return ACTIONS["next-event"](); }
+  sponsorModal(SP, `<b>${esc(SP.brand)}</b> fait une contre-proposition.${r.last ? " <b class='warn'>La marque prévient que c'est sa dernière offre.</b>" : ""}`);
+};
+ACTIONS["prospect"] = () => {
+  const r = prospectSponsor();
+  if (r.error) return toast(r.error);
+  sponsorModal(r.offer, `Votre équipe commerciale a décroché un rendez-vous avec <b>${esc(r.offer.brand)}</b>.`);
+};
+
 // ---------- boucle hebdomadaire ----------
 let pendingEvents = [];
 function playWeek() {
@@ -471,6 +507,7 @@ function playWeek() {
 ACTIONS["next-event"] = () => {
   const ev = pendingEvents.shift();
   if (!ev) { closeModal(); return; }
+  if (ev.sponsor) return sponsorModal(ev.sponsor, `<b>${esc(ev.sponsor.brand)}</b> vous contacte pour un partenariat.`);
   window._ev = ev;
   modal(`<h2>${ev.title}</h2><p>${ev.body}</p><div class="actions">${ev.choices.map((c, i) => `<button class="${i ? "" : "primary"}" data-act="ev-choice" data-v="${i}">${c.label}</button>`).join("")}</div>`);
 };
@@ -485,7 +522,7 @@ ACTIONS["ev-choice"] = v => {
 document.addEventListener("click", e => {
   const el = e.target.closest("[data-act]");
   if (el && !el.disabled) { ACTIONS[el.dataset.act] && ACTIONS[el.dataset.act](el.dataset.v); return; }
-  if (e.target.id === "modal" && !pendingEvents.length && !document.querySelector('#modal [data-act="ev-choice"], #modal [data-act="next-event"]')) closeModal();
+  if (e.target.id === "modal" && !pendingEvents.length && !document.querySelector('#modal [data-act="ev-choice"], #modal [data-act="next-event"], #modal [data-act="sp-counter"]')) closeModal();
 });
 document.addEventListener("change", e => {
   const k = e.target.dataset.change; if (!k) return;

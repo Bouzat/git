@@ -71,12 +71,17 @@ function salaryDemand(p, club) {
   const prestige = club ? 1 + Math.max(0, p.rating - 50 - club.fame) / 100 : 1;
   return Math.max(150, Math.round(base * prestige / 50) * 50);
 }
+// potentiel : marge de progression qui dépend surtout de l'âge (un joueur de 25 ans ou plus a atteint son plafond)
+function potentialFor(rating, age) {
+  const gain = age <= 18 ? randi(5, 12) : age <= 20 ? randi(3, 8) : age <= 22 ? randi(1, 5) : age <= 24 ? randi(0, 2) : 0;
+  return clamp(rating + gain, rating, 99);
+}
 function makePlayer(handle, nat, rating, age, game, roleIdx, club) {
   const g = GAMES[game];
   const p = {
-    id: uid("p"), handle, nat, game, rating, age: age || randi(17, 23),
+    id: uid("p"), handle, nat, game, rating, age: age || randi(17, 23), ageKnown: !!age,
     role: g.roles[roleIdx % g.roles.length],
-    pot: clamp(rating + ((age || 21) <= 20 ? randi(3, 10) : age <= 23 ? randi(1, 6) : (age || 21) <= 26 ? randi(0, 2) : 0), rating, 99),
+    pot: potentialFor(rating, age || 21),
     form: randi(55, 80), morale: randi(60, 85), club: club || null,
     salary: 0, years: randi(1, 3), starter: false, stats: { w: 0, l: 0, mvp: 0 },
   };
@@ -160,7 +165,7 @@ function newWorld(opts) {
   };
   for (const game of Object.keys(GAMES)) {
     const entries = [];
-    for (const [orgId, roster] of (ROSTERS[game] || [])) entries.push({ orgId, roster, avg: roster.reduce((s, p) => s + p[2], 0) / roster.length });
+    for (const [orgId, roster, verified] of (ROSTERS[game] || [])) entries.push({ orgId, roster, verified: !!verified, avg: roster.reduce((s, p) => s + p[2], 0) / roster.length });
     // entrée SOLOS : un joueur, un duo, ou [org, duo] pour un duo signé dans une organisation
     const solos = (SOLOS[game] || []).map(x => typeof x[0] === "string" && Array.isArray(x[1]) && Array.isArray(x[1][0]) ? { orgId: x[0], roster: x[1] } : { roster: Array.isArray(x[0]) ? x : [x] })
       .map(e => ({ ...e, avg: e.roster.reduce((s, p) => s + p[2], 0) / e.roster.length }));
@@ -170,8 +175,9 @@ function newWorld(opts) {
     const sizes = GAMES[game].tierSizes || [LEAGUE_SIZE, LEAGUE_SIZE];
     all.forEach((e, i) => {
       const tier = i < sizes[0] ? 1 : i < sizes[0] + sizes[1] ? 2 : 3;
-      const c = e.orgId ? orgClub(e.orgId) : null;
-      if (c) addDivision(c, game, tier, e.roster);
+      // un même club ne peut avoir qu'une division par jeu : le 2e joueur solo d'une org joue sous son nom
+      const c = e.orgId && !(S.clubs[e.orgId] && S.clubs[e.orgId].divisions[game]) ? orgClub(e.orgId) : null;
+      if (c) { addDivision(c, game, tier, e.roster); c.divisions[game].verified = e.verified || !!SOLOS[game]; }
       const club = c || soloClub(game, tier, e.roster);
       byTier[tier - 1].push(club.id);
     });
@@ -747,16 +753,7 @@ function aiMarket() {
 
 // ---------- événements ----------
 const EVENTS = [
-  () => {
-    const u = user();
-    const brands = u.fame < 30 ? ["Le Kebab du Coin", "Garage Auto Martin", "Boulangerie du Centre", "PC Shop Local", "Cybercafé Pixel", "Salle de sport FitZone"]
-      : ["HyperX", "Red Bull", "Logitech G", "Monster Energy", "Secretlab", "Razer", "Alienware", "Intel", "Corsair", "Mercedes-Benz", "BMW", "Orange", "Lacoste", "Puma", "Adidas"];
-    const b = pick(brands);
-    const weekly = Math.round((200 + u.fame * u.fame * rand(2, 4)) / 50) * 50, weeks = randi(10, 26);
-    return { title: `Offre de sponsoring : ${b}`, body: `<b>${b}</b> propose un partenariat de ${money(weekly)}/semaine pendant ${weeks} semaines.`,
-      choices: [{ label: "Signer ✍️", fx: () => { u.sponsorDeals.push({ name: b, weekly, weeks }); return `Contrat ${b} signé.`; } },
-                { label: "Refuser", fx: () => "Offre déclinée." }] };
-  },
+  () => ({ title: "Offre de sponsoring", sponsor: sponsorOffer() }),
   () => {
     const u = user(); const b = pick(["CryptoMoon", "BetZilla", "QuickCasino", "NFT Arena"]);
     const lump = Math.round((15000 + u.fame * 8000) / 1000) * 1000;
@@ -811,6 +808,47 @@ function randomEvent() {
   if (!ev) return null;
   if (ev.auto) { ev.auto(); mail(ev.title, ev.body, "event"); return null; }
   return ev;
+}
+
+// ---------- sponsors : offres et négociation ----------
+const BRANDS_SMALL = ["Le Kebab du Coin", "Garage Auto Martin", "Boulangerie du Centre", "PC Shop Local", "Cybercafé Pixel", "Salle de sport FitZone", "Pizzeria Napoli", "Imprimerie Express"];
+const BRANDS_MID = ["LDLC", "Materiel.net", "Konix", "Glorious", "Cooler Master", "NZXT", "Fnac", "Boulanger", "Uber Eats", "Deliveroo"];
+const BRANDS_BIG = ["HyperX", "Red Bull", "Logitech G", "Monster Energy", "Secretlab", "Razer", "Alienware", "Intel", "Corsair", "Mercedes-Benz", "BMW", "Orange", "Lacoste", "Puma", "Adidas", "Coca-Cola", "Samsung"];
+const round50 = v => Math.round(v / 50) * 50;
+function sponsorOffer() {
+  const u = user();
+  const brand = pick(u.fame >= 55 ? BRANDS_BIG : u.fame >= 25 ? BRANDS_MID : BRANDS_SMALL);
+  const tierBonus = Object.values(u.divisions).reduce((s, d) => s + [3000, 600, 80][d.tier - 1], 0);
+  const weekly = round50(200 + u.fame * u.fame * rand(1.5, 3) + tierBonus * rand(0.5, 1));
+  // plafond secret de la marque : plus le club a de fans, plus elle est prête à payer
+  const max = weekly * rand(1.1, 1.45) * (1 + Math.min(0.3, u.fans / 3e6));
+  return { brand, weekly, weeks: randi(10, 26), max, patience: randi(2, 4), round: 0, history: [] };
+}
+// ask : montant hebdo demandé ; weeks : durée demandée. Un contrat plus long fait baisser le plafond hebdo de la marque.
+function negotiateSponsor(o, ask, weeks) {
+  const lim = o.max * (1 - (weeks - o.weeks) * 0.006);
+  o.round++;
+  o.history.push({ ask, weeks });
+  if (ask <= o.weekly) return { status: "accept", weekly: ask, weeks };
+  if (ask <= lim) return { status: "accept", weekly: round50(ask), weeks };
+  if (ask > lim * 1.6 || o.round > o.patience) return { status: "walk" };
+  // la marque fait un pas vers vous, sans dépasser son plafond
+  o.weekly = round50(Math.min(lim * 0.98, o.weekly + (ask - o.weekly) * rand(0.3, 0.6)));
+  o.weeks = weeks;
+  return { status: "counter", weekly: o.weekly, weeks, last: o.round >= o.patience };
+}
+function signSponsor(o, weekly, weeks) {
+  const u = user();
+  u.sponsorDeals.push({ name: o.brand, weekly, weeks });
+  mail(`Sponsor signé : ${o.brand}`, `<b>${o.brand}</b> devient partenaire du club : ${money(weekly)}/semaine pendant ${weeks} semaines (${money(weekly * weeks)} au total).`, "info");
+}
+// démarchage actif : une tentative par semaine, la réussite dépend de la notoriété
+function prospectSponsor() {
+  const key = S.season + "-" + S.week;
+  if (S.prospect === key) return { error: "Vous avez déjà démarché des marques cette semaine." };
+  S.prospect = key;
+  if (Math.random() > 0.35 + user().fame / 150) return { error: "Aucune marque n'a donné suite cette semaine. Réessayez la semaine prochaine." };
+  return { offer: sponsorOffer() };
 }
 
 // ---------- installations ----------

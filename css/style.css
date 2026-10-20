@@ -104,3 +104,8 @@ tr:hover td { background: #ffffff06; }
 .match-br { padding: 7px 0; border-bottom: 1px solid #1c2338; font-size: 13px; }
 .open-div { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px; border: 1px solid var(--line); border-radius: 10px; flex-wrap: wrap; }
 .open-div > div:first-child { min-width: 0; }
+.pot { color: var(--accent2); font-weight: 600; }
+.offer { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 12px 0; }
+.offer > div { display: flex; flex-direction: column; background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
+.offer span { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+.offer b { font-size: 16px; font-variant-numeric: tabular-nums; }
