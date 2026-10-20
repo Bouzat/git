@@ -110,7 +110,7 @@ if os.path.exists(eef):
     FN_ORGS = {("peterbot", "pollo"): "falcons", ("tjino", "pablowingu"): "havok", ("swizzy", "pixie"): "vitality",
                ("ritual", "cold"): "geng", ("shxrk", "t3eny"): "aurora", ("vic0", "malibuca"): "big", ("acorn", "boltz"): "tm",
                ("916gon", "night"): "furia", ("rax", "jannisz"): "m8", ("sky", "scroll"): "ag", ("darm", "demus"): "t1",
-               ("yuma", "koyota"): "zeta", ("higgs", "curve"): "xset", ("victerv", "queasy"): "dignitas", ("charyy", "kami"): "alqadsiah",
+               ("yuma", "koyota"): "zeta", ("higgs", "curve"): "xset", ("victerv", "queasy"): "dignitas", ("charyy", "kami"): "roc",
                # FNCS 2026 Major 2 (Liquipedia, via la presse) et pages d'organisations (Fandom)
                ("cr1nge", "twi"): "xp42", ("idrop", "ghonzo"): "solary", ("minori", "darkos"): "solary", ("ajerss", "veno"): "xset",
                ("muz", "rise"): "xset", ("clix", "rapid"): "xset", ("kingaling", "kraez"): "geng", ("josh", "eomzo"): "elite",
@@ -125,7 +125,7 @@ if os.path.exists(eef):
         live_orgs.setdefault(k, v)
     live_orgs.setdefault("xset", ["XSET", "XSET", "US", "#7b2cbf", 56])
     live_orgs.setdefault("dignitas", ["Dignitas", "DIG", "US", "#f2c94c", 56])
-    live_orgs.setdefault("alqadsiah", ["Al Qadsiah", "QAD", "SA", "#e0b100", 52])
+    live_orgs.setdefault("roc", ["ROC Esports", "ROC", "PL", "#b5179e", 50])
     duos, seen = [], set()
     for x in cur["SOLOS"]["fn"]:
         duo = x[1] if isinstance(x[0], str) else x
@@ -139,7 +139,7 @@ if os.path.exists(eef):
         duos.append([org, ps] if org else ps)
     # duos d'organisations trouvés sur les pages d'équipes (Fandom) et absents des grands classements
     for org, a1, c1, a2, c2, r in [("solary", "Minori", "CH", "Darkos", "FR", 81), ("wave", "Vadeal", "", "Juu", "", 79),
-                                   (None, "Merstach", "LV", "Vanyak3kk", "", 85)]:
+                                   ("m8", "Merstach", "LV", "Vanyak3kk", "UA", 85)]:
         if norm(a1) in seen or norm(a2) in seen: continue
         duos.insert(30, [[a1, c1, r, info.get(norm(a1), ("", 0, ""))[1]], [a2, c2, r - 1, info.get(norm(a2), ("", 0, ""))[1]]])
         if org: FN_ORGS[(norm(a1), norm(a2))] = org
@@ -164,10 +164,36 @@ if os.path.exists(eef):
         ps = [[m["h"], m["cc"], rating - i, info.get(k, ("", 0, ""))[1]] for i, (m, k) in enumerate(zip(r["members"], ms))]
         seen.update(ms)
         duos.append(ps)
+    # Liquipedia (Portal:Players/Europe, copié par l'utilisateur) : pays et équipe des joueurs européens.
+    # Les sources 2026 (FN_ORGS) restent prioritaires : la page Liquipedia date de novembre 2025.
+    LQ = {}
+    lq_file = os.path.join(ROOT, "tools/sources/liquipedia_fortnite_europe.tsv")
+    if os.path.exists(lq_file):
+        for line in open(lq_file, encoding="utf-8"):
+            if line.startswith("#") or not line.strip(): continue
+            h, cc, team = (line.rstrip("\n").split("\t") + ["", ""])[:3]
+            LQ[norm(h)] = (cc, team.strip())
+    LQ_ALIAS = {"scaryy": "scary", "velo": "velofps"}
+    lq = lambda h: LQ.get(LQ_ALIAS.get(norm(h), norm(h)))
+    by_org_name = {norm(v[0]): k for k, v in {**ORGS, **live_orgs}.items()}
+    TEAM_ALIAS = {"havokbyvitality": "havok", "teamvitality": "vitality", "allgamersglobal": "ag"}
+    def org_of_team(team, cc, rating):
+        n = norm(team)
+        if n in TEAM_ALIAS: return TEAM_ALIAS[n]
+        if n in by_org_name: return by_org_name[n]
+        key = "fn_" + n[:20]
+        live_orgs[key] = [team, make_tag(team), cc, hcolor(team), int(max(25, min(55, (rating - 70) * 2.5)))]
+        by_org_name[n] = key
+        return key
     def with_org(x):
         ps = x[1] if isinstance(x[0], str) else x
+        for p in ps:
+            if lq(p[0]) and lq(p[0])[0]: p[1] = lq(p[0])[0]
         key = tuple(sorted(norm(p[0]) for p in ps))
         org = next((o for k, o in FN_ORGS.items() if tuple(sorted(k)) == key), None)
+        if not org:
+            teams = [lq(p[0])[1] for p in ps if lq(p[0]) and lq(p[0])[1]]
+            if teams: org = org_of_team(teams[0], ps[0][1], ps[0][2])
         return [org, ps] if org else ps
     duos = [with_org(x) for x in duos]
     for x in duos:
