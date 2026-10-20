@@ -32,6 +32,14 @@ Trois formats de compétition :
 - **Battle royale** (Fortnite, Apex, PUBG) : lobbies complets (50 duos = 100 joueurs sur Fortnite, 20 trios sur Apex, 16 squads sur PUBG), points de placement + éliminations, grande finale du top 8.
 - **1 contre 1** (EA FC, SF6, StarCraft II).
 
+## Académies
+
+Dans les jeux en équipe (LoL, CS2, Valorant, Dota 2, CoD, R6, Overwatch, Rocket League, MLBB, Honor of Kings…), un club dont l'équipe première joue au moins en tier 2 peut créer une **académie** (il faut l'infrastructure « Académie »). C'est une seconde équipe, « Nom du club Academy », qui joue sa propre ligue à partir du tier 3 avec des jeunes de 16 à 19 ans à fort potentiel et à petits salaires.
+- Les jeunes qui y jouent progressent plus vite, d'autant plus que l'infrastructure « Académie » est développée. La pépite annuelle du centre de formation y signe directement.
+- Un bouton fait passer un joueur de l'académie à l'équipe première (« ↑ Équipe première ») ou l'inverse (« ↓ Académie »), sans toucher à son contrat. Un titulaire envoyé à l'académie le prend mal.
+- L'académie ne monte jamais dans la division de l'équipe première. Si l'équipe première descend dans sa division, l'académie est rétrogradée, ou dissoute s'il n'y a plus de division en dessous (ses joueurs rejoignent alors l'équipe première).
+- Ses gains vont au club, ses salaires et ses frais (réduits) aussi. La composition est automatique.
+
 ## Ce que vous gérez
 
 - **Effectifs** : titulaires / remplaçants, prolongations, ventes, libérations, ouverture et fermeture de divisions.

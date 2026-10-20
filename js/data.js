@@ -374,6 +374,11 @@ const REGION_COUNTRIES = {
   ASIA: "KR CN JP TW HK MO VN TH PH ID MY SG KH LA MM IN PK BD LK NP MN KZ UZ KG TJ",
   OCE: "AU NZ FJ PG",
 };
+// équipes qui ne jouent pas dans la région du pays de leur organisation (jeu:organisation)
+const REGION_OVERRIDES = {
+  "lol:liquid": "NA", "cs2:falcons": "EU", "cs2:faze": "EU", "cs2:furia": "EU", "cs2:liquid": "NA", "cs2:mongolz": "EU",
+  "dota:falcons": "EU", "mlbb:liquid": "ASIA", "cod:m8": "NA", "cod:heretics": "NA",
+};
 const REGION_OF = {};
 for (const [r, ccs] of Object.entries(REGION_COUNTRIES)) for (const cc of ccs.split(" ")) REGION_OF[cc] = r;
 

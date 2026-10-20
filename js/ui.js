@@ -234,6 +234,7 @@ function viewRoster() {
     <td style="white-space:nowrap">
       <button class="small" data-act="starter" data-v="${p.id}">${p.starter ? "→ Banc" : "→ Titulaire"}</button>
       <button class="small" data-act="contract" data-v="${p.id}">Contrat</button>
+      ${academyOf(p.game) ? `<button class="small" data-act="to-academy" data-v="${p.id}" title="Envoyer le joueur dans l'académie (même contrat)">↓ Académie</button>` : ""}
       <button class="small" data-act="sell" data-v="${p.id}">Vendre</button>
       <button class="small danger" data-act="release" data-v="${p.id}">Libérer</button></td></tr>`).join("");
   return `<h2>Effectifs</h2><div class="tabs">${tabs}</div>
@@ -243,7 +244,33 @@ function viewRoster() {
       <button class="small" data-act="goto-market" data-v="${UI.rosterGame}">🔎 Recruter</button>
       <button class="small danger" data-act="close-div">Fermer la division</button></div>
     <div class="table-wrap"><table><tr><th></th><th>Joueur</th><th>Rôle</th><th>Âge</th><th>Note</th><th>Potentiel</th><th>Forme</th><th>Moral</th><th>Salaire</th><th>Contrat</th><th>Clause</th><th>Valeur</th><th></th></tr>${rows || `<tr><td colspan="13" class="muted">Aucun joueur. Rendez-vous au mercato !</td></tr>`}</table></div></div>
+    ${academyCard(UI.rosterGame)}
     ${open}`;
+}
+// équipe réserve d'un jeu par équipes
+function academyCard(game) {
+  if (!canHaveAcademy(game)) return "";
+  const g = GAMES[game], aca = academyOf(game);
+  if (!aca) {
+    const e = canCreateAcademy(game);
+    return `<div class="card" style="margin-top:20px"><h3>🎓 Académie ${g.name}</h3>
+      <p class="muted" style="margin-top:-6px">Une seconde équipe de jeunes (16-19 ans, gros potentiel, petits salaires) qui joue sa propre ligue, toujours sous l'équipe première. Les jeunes qui jouent y progressent plus vite ; faites monter les meilleurs, envoyez-y les joueurs qui manquent de temps de jeu. L'académie ne peut jamais monter dans la division de l'équipe première.</p>
+      <p>Création : <b>${money(academyCost(game))}</b> · entrée en tier 3 · frais de fonctionnement réduits.</p>
+      ${e ? `<p class="warn">${esc(e)}</p>` : ""}<div class="actions" style="justify-content:flex-start"><button class="primary" data-act="create-academy" ${e ? "disabled" : ""}>Créer l'académie</button></div></div>`;
+  }
+  const ad = aca.divisions[game];
+  const ps = clubPlayers(aca.id, game).sort((a, b) => (b.starter - a.starter) || b.rating - a.rating);
+  const rows = ps.map(p => `<tr><td>${p.starter ? "⭐" : "<span class='muted'>banc</span>"}</td>
+    <td>${flag(p.nat)} <b>${esc(p.handle)}</b> <small class="muted">${playRegion(p)}</small></td><td>${p.role}</td><td>${ageTxt(p)}</td><td>${R(p.rating)}</td><td>${potTxt(p)}</td>
+    <td>${bar(p.form)}</td><td>${bar(p.morale)}</td><td>${money(p.salary)}/sem</td><td class="${p.years <= 1 ? "warn" : ""}">${p.years} an(s)</td>
+    <td style="white-space:nowrap"><button class="small primary" data-act="to-academy" data-v="${p.id}">↑ Équipe première</button>
+      <button class="small" data-act="contract" data-v="${p.id}">Contrat</button>
+      <button class="small danger" data-act="release" data-v="${p.id}">Libérer</button></td></tr>`).join("");
+  const L = S.leagues[lkey(game, ad.tier)], pos = standings(L.key).findIndex(r => r.id === aca.id) + 1;
+  return `<div class="card" style="margin-top:20px"><div class="toolbar"><div style="flex:1;min-width:0"><h3 style="margin:0">🎓 ${esc(aca.name)} — Force ${R(Math.round(teamStrength(aca.id, game).str))}</h3>
+      <div style="margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">${tchip(ad.tier)}<span class="muted">${tierName(game, ad.tier)}${pos ? ` · ${pos}e` : ""} · composition automatique (les meilleurs jouent)</span></div></div>
+      <button class="small danger" data-act="close-academy">Fermer l'académie</button></div>
+    <div class="table-wrap"><table><tr><th></th><th>Joueur</th><th>Rôle</th><th>Âge</th><th>Note</th><th>Potentiel</th><th>Forme</th><th>Moral</th><th>Salaire</th><th>Contrat</th><th></th></tr>${rows || `<tr><td colspan="11" class="muted">Aucun joueur.</td></tr>`}</table></div></div>`;
 }
 // le potentiel affiché est une estimation : plus le staff est bon, plus elle est précise
 const ageTxt = p => p.ageKnown === false ? `<span class="muted" title="Âge réel inconnu, estimé">~${p.age}</span>` : p.age;
@@ -260,7 +287,7 @@ function estPot(p) {
 // ---------- mercato ----------
 function viewMarket() {
   const u = user(), m = UI.market;
-  let ps = Object.values(S.players).filter(p => p.club !== u.id);
+  let ps = Object.values(S.players).filter(p => p.club !== u.id && !(S.clubs[p.club] && S.clubs[p.club].parent === u.id));
   if (m.game !== "all") ps = ps.filter(p => p.game === m.game);
   if (m.status === "free") ps = ps.filter(p => !p.club);
   if (m.status === "solo") ps = ps.filter(p => p.club && S.clubs[p.club] && S.clubs[p.club].solo && !S.clubs[p.club].filler);
@@ -568,6 +595,10 @@ const ACTIONS = {
   },
   "confirm-open": v => { const [game, t] = v.split("|"); const e = openDivision(game, +t); closeModal(); if (e) toast(e); else { UI.rosterGame = game; toast("Division ouverte !"); } render(); },
   "close-div": () => modal(`<h2>Fermer la division ${GAMES[UI.rosterGame].name} ?</h2><p>Tous les joueurs seront libérés (indemnités de rupture) et le club perdra en notoriété.</p><div class="actions"><button data-act="close-modal">Annuler</button><button class="danger" data-act="confirm-close">Fermer la division</button></div>`),
+  "create-academy": () => { const e = createAcademy(UI.rosterGame); toast(e || "🎓 Académie créée !"); save(); render(); },
+  "to-academy": v => { toast(moveToAcademy(v)); save(); render(); },
+  "close-academy": () => modal(`<h2>Fermer l'académie ${GAMES[UI.rosterGame].name} ?</h2><p>Ses joueurs seront libérés (indemnités de rupture). Faites d'abord monter ceux que vous voulez garder.</p><div class="actions"><button data-act="close-modal">Annuler</button><button class="danger" data-act="confirm-close-academy">Fermer l'académie</button></div>`),
+  "confirm-close-academy": () => { closeAcademy(UI.rosterGame); closeModal(); save(); render(); },
   "confirm-close": () => { closeDivision(UI.rosterGame); UI.rosterGame = null; closeModal(); render(); },
   "starter": v => { const e = toggleStarter(v); if (e) toast(e); render(); },
   "m-page": v => { UI.market.page = +v; render(); window.scrollTo(0, 0); },
