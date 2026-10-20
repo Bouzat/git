@@ -209,10 +209,10 @@ function viewRoster() {
     <td>${flag(p.nat)} <b>${esc(p.handle)}</b></td><td>${p.role}</td><td>${ageTxt(p)}</td><td>${R(p.rating)}</td>
     <td>${potTxt(p)}</td>
     <td>${bar(p.form)}</td><td>${bar(p.morale)}</td>
-    <td>${money(p.salary)}/sem</td><td class="${p.years <= 1 ? "warn" : ""}">${p.years} an(s)</td><td>${money(playerValue(p))}</td>
+    <td>${money(p.salary)}/sem</td><td class="${p.years <= 1 ? "warn" : ""}">${p.years} an(s)</td><td>${p.clause ? money(p.clause) : "<span class='muted'>—</span>"}</td><td>${money(playerValue(p))}</td>
     <td style="white-space:nowrap">
       <button class="small" data-act="starter" data-v="${p.id}">${p.starter ? "→ Banc" : "→ Titulaire"}</button>
-      <button class="small" data-act="renew" data-v="${p.id}">Prolonger</button>
+      <button class="small" data-act="contract" data-v="${p.id}">Contrat</button>
       <button class="small" data-act="sell" data-v="${p.id}">Vendre</button>
       <button class="small danger" data-act="release" data-v="${p.id}">Libérer</button></td></tr>`).join("");
   return `<h2>Effectifs</h2><div class="tabs">${tabs}</div>
@@ -221,7 +221,7 @@ function viewRoster() {
       <button class="small" data-act="auto-lineup">⚡ Composition auto</button>
       <button class="small" data-act="goto-market" data-v="${UI.rosterGame}">🔎 Recruter</button>
       <button class="small danger" data-act="close-div">Fermer la division</button></div>
-    <div class="table-wrap"><table><tr><th></th><th>Joueur</th><th>Rôle</th><th>Âge</th><th>Note</th><th>Potentiel</th><th>Forme</th><th>Moral</th><th>Salaire</th><th>Contrat</th><th>Valeur</th><th></th></tr>${rows || `<tr><td colspan="12" class="muted">Aucun joueur. Rendez-vous au mercato !</td></tr>`}</table></div></div>
+    <div class="table-wrap"><table><tr><th></th><th>Joueur</th><th>Rôle</th><th>Âge</th><th>Note</th><th>Potentiel</th><th>Forme</th><th>Moral</th><th>Salaire</th><th>Contrat</th><th>Clause</th><th>Valeur</th><th></th></tr>${rows || `<tr><td colspan="13" class="muted">Aucun joueur. Rendez-vous au mercato !</td></tr>`}</table></div></div>
     ${open}`;
 }
 // le potentiel affiché est une estimation : plus le staff est bon, plus elle est précise
@@ -462,42 +462,103 @@ const ACTIONS = {
   "confirm-close": () => { closeDivision(UI.rosterGame); UI.rosterGame = null; closeModal(); render(); },
   "starter": v => { const e = toggleStarter(v); if (e) toast(e); render(); },
   "auto-lineup": () => { autoStarters(S.userId, UI.rosterGame); render(); },
-  "renew": v => {
-    const p = S.players[v], d = renewDemand(p);
-    modal(`<h2>Prolonger ${esc(p.handle)}</h2><p>${esc(p.handle)} demande <b>${money(d)}/sem</b> (actuellement ${money(p.salary)}).</p>
-      <div class="actions"><button data-act="close-modal">Annuler</button>${[1, 2, 3].map(y => `<button class="primary" data-act="do-renew" data-v="${v}|${y}">${y} an(s)</button>`).join("")}</div>`);
-  },
-  "do-renew": v => { const [id, y] = v.split("|"); renewPlayer(id, +y); closeModal(); render(); },
+  "renew": v => openNego(startNegotiation(v, "renew")),
+  "contract": v => contractModal(v),
   "sell": v => { const p = S.players[v]; modal(`<h2>Vendre ${esc(p.handle)} ?</h2><p>Un club est prêt à payer environ <b>${money(playerValue(p) * 0.9)}</b>.</p><div class="actions"><button data-act="close-modal">Annuler</button><button class="primary" data-act="do-sell" data-v="${v}">Vendre</button></div>`); },
   "do-sell": v => { const fee = sellPlayer(v); closeModal(); toast("Vendu pour " + money(fee)); render(); },
   "release": v => { const p = S.players[v]; modal(`<h2>Libérer ${esc(p.handle)} ?</h2><p>Indemnité de rupture : <b>${money(Math.round(p.salary * 52 * p.years * 0.25))}</b>.</p><div class="actions"><button data-act="close-modal">Annuler</button><button class="danger" data-act="do-release" data-v="${v}">Libérer</button></div>`); },
   "do-release": v => { releasePlayer(v); closeModal(); render(); },
   "sign": v => {
-    const p = S.players[v], u = user(), d = salaryDemand(p, u);
+    const u = user(), p = S.players[v];
     if (!u.divisions[p.game]) return toast(`Ouvrez d'abord une division ${GAMES[p.game].name} (onglet Effectifs).`);
-    modal(`<h2>Signer ${flag(p.nat)} ${esc(p.handle)}</h2><p>${GAMES[p.game].icon} ${GAMES[p.game].name} · ${p.role} · ${p.age} ans · note ${R(p.rating)}</p>
-      <div class="form-row"><label for="f-sal">Salaire proposé (€/semaine) — demande : ${money(d)}</label><input id="f-sal" type="number" step="50" value="${d}"></div>
-      <div class="form-row"><label for="f-yrs">Durée</label><select id="f-yrs"><option value="1">1 an</option><option value="2" selected>2 ans</option><option value="3">3 ans</option></select></div>
-      <p class="muted">Prime de signature : 4 semaines de salaire.</p>
-      <div class="actions"><button data-act="close-modal">Annuler</button><button class="primary" data-act="do-sign" data-v="${v}">Proposer le contrat</button></div>`);
+    openNego(startNegotiation(v, "sign"));
   },
-  "do-sign": v => { const e = signFreeAgent(v, +document.getElementById("f-sal").value, +document.getElementById("f-yrs").value); closeModal(); toast(e || "Contrat signé ! ✍️"); render(); },
   "offer": v => {
     const p = S.players[v], u = user(), c = S.clubs[p.club];
     if (!u.divisions[p.game]) return toast(`Ouvrez d'abord une division ${GAMES[p.game].name} (onglet Effectifs).`);
     const ask = askingPrice(p);
-    modal(`<h2>${c.solo ? "Recruter" : "Offre pour"} ${flag(p.nat)} ${esc(p.handle)}</h2><p>${c.solo ? "Pro indépendant" : esc(c.name)} · ${GAMES[p.game].name} · ${p.role} · ${p.age} ans · ${R(p.rating)}</p>
-      <p>Valeur estimée : ${money(playerValue(p))} · ${c.solo ? "Prime demandée" : "Le club en attend"} environ <b>${money(ask)}</b>.<br>Salaire demandé : ${money(salaryDemand(p, u))}/sem.</p>
-      <div class="form-row"><label for="f-fee">Montant (€)</label><input id="f-fee" type="number" step="500" value="${ask}"></div>
-      <div class="actions"><button data-act="close-modal">Annuler</button><button class="primary" data-act="do-offer" data-v="${v}">Envoyer l'offre</button></div>`);
+    modal(`<h2>${c.solo ? "Recruter" : "Offre pour"} ${flag(p.nat)} ${esc(p.handle)}</h2><p>${c.solo ? "Pro indépendant" : esc(c.name)} · ${GAMES[p.game].name} · ${p.role} · ${ageTxt(p)} ans · ${R(p.rating)} · potentiel ${potTxt(p)}</p>
+      <p>Valeur estimée : ${money(playerValue(p))} · ${c.solo ? "Prime demandée" : "Le club en attend"} environ <b>${money(ask)}</b>.${p.clause ? `<br>Clause libératoire : <b>${money(p.clause)}</b> (le club ne peut pas refuser si vous la payez).` : ""}</p>
+      <div class="form-row"><label for="f-fee">${c.solo ? "Prime de recrutement" : "Indemnité de transfert"} (€)</label><input id="f-fee" type="number" step="500" value="${ask}"></div>
+      <p class="muted" style="font-size:12px">Si l'offre est acceptée, vous négocierez ensuite le contrat avec le joueur et son agent.</p>
+      <div class="actions"><button data-act="close-modal">Annuler</button>${p.clause ? `<button data-act="pay-clause" data-v="${v}">Payer la clause</button>` : ""}<button class="primary" data-act="do-offer" data-v="${v}">Envoyer l'offre</button></div>`);
   },
-  "do-offer": v => { const e = makeOffer(v, +document.getElementById("f-fee").value); closeModal(); toast(e || "Transfert bouclé ! 🤝"); render(); },
+  "do-offer": v => {
+    const fee = +document.getElementById("f-fee").value, e = transferFeeCheck(v, fee);
+    if (e) { closeModal(); return toast(e); }
+    openNego(startNegotiation(v, "transfer", fee), `Offre acceptée par le club (${money(fee)}). Place à la négociation avec le joueur.`);
+  },
+  "pay-clause": v => openNego(payClause(v), `Vous payez la clause libératoire (${money(S.players[v].clause)}). Il reste à convaincre le joueur.`),
   "upgrade": v => { const e = upgradeFacility(v); if (e) toast(e); render(); },
   "open-mail": v => { const m = S.inbox.find(x => x.id === v); if (m) { m.read = true; UI.mailOpen = UI.mailOpen === v ? null : v; } if (UI.view !== "inbox") UI.view = "inbox"; render(); },
   "read-all": () => { S.inbox.forEach(m => m.read = true); render(); },
   "club-info": v => clubInfo(v),
   "close-modal": () => closeModal(),
 };
+
+// ---------- négociation de contrats ----------
+let NEGO = null;
+const CTX_LABEL = { sign: "Signature", transfer: "Transfert", renew: "Prolongation" };
+function openNego(N, intro) {
+  if (!N || N.error) { closeModal(); return toast(N ? N.error : "Négociation impossible."); }
+  NEGO = N;
+  const d = N.dem;
+  // première proposition pré-remplie avec les demandes, à vous de les ajuster
+  NEGO.draft = { status: d.status, salary: d.salary, years: d.years[0] === 1 ? 2 : d.years[0], bonus: d.bonus, agentFee: d.agentFee, prizeShare: d.prizeShare, winBonus: d.winBonus, clause: d.clauseMax || 0 };
+  negoModal(intro || "");
+}
+function negoModal(reply, tone) {
+  const N = NEGO, p = S.players[N.pid], d = N.dem, o = N.draft, pers = personalityOf(p);
+  const mood = N.patience / N.maxPatience;
+  const moodTxt = mood > 0.7 ? "😊 Ouvert" : mood > 0.45 ? "😐 Agacé" : mood > 0.2 ? "😠 Énervé" : "🤬 Au bord de la rupture";
+  const field = (id, label, val, want, step = 50, extra = "") => `<div class="form-row nego-f"><label for="${id}">${label}</label><input id="${id}" type="number" min="0" step="${step}" value="${val}" ${extra}><small class="muted">Demande : ${want}</small></div>`;
+  const log = N.log.map((l, i) => `<li>Offre ${i + 1} : ${money(l.offer.salary)}/sem, ${l.offer.years} an(s), ${l.offer.prizeShare} % des gains</li>`).join("");
+  modal(`<h2>✍️ ${CTX_LABEL[N.ctx]} — ${flag(p.nat)} ${esc(p.handle)}</h2>
+    <p class="muted" style="margin-top:-6px">${GAMES[p.game].icon} ${GAMES[p.game].short} · ${p.role} · ${ageTxt(p)} ans · note ${R(p.rating)} · potentiel ${potTxt(p)}${N.ctx === "transfer" ? ` · indemnité ${money(N.fee)}` : ""}</p>
+    <div class="nego-head"><div><span class="muted">Personnalité</span><b>${pers}</b><small class="muted">${PERSONALITIES[pers].desc}</small></div>
+      <div><span class="muted">Patience</span><b>${moodTxt}</b>${bar(mood * 100)}</div></div>
+    ${reply ? `<div class="reply ${tone || ""}">${reply}</div>` : ""}
+    <div class="nego-grid">
+      <div class="form-row nego-f"><label for="n-status">Statut promis</label><select id="n-status">${STATUSES.slice().reverse().map(x => `<option ${x === o.status ? "selected" : ""}>${x}</option>`).join("")}</select><small class="muted">Demande : ${d.status}</small></div>
+      <div class="form-row nego-f"><label for="n-years">Durée</label><select id="n-years">${[1, 2, 3, 4].map(y => `<option value="${y}" ${y === o.years ? "selected" : ""}>${y} an${y > 1 ? "s" : ""}</option>`).join("")}</select><small class="muted">Souhaite : ${d.years[0]} à ${d.years[1]} ans</small></div>
+      ${field("n-salary", "Salaire (€/semaine)", o.salary, money(d.salary))}
+      ${field("n-bonus", "Prime à la signature (€)", o.bonus, money(d.bonus), 500)}
+      ${field("n-agent", "Commission de l'agent (€)", o.agentFee, money(d.agentFee), 100)}
+      ${field("n-share", "Part du cashprize pour le joueur (%)", o.prizeShare, d.prizeShare + " %", 1, 'max="100"')}
+      ${field("n-win", "Prime par victoire (€)", o.winBonus, money(d.winBonus))}
+      ${field("n-clause", "Clause libératoire (€, 0 = aucune)", o.clause, d.clauseMax ? "≤ " + money(d.clauseMax) : "indifférent", 10000)}
+    </div>
+    <p class="muted" style="font-size:12px">À payer à la signature : prime + commission${N.ctx === "transfer" ? " + indemnité" : ""}. Une clause basse rassure le joueur mais un autre club pourra le racheter à ce prix. Une offre trop basse vexe l'agent et fait fondre sa patience ; à zéro, le joueur claque la porte pour un mois.</p>
+    ${log ? `<ul class="muted" style="font-size:12px">${log}</ul>` : ""}
+    <div class="actions"><button data-act="nego-quit">Abandonner</button><button class="primary" data-act="nego-propose">Faire l'offre</button></div>`);
+}
+function readOffer() {
+  const n = id => Math.max(0, +document.getElementById(id).value || 0);
+  return { status: document.getElementById("n-status").value, years: +document.getElementById("n-years").value, salary: n("n-salary"), bonus: n("n-bonus"),
+    agentFee: n("n-agent"), prizeShare: clamp(Math.round(n("n-share")), 0, 100), winBonus: n("n-win"), clause: n("n-clause") };
+}
+function contractModal(pid) {
+  const p = S.players[pid];
+  const row = (k, v) => `<tr><td class="muted">${k}</td><td style="text-align:right"><b>${v}</b></td></tr>`;
+  modal(`<h2>📄 Contrat — ${flag(p.nat)} ${esc(p.handle)}</h2>
+    <p class="muted" style="margin-top:-6px">${GAMES[p.game].icon} ${GAMES[p.game].short} · ${p.role} · ${ageTxt(p)} ans · ${R(p.rating)} · potentiel ${potTxt(p)} · ${personalityOf(p)}</p>
+    <table>${row("Statut promis", (p.status || "Titulaire") + (p.promiseBroken >= 3 ? " <span class='bad'>(promesse non tenue)</span>" : ""))}${row("Salaire", money(p.salary) + "/sem")}${row("Durée restante", p.years + " an(s)")}
+      ${row("Part du cashprize", (p.prizeShare ?? 50) + " %")}${row("Prime par victoire", money(p.winBonus || 0))}${row("Clause libératoire", p.clause ? money(p.clause) : "aucune")}
+      ${row("Moral", Math.round(p.morale) + " / 100")}${row("Valeur estimée", money(playerValue(p)))}</table>
+    <div class="actions"><button data-act="close-modal">Fermer</button><button class="primary" data-act="renew" data-v="${pid}">Renégocier / prolonger</button></div>`);
+}
+ACTIONS["nego-propose"] = () => {
+  const offer = readOffer(); NEGO.draft = offer;
+  const r = proposeContract(NEGO, offer);
+  if (r.status === "accept") {
+    const e = acceptContract(NEGO, offer);
+    if (e) return negoModal(e, "bad");
+    const h = S.players[NEGO.pid].handle; NEGO = null; closeModal(); toast(`${h} signe ! ✍️ ${r.msg}`); save(); return render();
+  }
+  if (r.status === "walk") { mail(`Négociations rompues : ${S.players[NEGO.pid].handle}`, r.msg, "transfer"); NEGO = null; closeModal(); toast("Le joueur a quitté la table des négociations."); save(); return render(); }
+  negoModal(r.msg, r.tone);
+};
+ACTIONS["nego-quit"] = () => { NEGO = null; closeModal(); };
 
 // ---------- négociation de sponsors ----------
 let SP = null;
@@ -566,7 +627,7 @@ ACTIONS["ev-choice"] = v => {
 document.addEventListener("click", e => {
   const el = e.target.closest("[data-act]");
   if (el && !el.disabled) { ACTIONS[el.dataset.act] && ACTIONS[el.dataset.act](el.dataset.v); return; }
-  if (e.target.id === "modal" && !pendingEvents.length && !document.querySelector('#modal [data-act="ev-choice"], #modal [data-act="next-event"], #modal [data-act="sp-counter"]')) closeModal();
+  if (e.target.id === "modal" && !pendingEvents.length && !document.querySelector('#modal [data-act="ev-choice"], #modal [data-act="next-event"], #modal [data-act="sp-counter"], #modal [data-act="nego-propose"]')) closeModal();
 });
 document.addEventListener("change", e => {
   const k = e.target.dataset.change; if (!k) return;

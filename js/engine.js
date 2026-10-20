@@ -86,6 +86,9 @@ function makePlayer(handle, nat, rating, age, game, roleIdx, club) {
     salary: 0, years: randi(1, 3), starter: false, stats: { w: 0, l: 0, mvp: 0 },
   };
   p.salary = Math.round(salaryDemand(p) * rand(0.85, 1.1) / 50) * 50;
+  // détails du contrat (les stars des clubs IA ont souvent une clause libératoire élevée)
+  p.prizeShare = 50; p.winBonus = 0; p.status = "Titulaire";
+  p.clause = club && rating >= 80 && Math.random() < 0.6 ? Math.round(playerValue(p) * rand(2, 4) / 10000) * 10000 : 0;
   return p;
 }
 function genPlayer(game, minR, maxR, ageMin = 17, ageMax = 28, club = null, roleIdx = null) {
@@ -369,6 +372,18 @@ function makeOffer(pid, fee) {
   u.fame = clamp(u.fame + Math.max(0, (p.rating - 80) * 0.15), 0, 100);
   return null;
 }
+// étape 1 d'un transfert : le club vendeur accepte-t-il l'indemnité ? (les termes du joueur se négocient ensuite)
+function transferFeeCheck(pid, fee) {
+  const p = S.players[pid], u = user();
+  if (!p.club || p.club === u.id) return "Offre impossible.";
+  if (!u.divisions[p.game]) return `Ouvrez d'abord une division ${GAMES[p.game].name}.`;
+  if (u.budget < fee) return "Budget insuffisant.";
+  if (!interestCheck(p)) return `${p.handle} n'est pas intéressé par le projet : votre club manque de notoriété (${u.fame.toFixed(0)}) ou évolue trop bas.`;
+  const seller = S.clubs[p.club], ask = askingPrice(p);
+  if (p.offerRefused === nowIndex() + ":" + fee) return `${seller.name} a déjà refusé ce montant.`;
+  if (fee < ask * rand(0.88, 1.08)) { p.offerRefused = nowIndex() + ":" + fee; return `${seller.solo ? p.handle : seller.name} refuse votre offre de ${money(fee)}. (Prix estimé : ~${money(ask)})`; }
+  return null;
+}
 function sellPlayer(pid) {
   const p = S.players[pid], u = user();
   const L = S.leagues[lkey(p.game, u.divisions[p.game].tier)];
@@ -438,6 +453,156 @@ function toggleStarter(pid) {
   if (p.starter) { p.starter = false; return null; }
   if (clubPlayers(p.club, p.game).filter(x => x.starter).length >= GAMES[p.game].size) return `Déjà ${GAMES[p.game].size} titulaire(s). Passez d'abord un joueur sur le banc.`;
   p.starter = true; return null;
+}
+
+// ---------- contrats détaillés (façon Football Manager) ----------
+const STATUSES = ["Espoir", "Remplaçant", "Rotation", "Titulaire", "Star"];
+const PERSONALITIES = {
+  "Calme":       { patience: 6, greed: 1.0,  w: { salary: 0.4, bonus: 0.1, share: 0.15, win: 0.05 }, desc: "Patient, ouvert à la discussion." },
+  "Loyal":       { patience: 6, greed: 0.92, w: { salary: 0.4, bonus: 0.1, share: 0.15, win: 0.05 }, desc: "Attaché au projet, demandes modérées." },
+  "Ambitieux":   { patience: 4, greed: 1.05, w: { salary: 0.35, bonus: 0.1, share: 0.15, win: 0.05 }, status: 2, desc: "Veut un rôle important et une clause pour partir vers plus grand." },
+  "Mercenaire":  { patience: 3, greed: 1.12, w: { salary: 0.5, bonus: 0.2, share: 0.2, win: 0.1 }, desc: "Pense d'abord à l'argent." },
+  "Exigeant":    { patience: 2, greed: 1.1,  w: { salary: 0.4, bonus: 0.12, share: 0.18, win: 0.05 }, status: 1.5, desc: "Peu de patience, déteste les offres au rabais." },
+  "Jeune talent":{ patience: 5, greed: 0.95, w: { salary: 0.3, bonus: 0.08, share: 0.1, win: 0.03 }, status: 1.5, desc: "Veut du temps de jeu avant tout." },
+};
+const hashOf = str => [...str].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7);
+function personalityOf(p) {
+  if (!p.personality) {
+    const keys = ["Calme", "Loyal", "Ambitieux", "Mercenaire", "Exigeant"];
+    p.personality = p.age <= 19 && hashOf(p.id) % 2 ? "Jeune talent" : keys[hashOf(p.handle + p.id) % keys.length];
+  }
+  return p.personality;
+}
+const nowIndex = () => S.season * 100 + S.week;
+// part des gains conservée par le club du joueur dans un jeu donné
+function clubKeep(game) {
+  const ps = clubPlayers(S.userId, game);
+  if (!ps.length) return 0.5;
+  return clamp(1 - ps.reduce((t, p) => t + (p.prizeShare ?? 50), 0) / ps.length / 100, 0, 1);
+}
+// statut que le joueur estime mériter dans votre effectif
+function expectedStatus(p, club) {
+  const mates = clubPlayers(club.id, p.game).filter(x => x.id !== p.id).map(x => x.rating).sort((a, b) => b - a);
+  const rank = mates.filter(r => r > p.rating).length, size = GAMES[p.game].size;
+  if (p.age <= 19 && p.rating < 75) return "Espoir";
+  if (rank === 0 && p.rating >= 80) return "Star";
+  if (rank < size) return "Titulaire";
+  return rank < size + 2 ? "Rotation" : "Remplaçant";
+}
+// ce que demande le joueur (et son agent)
+function contractDemands(p, club, ctx) {
+  const pers = PERSONALITIES[personalityOf(p)];
+  const greed = pers.greed * (ctx === "renew" && p.morale < 40 ? 1.25 : 1) * (ctx === "renew" && personalityOf(p) === "Loyal" ? 0.92 : 1);
+  const salary = round50(salaryDemand(p, club) * greed);
+  const value = playerValue(p);
+  const star = p.rating >= 82 || personalityOf(p) === "Ambitieux";
+  return {
+    salary,
+    years: p.age <= 21 ? [2, 4] : p.age >= 28 ? [2, 3] : personalityOf(p) === "Ambitieux" ? [1, 2] : [1, 3],
+    bonus: round50(salary * rand(3, 6) * (personalityOf(p) === "Mercenaire" ? 1.6 : 1)),
+    agentFee: Math.max(200, Math.round(Math.min(value * 0.06, salary * rand(4, 10)) / 100) * 100),
+    prizeShare: clamp(Math.round(30 + (p.rating - 70) * 1.2 + (personalityOf(p) === "Mercenaire" ? 10 : 0)), 15, 75),
+    winBonus: round50(salary * rand(0.08, 0.2)),
+    clauseMax: star ? Math.round(value * rand(1.6, 2.6) / 10000) * 10000 : 0,
+    status: expectedStatus(p, club),
+  };
+}
+function startNegotiation(pid, ctx, fee = 0) {
+  const p = S.players[pid], u = user();
+  if (p.noTalkUntil && p.noTalkUntil > nowIndex()) return { error: `${p.handle} refuse de vous parler pour le moment, après l'échec des dernières négociations.` };
+  if (ctx === "transfer" && !interestCheck(p)) return { error: `${p.handle} n'est pas intéressé par le projet : votre club manque de notoriété ou évolue trop bas.` };
+  const pers = PERSONALITIES[personalityOf(p)];
+  const patience = pers.patience + randi(0, 1);
+  return { pid, ctx, fee, dem: contractDemands(p, u, ctx), patience, maxPatience: patience, log: [], round: 0 };
+}
+const REPLIES = {
+  insult: ["« Vous vous moquez de mon client ? »", "L'agent éclate de rire avant de raccrocher à moitié.", "« Avec cette offre, on ne va pas aller loin. C'est presque insultant. »"],
+  low: ["« On est encore loin du compte. »", "« Mon client attend un vrai effort de votre part. »", "« Ce n'est pas sérieux, revenez avec mieux. »"],
+  close: ["« On se rapproche, mais il manque encore quelque chose. »", "« Encore un petit effort et on signe. »", "« C'est presque bon. »"],
+};
+// évalue une offre : renvoie accept / counter / walk avec la réaction de l'agent
+function proposeContract(N, offer) {
+  const p = S.players[N.pid], d = N.dem, pers = PERSONALITIES[personalityOf(p)];
+  const ratio = (v, want) => want <= 0 ? 1.1 : Math.min(1.15, v / want);
+  const parts = {
+    salary: ratio(offer.salary, d.salary), bonus: ratio(offer.bonus, d.bonus),
+    share: ratio(offer.prizeShare, d.prizeShare), win: ratio(offer.winBonus, d.winBonus),
+  };
+  let score = Object.entries(pers.w).reduce((t, [k, w]) => t + w * parts[k], 0) / Object.values(pers.w).reduce((a, b) => a + b, 0);
+  const issues = [];
+  const statusGap = STATUSES.indexOf(d.status) - STATUSES.indexOf(offer.status);
+  if (statusGap > 0) { score -= statusGap * 0.06 * (pers.status || 1); issues.push(`veut le statut « ${d.status} »`); }
+  if (offer.years < d.years[0] || offer.years > d.years[1]) { score -= 0.04; issues.push(`souhaite un contrat de ${d.years[0]} à ${d.years[1]} ans`); }
+  if (d.clauseMax && (!offer.clause || offer.clause > d.clauseMax)) { score -= offer.clause ? 0.05 : 0.08; issues.push(`exige une clause libératoire ≤ ${money(d.clauseMax)}`); }
+  const agentR = offer.agentFee / d.agentFee;
+  if (agentR < 1) { score -= (1 - agentR) * 0.12; if (agentR < 0.8) issues.push(`l'agent réclame ${money(d.agentFee)} de commission`); }
+  for (const [k, lbl] of [["share", "la part du cashprize trop basse"], ["bonus", "la prime à la signature trop basse"], ["salary", "le salaire trop bas"]]) if (parts[k] < 0.92) issues.unshift(`trouve ${lbl}`);
+  N.round++;
+  N.log.push({ offer: { ...offer }, score });
+  if (score >= 0.97) return { status: "accept", msg: "« Marché conclu, mon client est ravi ! »" };
+  let tone;
+  if (score < 0.72 || agentR < 0.4) { N.patience -= 2; tone = "insult"; }
+  else if (score < 0.88) { N.patience -= 1; tone = "low"; }
+  else { N.patience -= 1; tone = "close"; d.salary = round50(d.salary * 0.97); d.bonus = round50(d.bonus * 0.95); }
+  if (N.patience <= 0) {
+    p.noTalkUntil = nowIndex() + 4;
+    p.morale = clamp(p.morale - (N.ctx === "renew" ? 15 : 0), 0, 100);
+    return { status: "walk", msg: `${pick(REPLIES[tone === "close" ? "low" : tone])} ${p.handle} met fin aux négociations et ne veut plus en entendre parler pendant 4 semaines.` };
+  }
+  return { status: "counter", tone, msg: pick(REPLIES[tone]) + (issues.length ? " Il " + issues.slice(0, 3).join(", ") + "." : "") };
+}
+// applique le contrat signé
+function acceptContract(N, offer) {
+  const p = S.players[N.pid], u = user();
+  const upfront = offer.bonus + offer.agentFee + (N.ctx === "transfer" ? N.fee : 0);
+  if (u.budget < upfront) return `Budget insuffisant : il faut ${money(upfront)} tout de suite (prime, commission${N.ctx === "transfer" ? ", transfert" : ""}).`;
+  u.budget -= upfront;
+  let from = "";
+  if (N.ctx === "transfer") {
+    const seller = S.clubs[p.club];
+    from = seller.solo ? " (indépendant)" : ` (transfert depuis ${seller.name} : ${money(N.fee)})`;
+    seller.budget += N.fee;
+    removeFromClub(p);
+    joinClub(p, u, offer.salary, offer.years);
+    aiFillRoster(seller.id, p.game);
+    u.fame = clamp(u.fame + Math.max(0, (p.rating - 80) * 0.15), 0, 100);
+  } else if (N.ctx === "sign") {
+    joinClub(p, u, offer.salary, offer.years);
+  }
+  Object.assign(p, { salary: offer.salary, years: offer.years, prizeShare: offer.prizeShare, winBonus: offer.winBonus, clause: offer.clause, status: offer.status, promiseBroken: 0 });
+  p.morale = clamp(p.morale + 10, 0, 100);
+  mail(`${N.ctx === "renew" ? "Prolongation" : "Signature"} : ${p.handle}`,
+    `${flag(p.nat)} <b>${p.handle}</b> (${GAMES[p.game].short}, ${p.rating})${from} — ${offer.years} an(s), ${money(offer.salary)}/sem, statut « ${offer.status} ».<br>
+     Prime de signature ${money(offer.bonus)} · commission d'agent ${money(offer.agentFee)} · ${offer.prizeShare} % des cashprizes · prime de victoire ${money(offer.winBonus)} · clause libératoire ${offer.clause ? money(offer.clause) : "aucune"}.`, "transfer");
+  return null;
+}
+// prix d'une clause libératoire d'un joueur IA : son club ne peut pas refuser
+function payClause(pid) { const p = S.players[pid]; return p.clause > 0 ? startNegotiation(pid, "transfer", p.clause) : { error: "Ce joueur n'a pas de clause libératoire." }; }
+// effets hebdomadaires : promesses de statut, clauses activées par d'autres clubs
+function weeklyContractEffects() {
+  const u = user();
+  for (const p of allUserPlayers()) {
+    const promised = STATUSES.indexOf(p.status || "Titulaire");
+    if (promised >= 3 && !p.starter) {
+      p.morale = clamp(p.morale - (promised === 4 ? 4 : 2.5), 0, 100);
+      p.promiseBroken = (p.promiseBroken || 0) + 1;
+      if (p.promiseBroken === 3) mail(`😠 ${p.handle} se sent trahi`, `On lui avait promis le statut « ${p.status} », mais il est sur le banc depuis 3 semaines. Son moral chute.`, "transfer");
+    } else p.promiseBroken = 0;
+    // un club plus prestigieux peut payer la clause
+    if (p.clause > 0 && p.rating >= 75 && p.clause <= playerValue(p) * 1.6 && Math.random() < 0.04) {
+      const myTier = u.divisions[p.game].tier;
+      const buyers = Object.values(S.clubs).filter(c => c.ai && !c.solo && c.divisions[p.game] && c.divisions[p.game].tier <= myTier && c.fame > u.fame - 5);
+      if (!buyers.length) continue;
+      const buyer = pick(buyers);
+      u.budget += p.clause;
+      removeFromClub(p);
+      joinClub(p, buyer, salaryDemand(p, buyer), randi(2, 4));
+      const roster = clubPlayers(buyer.id, p.game);
+      if (roster.length > GAMES[p.game].size + 2) { const worst = roster.filter(x => x.id !== p.id).sort((a, b) => a.rating - b.rating)[0]; removeFromClub(worst); worst.years = 0; }
+      mail(`💸 Clause activée : ${p.handle}`, `<b>${buyer.name}</b> a payé la clause libératoire de ${p.handle} (${money(p.clause)}). Le joueur quitte le club.`, "transfer");
+      p.clause = 0;
+    }
+  }
 }
 
 // ---------- matchs ----------
@@ -522,10 +687,15 @@ function advanceWeek() {
   const u = user();
   const report = { matches: [], lobbies: [], tournaments: [], income: {}, expenses: {}, events: [] };
   const w = S.week, R = REGULAR_WEEKS;
-  const pay = (id, amount) => { S.clubs[id].budget += amount; if (id === u.id) report.income.prize = (report.income.prize || 0) + amount; };
+  // gains : le club du joueur ne garde que la part prévue dans les contrats (le reste revient aux joueurs)
+  const pay = (id, amount, game) => {
+    if (id === u.id) { amount = Math.round(amount * clubKeep(game)); report.income.prize = (report.income.prize || 0) + amount; }
+    S.clubs[id].budget += amount;
+  };
 
   for (const L of Object.values(S.leagues)) {
     const g = GAMES[L.game], prize = tierPrize(L.game, L.tier), mine = L.teams.includes(u.id);
+    const payL = (id, amount) => pay(id, amount, L.game);
     if (g.fmt === "br") {
       if (w <= R) {
         const lob = playLobby(L, L.teams.filter(id => S.clubs[id]), g.gamesPerWeek);
@@ -533,7 +703,7 @@ function advanceWeek() {
           const t = L.table[id] || (L.table[id] = emptyRow("br"));
           t.pts += r.pts; t.kills += r.kills; t.top1 += r.top1; t.games += r.places.length; t.place += r.places.reduce((a, b) => a + b, 0);
         }
-        lob.ranked.slice(0, 3).forEach((id, i) => pay(id, prize * [0.02, 0.01, 0.005][i]));
+        lob.ranked.slice(0, 3).forEach((id, i) => payL(id, prize * [0.02, 0.01, 0.005][i]));
         L.results.push({ week: w, top: lob.ranked.slice(0, 3), pts: lob.ranked.slice(0, 3).map(id => lob.res[id].pts), mvp: lob.mvp });
         if (mine) report.lobbies.push({ game: L.game, tier: L.tier, ...lob, stage: "Journée " + w, mine: lob.res[u.id], rank: lob.ranked.indexOf(u.id) + 1 });
       } else {
@@ -546,7 +716,7 @@ function advanceWeek() {
         if (w === R + 2) {
           const order = P.finalists.filter(id => S.clubs[id]).sort((a, b) => (P.pts[b] || 0) - (P.pts[a] || 0));
           P.order = order; L.champion = order[0];
-          [0.4, 0.2, 0.1, 0.1].forEach((part, i) => order[i] && pay(order[i], prize * part));
+          [0.4, 0.2, 0.1, 0.1].forEach((part, i) => order[i] && payL(order[i], prize * part));
           crown(L, order[0], order[1], `${P.pts[order[0]]} pts sur la finale`);
         }
       }
@@ -561,7 +731,7 @@ function advanceWeek() {
         const ta = L.table[a] || (L.table[a] = emptyRow(g.fmt)), tb = L.table[b] || (L.table[b] = emptyRow(g.fmt));
         ta.mw += r.sa; ta.ml += r.sb; tb.mw += r.sb; tb.ml += r.sa;
         r.winner === a ? (ta.w++, tb.l++) : (tb.w++, ta.l++);
-        pay(r.winner, prize * 0.005);
+        payL(r.winner, prize * 0.005);
         if (a === u.id || b === u.id) report.matches.push({ ...r, game: L.game, tier: L.tier });
       }
     } else if (w === R + 1) {
@@ -575,12 +745,18 @@ function advanceWeek() {
       f.stage = "Grande finale"; f.week = w;
       L.playoffs.final = f; L.champion = f.winner;
       if (f.a === u.id || f.b === u.id) report.matches.push({ ...f, game: L.game, tier: L.tier });
-      pay(f.winner, prize * 0.4); pay(f.loser, prize * 0.2); pay(s1.loser, prize * 0.1); pay(s2.loser, prize * 0.1);
+      payL(f.winner, prize * 0.4); payL(f.loser, prize * 0.2); payL(s1.loser, prize * 0.1); payL(s2.loser, prize * 0.1);
       crown(L, f.winner, f.loser, `${f.sa}-${f.sb} · MVP ${f.mvp}`);
     }
   }
 
   runTournaments(w, report, pay);
+
+  // primes de victoire prévues dans les contrats
+  let winBonuses = 0;
+  for (const r of report.matches) if (r.winner === u.id) winBonuses += clubPlayers(u.id, r.game).filter(p => p.starter).reduce((t, p) => t + (p.winBonus || 0), 0);
+  if (winBonuses) report.expenses.bonuses = winBonuses;
+  weeklyContractEffects();
 
   // économie du club joueur
   const fac = u.facilities;
@@ -594,7 +770,7 @@ function advanceWeek() {
   report.expenses.salaries = salaries; report.expenses.operations = Math.round(opCost); report.expenses.facilities = upkeep;
   const inc = Object.values(report.income).reduce((a, b) => a + b, 0);
   const exp = Object.values(report.expenses).reduce((a, b) => a + b, 0);
-  u.budget += sponsors + merch - salaries - opCost - upkeep;
+  u.budget += sponsors + merch - salaries - opCost - upkeep - winBonuses;
   u.fans = Math.round(u.fans * (1 + fac.content * 0.0015) + fac.content * 20);
   u.sponsorDeals = u.sponsorDeals.filter(d => --d.weeks > 0);
   S.finance.push({ label: `S${S.season % 100}-W${w}`, inc: Math.round(inc), exp: Math.round(exp), budget: Math.round(u.budget) });
@@ -687,8 +863,8 @@ function runTournaments(w, report, pay) {
       }
       order = round.concat(out.flat());
     }
-    // le club garde la moitié des gains, le reste revient aux joueurs
-    order.forEach((id, i) => pay(id, Math.round(prize * (PLACE_SHARE[i] || 0) * CLUB_SHARE)));
+    // les clubs IA gardent la moitié des gains ; le vôtre garde ce que prévoient les contrats
+    order.forEach((id, i) => { const amt = prize * (PLACE_SHARE[i] || 0); pay(id, Math.round(id === u.id ? amt : amt * CLUB_SHARE), game); });
     const champ = S.clubs[order[0]];
     champ.fame = clamp(champ.fame + (prize >= 1e6 ? 4 : prize >= 1e5 ? 2 : 0.5), 0, 100);
     champ.fans = Math.round(champ.fans * (prize >= 1e6 ? 1.05 : 1.01));
@@ -697,7 +873,7 @@ function runTournaments(w, report, pay) {
     const mine = order.indexOf(u.id) + 1;
     S.tourResults.push({ season: S.season, week: w, game, name, prize, n: field.length, top: order.slice(0, 4), mine: mine || null });
     if (mine) {
-      const won = Math.round(prize * (PLACE_SHARE[mine - 1] || 0) * CLUB_SHARE);
+      const won = Math.round(prize * (PLACE_SHARE[mine - 1] || 0) * clubKeep(game));
       report.tournaments.push({ game, name, place: mine, n: field.length, prize: won, winner: order[0] });
       if (mine === 1) mail(`🏆 ${name} remporté !`, `${u.name} remporte le <b>${name} ${S.season}</b> (${GAMES[game].name}) et empoche ${money(won)}.`, "trophy");
     }

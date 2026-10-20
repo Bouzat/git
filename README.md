@@ -50,6 +50,15 @@ Trois formats de compétition :
 
 En plus des ligues, chaque jeu a son calendrier de grands tournois (onglet **Tournois**) : First Stand, MSI et Worlds en LoL ; IEM, BLAST, les deux Majors et l'EWC en CS2 ; Masters et Champions en Valorant ; The International, DreamLeague et l'EWC en Dota 2 ; FNCS Majors et Global Championship en Fortnite ; Capcom Cup et EVO en SF6… plus des cash cups pour les petites scènes. Les tournois sur invitation prennent les meilleures équipes du tier 1, les opens accueillent tous les clubs des tiers admis. Le club garde 50 % des gains.
 
+## Contrats et négociation (façon FM)
+
+Chaque signature, transfert ou prolongation se négocie avec le joueur et son agent :
+- **Statut promis** (Star, Titulaire, Rotation, Remplaçant, Espoir) : si vous promettez une place de titulaire et laissez le joueur sur le banc, son moral s'effondre.
+- **Salaire, durée, prime à la signature, commission de l'agent, prime par victoire.**
+- **Part du cashprize** reversée au joueur : le club ne garde que le reste des gains de ligue et de tournoi.
+- **Clause libératoire** : les stars et les ambitieux en exigent une ; un club plus prestigieux peut alors racheter le joueur à ce prix. Vous pouvez aussi payer la clause d'un joueur adverse, son club ne peut pas refuser.
+- **Personnalité** (Calme, Loyal, Ambitieux, Mercenaire, Exigeant, Jeune talent) : elle change les demandes et la **patience**. Une offre insultante fait fondre la patience ; à zéro, le joueur claque la porte et refuse de vous parler pendant 4 semaines.
+
 ## Sponsors
 
 Les offres arrivent au fil des semaines, et vous pouvez démarcher des marques depuis l'onglet Finances (une fois par semaine). Chaque offre se négocie : contre-proposez un montant et une durée, la marque se rapproche de votre demande jusqu'à son plafond secret, mais elle peut rompre si vous êtes trop gourmand ou si les discussions s'éternisent.
