@@ -125,6 +125,14 @@ function addDivision(club, game, tier, roster) {
     p.starter = i < GAMES[game].size; addPlayer(p); club.divisions[game].players.push(p.id);
   });
 }
+// équipe supplémentaire d'une organisation dans un jeu solo/duo (ex. 2e duo Fortnite de Solary)
+function sisterClub(orgId, game) {
+  const base = orgClub(orgId);
+  let n = 2; while (S.clubs[`${orgId}~${game}${n}`]) n++;
+  const c = baseClub(`${orgId}~${game}${n}`, base.name, base.tag, base.country, base.color, base.fame, true);
+  c.sister = orgId;
+  return (S.clubs[c.id] = c);
+}
 // club indépendant : un joueur (ou un duo) qui joue sous son propre nom
 function soloClub(game, tier, roster) {
   const id = uid("solo");
@@ -178,8 +186,9 @@ function newWorld(opts) {
     const sizes = GAMES[game].tierSizes || [LEAGUE_SIZE, LEAGUE_SIZE];
     all.forEach((e, i) => {
       const tier = i < sizes[0] ? 1 : i < sizes[0] + sizes[1] ? 2 : 3;
-      // un même club ne peut avoir qu'une division par jeu : le 2e joueur solo d'une org joue sous son nom
-      const c = e.orgId && !(S.clubs[e.orgId] && S.clubs[e.orgId].divisions[game]) ? orgClub(e.orgId) : null;
+      // une org peut aligner plusieurs duos/joueurs dans un jeu solo : les suivants jouent dans une équipe « sœur » à ses couleurs
+      let c = e.orgId ? orgClub(e.orgId) : null;
+      if (c && c.divisions[game]) c = GAMES[game].size <= 2 ? sisterClub(e.orgId, game) : null;
       if (c) { addDivision(c, game, tier, e.roster); c.divisions[game].verified = e.verified || !!SOLOS[game]; }
       const club = c || soloClub(game, tier, e.roster);
       byTier[tier - 1].push(club.id);

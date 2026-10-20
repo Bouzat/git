@@ -110,9 +110,17 @@ if os.path.exists(eef):
     FN_ORGS = {("peterbot", "pollo"): "falcons", ("tjino", "pablowingu"): "havok", ("swizzy", "pixie"): "vitality",
                ("ritual", "cold"): "geng", ("shxrk", "t3eny"): "aurora", ("vic0", "malibuca"): "big", ("acorn", "boltz"): "tm",
                ("916gon", "night"): "furia", ("rax", "jannisz"): "m8", ("sky", "scroll"): "ag", ("darm", "demus"): "t1",
-               ("yuma", "koyota"): "zeta", ("higgs", "curve"): "xset", ("victerv", "queasy"): "dignitas", ("charyy", "kami"): "alqadsiah"}
+               ("yuma", "koyota"): "zeta", ("higgs", "curve"): "xset", ("victerv", "queasy"): "dignitas", ("charyy", "kami"): "alqadsiah",
+               # FNCS 2026 Major 2 (Liquipedia, via la presse) et pages d'organisations (Fandom)
+               ("cr1nge", "twi"): "xp42", ("idrop", "ghonzo"): "solary", ("minori", "darkos"): "solary", ("ajerss", "veno"): "xset",
+               ("muz", "rise"): "xset", ("clix", "rapid"): "xset", ("kingaling", "kraez"): "geng", ("josh", "eomzo"): "elite",
+               ("golden", "ozone"): "force", ("vadeal", "juu"): "wave"}
     live_orgs.setdefault("havok", ["HavoK", "HVK", "SE", "#e63946", 58])
-    live_orgs.setdefault("ag", ["AG", "AG", "DK", "#c9a227", 55])
+    live_orgs.setdefault("ag", ["All Gamers Global", "AG", "DK", "#c9a227", 55])
+    for k, v in {"xp42": ["XP42 Esports", "XP42", "", "#3d5a80", 46], "solary": ["Solary", "SLY", "FR", "#00a2ff", 58],
+                 "elite": ["Elite Esports", "ELT", "GB", "#d4af37", 48], "force": ["Force Esports", "FRC", "US", "#ff5d5d", 44],
+                 "wave": ["Wave Esports", "WAVE", "DE", "#3fa7d6", 44]}.items():
+        live_orgs.setdefault(k, v)
     live_orgs.setdefault("xset", ["XSET", "XSET", "US", "#7b2cbf", 56])
     live_orgs.setdefault("dignitas", ["Dignitas", "DIG", "US", "#f2c94c", 56])
     live_orgs.setdefault("alqadsiah", ["Al Qadsiah", "QAD", "SA", "#e0b100", 52])
@@ -127,6 +135,12 @@ if os.path.exists(eef):
         key = tuple(sorted(norm(p[0]) for p in ps))
         org = next((o for k, o in FN_ORGS.items() if tuple(sorted(k)) == key), None)
         duos.append([org, ps] if org else ps)
+    # duos d'organisations trouvés sur les pages d'équipes (Fandom) et absents des grands classements
+    for org, a1, c1, a2, c2, r in [("solary", "Minori", "CH", "Darkos", "FR", 81), ("wave", "Vadeal", "", "Juu", "", 79)]:
+        if norm(a1) in seen or norm(a2) in seen: continue
+        duos.insert(60, [[a1, c1, r, 0], [a2, c2, r - 1, 0]])
+        FN_ORGS[(norm(a1), norm(a2))] = org
+        seen.update((norm(a1), norm(a2)))
     # duos qualifiés au Global Championship 2026 par le Last Chance Qualifier (Hotspawn)
     LCQ = [("Momsy", "Seyyto"), ("Huty", "F1shyx"), ("Izzi", "Nociff"), ("Hcube", "Encrypted"), ("slepzi", "Wagers"), ("Ark", "Khanada"),
            ("Randu", "Grx"), ("Rura", "Pinq"), ("Mshary", "SaLva"), ("Phazma", "Crusades"), ("Howly", "1Lusha"), ("5aald", "Smiky")]
@@ -147,6 +161,12 @@ if os.path.exists(eef):
         ps = [[m["h"], m["cc"], rating - i, info.get(k, ("", 0, ""))[1]] for i, (m, k) in enumerate(zip(r["members"], ms))]
         seen.update(ms)
         duos.append(ps)
+    def with_org(x):
+        ps = x[1] if isinstance(x[0], str) else x
+        key = tuple(sorted(norm(p[0]) for p in ps))
+        org = next((o for k, o in FN_ORGS.items() if tuple(sorted(k)) == key), None)
+        return [org, ps] if org else ps
+    duos = [with_org(x) for x in duos]
     solos["fn"] = duos[:110]   # 20 en tier 1, 60 en tier 2, 30 en tier 3 (le reste de la scène est amateur)
 
 # âges réels (Wikidata) pour tous les joueurs déjà présents dans data.js
