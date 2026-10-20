@@ -1,8 +1,14 @@
 # Construit js/data_live.js à partir des données récupérées (VLR, Wikidata…).
 # Usage : python3 tools/build_live.py <dossier des données> js/data_live.js
 import csv, json, os, re, subprocess, sys, unicodedata, zlib
+
+# calendrier du jeu : semaines réelles (ISO) de la saison, de début janvier (semaine 2) à mi-décembre (semaine 50)
+SEASON_FIRST, SEASON_LAST = 2, 50
+def iso_week(year, doy):
+    import datetime as _dt
+    return max(SEASON_FIRST, min(SEASON_LAST, (_dt.date(year, 1, 1) + _dt.timedelta(days=doy - 1)).isocalendar()[1]))
 SRC, OUT = sys.argv[1], sys.argv[2]
-LIVE_FORMAT = 3   # à incrémenter avec LIVE_EXPECTED (js/data.js) quand le contenu change de façon importante
+LIVE_FORMAT = 4   # à incrémenter avec LIVE_EXPECTED (js/data.js) quand le contenu change de façon importante
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # données actuelles du jeu (orgs, notes connues des joueurs)
@@ -612,7 +618,7 @@ if os.path.exists(val_csv):
     for k, row in latest.items():
         doy = mid_doy(row["date"], row["year"])
         if doy is None: continue
-        week = max(1, min(13, 1 + (doy - 15) // 25))
+        week = iso_week(row["year"], doy)
         name = "EWC — VALORANT" if k.startswith("Esports World Cup") else k
         eur = round(row["usd"] * 0.92 / 1000) * 1000
         t = [name, week, eur, tiers_of(row), max(4, min(16, row["n"]))]
@@ -627,7 +633,7 @@ if os.path.exists(val_csv):
     gc_latest = max((r for r in rows if "game changers championship" in r["name"].lower()), key=lambda r: r["year"], default=None)
     if gc_latest:
         doy = mid_doy(gc_latest["date"], gc_latest["year"])
-        live_tours["valgc"] = [["VALORANT Game Changers Championship", max(1, min(13, 1 + (doy - 15) // 25)), round(gc_latest["usd"] * 0.92 / 1000) * 1000, "1", min(16, gc_latest["n"])]]
+        live_tours["valgc"] = [["VALORANT Game Changers Championship", iso_week(gc_latest["year"], doy), round(gc_latest["usd"] * 0.92 / 1000) * 1000, "1", min(16, gc_latest["n"])]]
     print("Valorant : %d tournois au calendrier, %d résultats historiques" % (len(cal), len(live_history["val"])), file=sys.stderr)
 
 # ---------- tournois Rocket League (Google Sheet de l'utilisateur, d'après Liquipedia) ----------
@@ -675,10 +681,8 @@ if os.path.exists(rl_csv):
         if SKIP.search(nm): continue
         season2026 = ("RLCS 2026" in nm) if "RLCS" in nm else row["year"] == 2026
         if not season2026: continue
-        week = 1 if row["year"] < 2026 else max(1, min(13, 1 + (row["doy"] - 15) // 25))
-        # les Opens régionaux s'étalent avant leur Major (Boston : semaines 1-2, Paris : semaines 3-5)
-        mo = re.search(r"(Boston|Paris) Major: \w+ Open (\d)", nm)
-        if mo: week = {"Boston": [1, 1, 2], "Paris": [3, 4, 5]}[mo.group(1)][(int(mo.group(2)) - 1) % 3]
+        # semaine réelle (ISO) du tournoi ; ceux de la saison qui ont commencé en 2025 (Kick-Off) ouvrent le calendrier
+        week = SEASON_FIRST if row["year"] < 2026 else iso_week(row["year"], row["doy"])
         clean = re.sub(r"\s*\b20\d\d\b\s*(-\s*)?", " ", nm).replace("  ", " ").strip()
         clean = re.sub(r"^RLCS\s*-?\s*", "RLCS ", clean).strip()
         if clean.startswith("Esports World Cup"): clean = "EWC — Rocket League"

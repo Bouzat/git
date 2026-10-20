@@ -2,7 +2,8 @@
 //  ESPORTS MANAGER — Moteur de simulation (état, matchs, économie)
 // =====================================================================
 
-const SAVE_KEY = "esports-manager-save-v2";
+// v3 : calendrier réel et ligues régionales (les parties v2 ne sont plus compatibles)
+const SAVE_KEY = "esports-manager-save-v3";
 const FACILITIES = {
   house:     { name: "Gaming House",        icon: "🏠", desc: "Moral et forme des joueurs." },
   coaching:  { name: "Staff de coaching",   icon: "🧠", desc: "Bonus de performance en match + progression." },
@@ -12,7 +13,6 @@ const FACILITIES = {
 };
 const MAX_FAC = 5;
 const LEAGUE_SIZE = 12;          // équipes (ou joueurs) par circuit
-const REGULAR_WEEKS = 11;        // saison régulière ; puis demies (S12) et finale (S13)
 const START_BUDGET = 250000;     // budget d'un club créé de zéro
 const TIER_LABEL = ["Tier 1", "Tier 2", "Tier 3"];
 const TIER_PRIZE = [1, 0.08, 0.012];        // part du cashprize du jeu
@@ -21,6 +21,31 @@ const TIER_OP = [3500, 700, 100];            // frais hebdo par joueur
 const TIER_SPONSOR = [6000, 2000, 500];    // revenus sponsors liés à la division
 const TIER_RATING = [[80, 88], [70, 80], [61, 74]]; // niveau des joueurs générés
 const TIER_FAME_TARGET = [75, 40, 15];
+
+// ---------- calendrier réel ----------
+// la saison suit l'année : semaines ISO 2 (début janvier) à 50 (mi-décembre)
+const SEASON_FIRST = 2, SEASON_LAST = 50;
+const range = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
+// journées de ligue : split 1 (mi-janvier → fin mars), split 2 (avril → mi-juin) ; playoffs en septembre, après l'EWC
+const LEAGUE_DAYS = [...range(3, 13), ...range(15, 25)];
+const PO_SEMI = 37, PO_FINAL = 38;
+const SEASON_WEEKS = SEASON_LAST - SEASON_FIRST + 1;
+// les probabilités hebdomadaires (progression, événements…) étaient réglées pour une saison de 13 semaines
+const WEEK_SCALE = 13 / SEASON_WEEKS;
+const matchday = w => LEAGUE_DAYS.indexOf(w) + 1;
+const MONTHS = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
+// lundi de la semaine ISO w
+function weekMonday(season, w) {
+  const jan4 = new Date(Date.UTC(season, 0, 4)), dow = (jan4.getUTCDay() + 6) % 7;
+  return new Date(Date.UTC(season, 0, 4 - dow + (w - 1) * 7));
+}
+// « 12-18 janv. » ou « 26 janv. - 1 févr. » (avec l'année si demandé)
+function weekLabel(season, w, year) {
+  if (season === undefined) { season = S.season; w = S.week; }
+  const a = weekMonday(season, w), b = new Date(a.getTime() + 6 * 864e5);
+  const txt = a.getUTCMonth() === b.getUTCMonth() ? `${a.getUTCDate()}-${b.getUTCDate()} ${MONTHS[b.getUTCMonth()]}` : `${a.getUTCDate()} ${MONTHS[a.getUTCMonth()]} - ${b.getUTCDate()} ${MONTHS[b.getUTCMonth()]}`;
+  return year ? `${txt} ${b.getUTCFullYear()}` : txt;
+}
 
 let S = null; // état global
 
@@ -31,8 +56,11 @@ const pick = arr => arr[Math.floor(Math.random() * arr.length)];
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const shuffle = arr => { const a = arr.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 const uid = (() => { let n = 0; return p => p + "_" + Date.now().toString(36) + "_" + (n++).toString(36); })();
-// une seule ligue pour les jeux en circuit ouvert (Fortnite), quel que soit le statut du club
-const lkey = (game, tier) => game + ":" + (GAMES[game] && GAMES[game].open ? 1 : tier);
+// une ligue par jeu, tier et zone (LEC, LCK…) ; une seule ligue par zone pour les circuits ouverts (Fortnite), quel que soit le statut du club
+const lkey = (game, tier, zone = "W") => `${game}:${GAMES[game] && GAMES[game].open ? 1 : tier}:${zone}`;
+const leagueOf = (clubId, game) => { const d = divOf(clubId, game); return d ? S.leagues[lkey(game, d.tier, d.zone || "W")] : null; };
+const leaguesOf = game => Object.values(S.leagues).filter(L => L.game === game);
+const MIN_LEAGUE = 8;            // taille minimale d'une ligue régionale (complétée par des clubs fictifs)
 const tierLabel = (game, t) => (GAMES[game] && GAMES[game].statuses ? GAMES[game].statuses : TIER_LABEL)[t - 1];
 
 function flag(cc) {
@@ -57,8 +85,51 @@ function genHandle() {
 }
 function tierPrize(game, tier) { return Math.round(GAMES[game].prize * TIER_PRIZE[tier - 1]); }
 function tierEntry(game, tier) { return Math.round(GAMES[game].prize * [0.3, 0.04, 0.004][tier - 1] / 1000) * 1000; }
-function tierName(game, tier) { return GAMES[game].tiers[tier - 1]; }
-function leagueName(L) { return GAMES[L.game].open ? GAMES[L.game].circuit : tierName(L.game, L.tier); }
+// nom réel de la ligue : « LEC », « VCT Pacific », « FNCS Europe »…
+function tierName(game, tier, zone) {
+  const Z = GAME_ZONES[game];
+  if (!Z || !zone || zone === "W") return GAMES[game].tiers[tier - 1];
+  const n = Z.names[tier - 1], v = typeof n === "string" ? n : n[zone] || GAMES[game].tiers[tier - 1];
+  return v.replace("{z}", ZONE_NAMES[zone]);
+}
+function leagueName(L) { return tierName(L.game, L.tier, L.zone); }
+// ligue d'un club dans un jeu (nom)
+const divName = (clubId, game) => { const d = divOf(clubId, game); return d ? tierName(game, GAMES[game].open ? 1 : d.tier, d.zone) : ""; };
+// tailles des ligues tier 1 et tier 2 d'une zone
+const zoneSizes = game => GAME_ZONES[game] && GAME_ZONES[game].sizes ? GAME_ZONES[game].sizes : GAMES[game].tierSizes && !GAMES[game].open ? GAMES[game].tierSizes : [LEAGUE_SIZE, LEAGUE_SIZE];
+// zone d'une équipe des données réelles, avant la création du monde (même règle que clubRegion)
+function entryZone(game, orgId, roster) {
+  const ov = orgId && REGION_OVERRIDES[game + ":" + orgId], occ = orgId && ORGS[orgId] ? ORGS[orgId][2] : null;
+  if (ov) return zoneFrom(game, ov, occ);
+  if (GAMES[game].fmt === "team" && occ) return zoneFrom(game, REGION_OF[occ] || "EU", occ);
+  const cc = roster[0] ? roster[0][1] : occ;
+  return zoneFrom(game, REGION_OF[cc] || "EU", cc);
+}
+// pays d'une zone (pour les clubs et joueurs fictifs)
+function zoneCountries(game, zone) {
+  const cache = zoneCountries.c || (zoneCountries.c = {}), k = game + ":" + zone;
+  if (!cache[k]) {
+    const all = [...new Set(Object.keys(COUNTRIES).concat(Object.keys(REGION_OF)))];
+    cache[k] = zone === "W" ? Object.keys(COUNTRIES) : all.filter(cc => zoneFrom(game, REGION_OF[cc] || "EU", cc) === zone);
+    if (!cache[k].length) cache[k] = Object.keys(COUNTRIES);
+  }
+  return cache[k];
+}
+// répartition des équipes réelles par zone et par tier, dans l'ordre des données (les meilleures d'abord)
+function planTiers(game) {
+  const g = GAMES[game], sizes = zoneSizes(game), count = {};
+  const entries = (ROSTERS[game] || []).map(([orgId, roster, verified, label]) => ({ orgId, roster, verified: !!verified, label, avg: roster.reduce((s, p) => s + p[2], 0) / roster.length }));
+  // entrée SOLOS : un joueur, un duo, ou [org, duo] pour un duo signé dans une organisation
+  const solos = (SOLOS[game] || []).map(x => typeof x[0] === "string" && Array.isArray(x[1]) && Array.isArray(x[1][0]) ? { orgId: x[0], roster: x[1] } : { roster: Array.isArray(x[0]) ? x : [x] })
+    .map(e => ({ ...e, avg: e.roster.reduce((s, p) => s + p[2], 0) / e.roster.length })).sort((a, b) => b.avg - a.avg);
+  const all = entries.concat(solos);
+  for (const e of all) {
+    e.zone = entryZone(game, e.orgId, e.roster);
+    const n = count[e.zone] = (count[e.zone] || 0) + 1;
+    e.tier = g.open ? 1 : n <= sizes[0] ? 1 : n <= sizes[0] + sizes[1] ? 2 : 3;
+  }
+  return all;
+}
 
 // ---------- joueurs ----------
 function playerValue(p) {
@@ -102,8 +173,10 @@ function addPlayer(p) { S.players[p.id] = p; }
 const user = () => S.clubs[S.userId];
 const divOf = (clubId, game) => S.clubs[clubId] && S.clubs[clubId].divisions[game];
 const clubPlayers = (clubId, game) => { const d = divOf(clubId, game); return d ? d.players.map(id => S.players[id]).filter(Boolean) : []; };
-const allUserPlayers = () => Object.keys(user().divisions).flatMap(g => clubPlayers(S.userId, g)).concat(userAcademies().flatMap(a => clubPlayers(a.id, a.academyOf)));
-function soloName(club, game) { return clubPlayers(club.id, game).map(p => p.handle).join(" & ") || club.name; }
+const allUserPlayers = () => Object.keys(user().divisions).flatMap(g => gamePlayers(g));
+// noms des joueurs d'une équipe ; un partenaire extérieur au club est marqué d'un astérisque
+function soloName(club, game) { return clubPlayers(club.id, game).map(p => p.handle).concat(unitMates(club.id, game).map(p => p.handle + "*")).join(" & ") || club.name; }
+const unitMates = (clubId, game) => { const d = divOf(clubId, game); return d && d.mates ? d.mates.map(id => S.players[id]).filter(Boolean) : []; };
 
 // ---------- clubs ----------
 // ---------- palmarès réel ----------
@@ -139,7 +212,10 @@ function seedRealHistory() {
 // une académie est une seconde équipe du club du joueur dans un jeu par équipes, deux tiers sous l'équipe première au mieux un tier sous elle
 const academyId = game => `${S.userId}~aca~${game}`;
 const academyOf = game => S.clubs[academyId(game)] || null;
-const userAcademies = () => Object.values(S.clubs).filter(c => c.parent === S.userId);
+const userAcademies = () => Object.values(S.clubs).filter(c => c.parent === S.userId && c.academyOf);
+// toutes les équipes du club du joueur dans un jeu : équipe première, académie, autres duos/trios (Fortnite)
+const userTeams = game => [S.userId].concat(Object.values(S.clubs).filter(c => c.parent === S.userId && c.divisions[game]).map(c => c.id)).filter(id => divOf(id, game));
+const gamePlayers = game => userTeams(game).flatMap(id => clubPlayers(id, game));
 const canHaveAcademy = game => GAMES[game].fmt === "team";
 // installations d'un club (une académie utilise celles de son club)
 const facOf = c => (c.parent && S.clubs[c.parent] ? S.clubs[c.parent] : c).facilities;
@@ -167,12 +243,13 @@ function academyProspect(game, aca) {
 function createAcademy(game) {
   const e = canCreateAcademy(game); if (e) return e;
   const u = user(), g = GAMES[game];
-  u.budget -= academyCost(game);
+  book("academy", -academyCost(game), game, "Création de l'académie");
   const c = baseClub(academyId(game), `${u.name} Academy`, (u.tag + "A").slice(0, 5), u.country, u.color, Math.round(u.fame * 0.4), false);
   c.parent = u.id; c.academyOf = game;
   S.clubs[c.id] = c;
-  c.divisions[game] = { tier: 3, players: [] };
-  const L = S.leagues[lkey(game, 3)];
+  const zone = u.divisions[game].zone || "W";
+  c.divisions[game] = { tier: 3, zone, players: [] };
+  const L = S.leagues[lkey(game, 3, zone)];
   const fid = L.teams.find(id => S.clubs[id].filler);
   if (fid) { swapInLeague(L, fid, c.id); dissolveDivision(fid, game); } else { L.teams.push(c.id); L.table[c.id] = emptyRow(g.fmt); }
   for (let i = 0; i < g.size + 1; i++) academyProspect(game, c);
@@ -196,8 +273,8 @@ function moveToAcademy(pid) {
 function closeAcademy(game) {
   const aca = academyOf(game); if (!aca) return;
   for (const p of clubPlayers(aca.id, game)) releasePlayer(p.id, true);
-  const L = S.leagues[lkey(game, aca.divisions[game].tier)];
-  const f = fillerClub(game, aca.divisions[game].tier);
+  const L = leagueOf(aca.id, game);
+  const f = fillerClub(game, aca.divisions[game].tier, aca.divisions[game].zone);
   swapInLeague(L, aca.id, f.id);
   delete S.clubs[aca.id];
 }
@@ -216,8 +293,8 @@ function orgClub(id) {
   const [name, tag, cc, color, fame] = ORGS[id];
   return (S.clubs[id] = baseClub(id, name, tag, cc, color, fame, true));
 }
-function addDivision(club, game, tier, roster) {
-  club.divisions[game] = { tier, players: [] };
+function addDivision(club, game, tier, roster, zone = "W") {
+  club.divisions[game] = { tier, zone, players: [] };
   roster.forEach(([h, n, r, a], i) => {
     const p = makePlayer(h, n, r, a, game, i, club.id);
     p.starter = i < GAMES[game].size; addPlayer(p); club.divisions[game].players.push(p.id);
@@ -235,36 +312,38 @@ function sisterClub(orgId, game) {
   return (S.clubs[c.id] = c);
 }
 // club indépendant : un joueur (ou un duo) qui joue sous son propre nom
-function soloClub(game, tier, roster) {
+function soloClub(game, tier, roster, zone) {
   const id = uid("solo");
   const avg = roster.reduce((s, p) => s + p[2], 0) / roster.length;
   const c = baseClub(id, roster.map(p => p[0]).join(" & "), roster[0][0].slice(0, 4).toUpperCase(), roster[0][1],
     `hsl(${randi(0, 359)} 55% 55%)`, clamp(Math.round((avg - 55) * 1.5), 5, 70), true);
   c.solo = true;
-  addDivision(c, game, tier, roster);
+  addDivision(c, game, tier, roster, zone);
   S.clubs[id] = c;
   return c;
 }
 // club fictif : réutilise un nom libre pour ce jeu (un même club fictif peut avoir plusieurs divisions)
-function fillerClub(game, tier) {
+function fillerClub(game, tier, zone = "W") {
   const g = GAMES[game];
-  const [lo, hi] = TIER_RATING[tier - 1];
+  const [lo, hi] = TIER_RATING[tier - 1], ccs = zoneCountries(game, zone);
   if (g.fmt === "duel" || (g.fmt === "br" && g.size <= 2)) {
-    const roster = Array.from({ length: g.size }, () => [genHandle(), pick(Object.keys(COUNTRIES)), randi(lo, hi), randi(16, 27)]);
-    const c = soloClub(game, tier, roster); c.filler = true; return c;
+    const roster = Array.from({ length: g.size }, () => [genHandle(), pick(ccs), randi(lo, hi), randi(16, 27)]);
+    const c = soloClub(game, tier, roster, zone); c.filler = true; return c;
   }
-  let cand = shuffle(FILLER_NAMES).find(([n, tag]) => { const c = S.clubs["f_" + tag]; return !c || !c.divisions[game]; });
+  // un nom de club de la zone (« Seoul Phantoms » en Corée), libre dans ce jeu
+  let cand = shuffle(FILLER_NAMES).find(([n, tag, col, cc]) => { const c = S.clubs["f_" + tag]; return ccs.includes(cc) && (!c || !c.divisions[game]); });
   let c;
   if (cand) {
     const [name, tag, color, cc] = cand, id = "f_" + tag;
     c = S.clubs[id] || (S.clubs[id] = baseClub(id, name, tag, cc, color, randi(...[[45, 60], [20, 40], [5, 20]][tier - 1]), true));
   } else {
-    const tag = "X" + randi(100, 999);
-    c = S.clubs["f_" + tag] = baseClub("f_" + tag, pick(FILLER_NAMES)[0] + " " + tag, tag, "FR", "#888", 15, true);
+    let tag; do tag = "X" + randi(100, 999); while (S.clubs["f_" + tag]);
+    const local = FILLER_NAMES.filter(x => ccs.includes(x[3]));
+    c = S.clubs["f_" + tag] = baseClub("f_" + tag, (local.length ? pick(local) : pick(FILLER_NAMES))[0] + " " + tag, tag, pick(ccs), `hsl(${randi(0, 359)} 45% 50%)`, randi(...[[45, 60], [20, 40], [5, 20]][tier - 1]), true);
   }
   c.filler = true;
-  const roster = Array.from({ length: g.size }, (_, r) => [genHandle(), pick(Object.keys(COUNTRIES)), randi(lo, hi), randi(17, 29)]);
-  addDivision(c, game, tier, roster);
+  const roster = Array.from({ length: g.size }, () => [genHandle(), Math.random() < 0.7 && ccs.includes(c.country) ? c.country : pick(ccs), randi(lo, hi), randi(17, 29)]);
+  addDivision(c, game, tier, roster, zone);
   return c;
 }
 
@@ -272,48 +351,51 @@ function fillerClub(game, tier) {
 function newWorld(opts) {
   S = {
     version: 2, dataVersion: dataVersion(), ceo: opts.ceo, mode: opts.mode, season: 2026, week: 1, over: false,
-    clubs: {}, players: {}, leagues: {}, inbox: [], finance: [], titles: [],
+    clubs: {}, players: {}, leagues: {}, inbox: [], finance: [], titles: [], ledger: [], tourResults: [], tourChoice: {},
     userId: null, board: { confidence: 60, objective: null }, lastWeek: null,
   };
   applySeasonFormats();
   for (const game of Object.keys(GAMES)) {
-    const entries = [];
-    // 4e champ facultatif : nom propre de l'équipe dans ce jeu (ex. « G2 Gozen » pour la section Game Changers de G2)
-    for (const [orgId, roster, verified, label] of (ROSTERS[game] || [])) entries.push({ orgId, roster, verified: !!verified, label, avg: roster.reduce((s, p) => s + p[2], 0) / roster.length });
-    // entrée SOLOS : un joueur, un duo, ou [org, duo] pour un duo signé dans une organisation
-    const solos = (SOLOS[game] || []).map(x => typeof x[0] === "string" && Array.isArray(x[1]) && Array.isArray(x[1][0]) ? { orgId: x[0], roster: x[1] } : { roster: Array.isArray(x[0]) ? x : [x] })
-      .map(e => ({ ...e, avg: e.roster.reduce((s, p) => s + p[2], 0) / e.roster.length }));
-    solos.sort((a, b) => b.avg - a.avg);
-    const all = entries.concat(solos); // les orgs sont déjà classées
-    const byTier = [[], [], []];
-    const sizes = GAMES[game].tierSizes || [LEAGUE_SIZE, LEAGUE_SIZE];
-    all.forEach((e, i) => {
-      const tier = i < sizes[0] ? 1 : i < sizes[0] + sizes[1] ? 2 : 3;
+    const g = GAMES[game], open = g.open, sizes = zoneSizes(game);
+    const byZone = {};
+    const slot = z => byZone[z] || (byZone[z] = [[], [], []]);
+    const all = planTiers(game);
+    for (const e of all) {
       // une org peut aligner plusieurs duos/joueurs dans un jeu solo : les suivants jouent dans une équipe « sœur » à ses couleurs
       let c = e.orgId ? orgClub(e.orgId) : null;
-      if (c && c.divisions[game]) c = GAMES[game].size <= 2 ? sisterClub(e.orgId, game) : null;
-      if (c) { addDivision(c, game, tier, e.roster); c.divisions[game].verified = e.verified || !!SOLOS[game]; if (e.label) c.divisions[game].label = e.label; }
-      const club = c || soloClub(game, tier, e.roster);
-      byTier[tier - 1].push(club.id);
-    });
+      if (c && c.divisions[game]) c = g.size <= 2 ? sisterClub(e.orgId, game) : null;
+      if (c) { addDivision(c, game, e.tier, e.roster, e.zone); c.divisions[game].verified = e.verified || !!SOLOS[game]; if (e.label) c.divisions[game].label = e.label; }
+      const club = c || soloClub(game, e.tier, e.roster, e.zone);
+      slot(e.zone)[e.tier - 1].push(club.id);
+    }
     // divisions réelles sans effectif connu : joueurs inventés au niveau du club
     for (const [orgId, games] of Object.entries(EXTRA_DIVS)) {
       if (!games.includes(game) || !ORGS[orgId]) continue;
       const c = orgClub(orgId);
       if (c.divisions[game]) continue;
-      const t1Max = (GAMES[game].tierSizes || [LEAGUE_SIZE])[0] + 2;
-      // équipe aux joueurs inventés : en tier 1 seulement si les vraies équipes ne suffisent pas à le remplir
-      const tier = c.fame >= 70 && byTier[0].length < t1Max && entries.length + solos.length < sizes[0] ? 1 : 2;
-      const [lo, hi] = TIER_RATING[tier - 1], g = GAMES[game];
+      const zone = entryZone(game, orgId, [[null, c.country]]), b = slot(zone);
+      // équipe aux joueurs inventés : en tier 1 seulement si les vraies équipes de sa zone ne suffisent pas à le remplir
+      const tier = open ? 1 : c.fame >= 70 && b[0].length < sizes[0] ? 1 : b[1].length < sizes[1] ? 2 : 3;
+      const [lo, hi] = TIER_RATING[tier - 1];
       const roster = Array.from({ length: g.size }, () => [genHandle(), c.country, randi(lo + 2, hi), randi(18, 26)]);
-      addDivision(c, game, tier, roster);
+      addDivision(c, game, tier, roster, zone);
       c.divisions[game].generated = true;
-      byTier[tier - 1].push(c.id);
+      b[tier - 1].push(c.id);
     }
-    for (let t = 1; t <= 3; t++) {
-      if (GAMES[game].open && t > 1) break;
-      const L = S.leagues[lkey(game, t)] = { key: lkey(game, t), game, tier: t, teams: GAMES[game].open ? byTier.flat() : byTier[t - 1], schedule: [], table: {}, results: [], playoffs: null, champion: null };
-      while (L.teams.length < LEAGUE_SIZE) L.teams.push(fillerClub(game, t).id);
+    for (const zone of gameZones(game)) {
+      const b = slot(zone);
+      for (let t = 1; t <= 3; t++) {
+        if (open && t > 1) break;
+        const key = lkey(game, t, zone);
+        const L = S.leagues[key] = { key, game, tier: t, zone, teams: b[t - 1], schedule: [], table: {}, results: [], playoffs: null, champion: null };
+        const min = zone === "W" ? LEAGUE_SIZE : open ? 12 : MIN_LEAGUE;
+        while (L.teams.length < min) L.teams.push(fillerClub(game, t, zone).id);
+      }
+      // circuit ouvert : statut Élite / Pro / Open d'après le niveau, dans la région
+      if (open) {
+        const L = S.leagues[lkey(game, 1, zone)], [a, bb] = statusCuts(L.teams.length);
+        L.teams.slice().sort((x, y) => teamStrength(y, game).str - teamStrength(x, game).str).forEach((id, i) => S.clubs[id].divisions[game].tier = i < a ? 1 : i < bb ? 2 : 3);
+      }
     }
   }
   // un remplaçant pour chaque équipe d'au moins 3 joueurs
@@ -325,7 +407,9 @@ function newWorld(opts) {
     }
   }
   // effectifs incomplets (joueur parti, info manquante) : on complète
+  aiFillRoster.pool = {};
   for (const c of Object.values(S.clubs)) for (const game of Object.keys(c.divisions)) aiFillRoster(c.id, game);
+  aiFillRoster.pool = null;
   // vrais joueurs sans équipe (sources Liquipedia) : agents libres
   for (const [game, list] of Object.entries(typeof LIVE_FREE_AGENTS !== "undefined" ? LIVE_FREE_AGENTS : {})) {
     if (!GAMES[game]) continue;
@@ -349,12 +433,19 @@ function newWorld(opts) {
     joinLeague(opts.firstGame, 3);
   } else {
     S.userId = opts.clubId; S.clubs[opts.clubId].ai = false;
+    // les autres duos/trios de l'organisation (Fortnite) deviennent des équipes du club
+    for (const c of Object.values(S.clubs)) if (c.sister === opts.clubId) {
+      const game = Object.keys(c.divisions)[0];
+      c.ai = false; c.parent = opts.clubId; c.unitOf = game; delete c.sister;
+      if (!S.clubs[opts.clubId].divisions[game]) { delete S.clubs[c.id]; continue; }
+      c.divisions[game].mates = [];
+    }
   }
   newSeasonSetup(true);
   const u = user();
   mail("Bienvenue, " + S.ceo + " !",
     opts.mode === "create"
-      ? `Vous venez de fonder <b>${u.name}</b> avec ${money(u.budget)} en poche. Votre club démarre en <b>${tierLabel(opts.firstGame, 3)}</b> du ${GAMES[opts.firstGame].name} (${GAMES[opts.firstGame].open ? GAMES[opts.firstGame].circuit : tierName(opts.firstGame, 3)}).<br>
+      ? `Vous venez de fonder <b>${u.name}</b> avec ${money(u.budget)} en poche. Votre club démarre en <b>${tierLabel(opts.firstGame, 3)}</b> du ${GAMES[opts.firstGame].name} (${divName(u.id, opts.firstGame)}).<br>
          Recrutez au <b>Mercato</b> (filtre « agents libres »), terminez dans les 2 premiers pour monter en tier 2, puis visez le tier 1.`
       : `Vous êtes le nouveau CEO de <b>${u.name}</b>. Objectif du conseil : <b>${objectiveText()}</b>.<br>Les supporters vous attendent au tournant !`, "info");
   save();
@@ -409,13 +500,15 @@ function newSeasonSetup(first) {
   for (const L of Object.values(S.leagues)) {
     L.teams = L.teams.filter(id => S.clubs[id] && divOf(id, L.game));
     const fmt = GAMES[L.game].fmt;
-    L.schedule = fmt === "br" ? [] : roundRobin(shuffle(L.teams)).slice(0, REGULAR_WEEKS);
+    // matchs aller et retour, sur les journées du calendrier
+    const rr = fmt === "br" ? [] : roundRobin(shuffle(L.teams));
+    L.schedule = rr.concat(rr.map(rd => rd.map(([a, b]) => [b, a]))).slice(0, LEAGUE_DAYS.length);
     L.table = {};
     L.teams.forEach(id => L.table[id] = emptyRow(fmt));
     L.results = []; L.playoffs = null; L.champion = null;
   }
-  S.regularWeeks = REGULAR_WEEKS;
-  S.week = 1;
+  S.week = SEASON_FIRST;
+  S.rep = null; S.tourChoice = {};
   S.smallTours = genSmallEvents();
   S.ewc = {};
   S.board.objective = pickObjective(first);
@@ -429,8 +522,10 @@ function pickObjective(first) {
   if (t === 2) return { type: u.fame >= 50 ? "final" : "top4", tier: 2 };
   return { type: "top4", tier: 3 };
 }
-// rang à atteindre dans un circuit ouvert pour obtenir le statut t (1 = Élite : top 20, 2 = Pro : top 80)
-function statusCut(game, t) { const [a, b] = GAMES[game].tierSizes; return t === 1 ? a : a + b; }
+// circuit ouvert : dans chaque région, les 10 % les mieux classés ont le statut Élite, les 40 % suivants... jusqu'au top 40 % le statut Pro
+const statusCuts = n => [Math.max(2, Math.round(n * 0.1)), Math.max(4, Math.round(n * 0.4))];
+// rang à atteindre dans le circuit régional du club pour obtenir le statut t
+function statusCut(game, t) { const L = leagueOf(S.userId, game), [a, b] = statusCuts(L ? L.teams.length : 100); return t === 1 ? a : b; }
 function objectiveText(o = S.board.objective) {
   if (!o) return "";
   const u = S.userId && user(), onlyOpen = u && Object.keys(u.divisions).length && Object.keys(u.divisions).every(g => GAMES[g].open);
@@ -448,7 +543,7 @@ function standings(key) {
     .sort(br ? (a, b) => b.pts - a.pts || b.top1 - a.top1 || b.kills - a.kills
              : (a, b) => b.w - a.w || b.diff - a.diff || b.mw - a.mw);
 }
-function userLeagues() { const u = user(); return Object.entries(u.divisions).map(([g, d]) => S.leagues[lkey(g, d.tier)]); }
+function userLeagues() { return Object.keys(user().divisions).map(g => leagueOf(S.userId, g)).filter(Boolean); }
 
 // ---------- divisions ----------
 function canJoin(game, tier) {
@@ -462,15 +557,15 @@ function canJoin(game, tier) {
 function openDivision(game, tier) {
   const e = canJoin(game, tier); if (e) return e;
   const fee = tierEntry(game, tier);
-  user().budget -= fee;
+  book("entry", -fee, game, "Droit d'entrée : " + tierName(game, tier));
   const late = joinLeague(game, tier);
-  mail(`Nouvelle division : ${GAMES[game].name}`, `Votre club rejoint le <b>${GAMES[game].open ? GAMES[game].circuit : tierName(game, tier)}</b> (${tierLabel(game, tier)}) pour ${money(fee)}. Il vous faut ${GAMES[game].size} joueur(s) titulaire(s).${late ? "<br>Le calendrier étant déjà fixé, vos matchs commenceront la saison prochaine." : ""}`, "info");
+  mail(`Nouvelle division : ${GAMES[game].name}`, `Votre club rejoint le <b>${divName(S.userId, game)}</b> (${tierLabel(game, tier)}) pour ${money(fee)}. Il vous faut ${GAMES[game].size} joueur(s) titulaire(s).${late ? "<br>Le calendrier étant déjà fixé, vos matchs commenceront la saison prochaine." : ""}`, "info");
   return null;
 }
 // place le club du joueur dans un circuit, en prenant si possible la place d'un club fictif
 function joinLeague(game, tier) {
-  const u = user(), L = S.leagues[lkey(game, tier)];
-  u.divisions[game] = { tier, players: [] };
+  const u = user(), zone = zoneFrom(game, clubRegion(u, game), u.country), L = S.leagues[lkey(game, tier, zone)];
+  u.divisions[game] = { tier, zone, players: [] };
   const fid = L.teams.find(id => S.clubs[id].filler);
   if (fid) {
     swapInLeague(L, fid, u.id);
@@ -493,13 +588,69 @@ function dissolveDivision(clubId, game) {
 }
 function closeDivision(game) {
   if (academyOf(game)) closeAcademy(game);
-  const u = user(), tier = u.divisions[game].tier;
+  const u = user(), tier = u.divisions[game].tier, zone = u.divisions[game].zone;
+  for (const id of userTeams(game).filter(id => id !== u.id && S.clubs[id].unitOf)) { for (const p of clubPlayers(id, game)) releasePlayer(p.id, true); removeUnit(id, game); }
   for (const p of clubPlayers(u.id, game)) releasePlayer(p.id, true);
-  const L = S.leagues[lkey(game, tier)];
-  const f = fillerClub(game, tier);
+  const L = leagueOf(u.id, game);
+  const f = fillerClub(game, GAMES[game].open ? 3 : tier, zone);
   swapInLeague(L, u.id, f.id);
   delete u.divisions[game];
   u.fame = Math.max(1, u.fame - 2);
+}
+
+// ---------- grand livre ----------
+const BOOK_LABELS = {
+  sponsors: "Sponsors et droits", merch: "Merch & streaming", prize: "Cashprizes (part du club)", ewc: "EWC Club Championship", sales: "Ventes de joueurs",
+  clauses: "Clauses libératoires encaissées", investors: "Investisseurs", events: "Divers (recettes)",
+  salaries: "Salaires", operations: "Frais de fonctionnement des équipes", academy: "Académies", facilities: "Entretien des infrastructures", bonuses: "Primes de victoire",
+  transfers: "Indemnités de transfert", signing: "Primes à la signature", agents: "Commissions d'agents", travel: "Déplacements en LAN", release: "Indemnités de rupture",
+  upgrades: "Travaux d'infrastructures", entry: "Droits d'entrée en ligue", staff: "Bootcamps et créateurs",
+};
+// toute entrée ou sortie d'argent du club du joueur passe par ici : budget, rapport de la semaine, grand livre et budget mercato du jeu
+function book(cat, amount, game, label) {
+  amount = Math.round(amount); if (!amount) return;
+  const u = user(); u.budget += amount;
+  const r = weekReport(), side = amount >= 0 ? r.income : r.expenses;
+  side[cat] = (side[cat] || 0) + Math.abs(amount);
+  (S.ledger || (S.ledger = [])).push([S.season, S.week, cat, amount, game || "", label || ""]);
+  if (S.ledger.length > 5000) S.ledger.splice(0, S.ledger.length - 5000);
+  if (game && MERCATO_CATS.includes(cat)) allocOf(game).spent -= amount;
+}
+// ---------- budget mercato par jeu ----------
+// En début de saison, le CEO répartit son budget de transferts entre ses sections (et fixe une masse salariale par jeu).
+// Les indemnités, primes et commissions d'un jeu sont prises sur son enveloppe ; les ventes la remboursent.
+const MERCATO_CATS = ["transfers", "signing", "agents", "sales", "clauses"];
+const gameWages = game => gamePlayers(game).reduce((s, p) => s + p.salary, 0);
+function defaultAlloc() {
+  const u = user(), games = Object.keys(u.divisions);
+  const weight = g => GAMES[g].mult * [3, 1.6, 1][u.divisions[g].tier - 1];
+  const sw = games.reduce((s, g) => s + weight(g), 0) || 1, pot = Math.max(0, u.budget * 0.5);
+  const out = {};
+  // plafond salarial conseillé : la masse actuelle + de quoi payer une recrue (environ 2,5 % de l'enveloppe par semaine)
+  for (const g of games) { const t = Math.round(pot * weight(g) / sw / 1000) * 1000; out[g] = { transfer: t, wages: round50(gameWages(g) * 1.2 + t / 40 + 500), spent: 0 }; }
+  return { season: S.season, games: out, set: false };
+}
+function allocOf(game) {
+  if (!S.alloc || S.alloc.season !== S.season) S.alloc = defaultAlloc();
+  return S.alloc.games[game] || (S.alloc.games[game] = { transfer: 0, wages: round50(gameWages(game) + 500), spent: 0 });
+}
+const transferRoom = game => allocOf(game).transfer - allocOf(game).spent;
+const wageRoom = game => allocOf(game).wages - gameWages(game);
+// nouvelle répartition : { jeu: { transfer, wages } } ; le total des enveloppes ne peut pas dépasser le budget disponible
+function setAlloc(map) {
+  const u = user();
+  const committed = Object.entries(map).reduce((s, [g, a]) => s + Math.max(0, a.transfer - Math.max(0, allocOf(g).spent)), 0);
+  if (committed > Math.max(0, u.budget)) return `La répartition (${money(committed)} encore disponibles au mercato) dépasse votre budget (${money(u.budget)}).`;
+  for (const [g, a] of Object.entries(map)) { const cur = allocOf(g); cur.transfer = Math.max(0, Math.round(a.transfer)); cur.wages = Math.max(0, round50(a.wages)); }
+  S.alloc.set = true;
+  return null;
+}
+// une dépense de mercato rentre-t-elle dans le budget total, l'enveloppe du jeu et sa masse salariale ?
+function budgetCheck(game, upfront, extraWeekly = 0) {
+  if (upfront > user().budget) return `Budget insuffisant : il faut ${money(upfront)} tout de suite.`;
+  if (upfront > transferRoom(game)) return `Enveloppe mercato ${GAMES[game].short} dépassée : il reste ${money(Math.max(0, transferRoom(game)))} sur ${money(allocOf(game).transfer)}. Modifiez la répartition dans l'onglet Finances.`;
+  if (extraWeekly > 0 && extraWeekly > wageRoom(game)) return `Masse salariale ${GAMES[game].short} dépassée : ${money(gameWages(game))}/sem sur ${money(allocOf(game).wages)}/sem autorisés (il faudrait ${money(extraWeekly)}/sem de plus). Modifiez la répartition dans l'onglet Finances.`;
+  return null;
 }
 
 // ---------- mercato ----------
@@ -516,8 +667,8 @@ function signFreeAgent(pid, salary, years) {
   const demand = salaryDemand(p, u);
   if (salary < demand * 0.9) { p.morale = clamp(p.morale - 5, 0, 100); return `${p.handle} refuse : il demande au moins ${money(demand * 0.9)}/sem.`; }
   const bonus = Math.round(salary * 4);
-  if (u.budget < bonus) return "Budget insuffisant pour la prime de signature (" + money(bonus) + ").";
-  u.budget -= bonus;
+  const be = budgetCheck(p.game, bonus, salary); if (be) return be;
+  book("signing", -bonus, p.game, "Prime de signature : " + p.handle);
   joinClub(p, u, salary, years);
   mail(`Signature : ${p.handle}`, `${flag(p.nat)} <b>${p.handle}</b> (${GAMES[p.game].short}, ${p.rating}) rejoint ${u.name} pour ${years} an(s) à ${money(salary)}/sem. Prime de signature : ${money(bonus)}.`, "transfer");
   return null;
@@ -537,7 +688,7 @@ function makeOffer(pid, fee) {
   if (!interestCheck(p)) return `${p.handle} n'est pas intéressé par le projet : votre club manque de notoriété (${u.fame.toFixed(0)}) ou évolue trop bas.`;
   if (fee < ask * rand(0.88, 1.08)) return `${seller.solo ? p.handle : seller.name} refuse votre offre de ${money(fee)}. (Prix estimé : ~${money(ask)})`;
   const salary = salaryDemand(p, u);
-  u.budget -= fee; seller.budget += fee;
+  book("transfers", -fee, p.game, "Transfert : " + p.handle); seller.budget += fee;
   removeFromClub(p);
   joinClub(p, u, salary, randi(2, 3));
   aiFillRoster(seller.id, p.game);
@@ -550,7 +701,7 @@ function transferFeeCheck(pid, fee) {
   const p = S.players[pid], u = user();
   if (!p.club || p.club === u.id) return "Offre impossible.";
   if (!u.divisions[p.game]) return `Ouvrez d'abord une division ${GAMES[p.game].name}.`;
-  if (u.budget < fee) return "Budget insuffisant.";
+  const be = budgetCheck(p.game, fee); if (be) return be;
   if (!interestCheck(p)) return `${p.handle} n'est pas intéressé par le projet : votre club manque de notoriété (${u.fame.toFixed(0)}) ou évolue trop bas.`;
   const seller = S.clubs[p.club], ask = askingPrice(p);
   if (p.offerRefused === nowIndex() + ":" + fee) return `${seller.name} a déjà refusé ce montant.`;
@@ -559,14 +710,16 @@ function transferFeeCheck(pid, fee) {
 }
 function sellPlayer(pid) {
   const p = S.players[pid], u = user();
-  const L = S.leagues[lkey(p.game, u.divisions[p.game].tier)];
+  const L = leagueOf(u.id, p.game);
   const buyers = L.teams.filter(id => id !== u.id && S.clubs[id] && !S.clubs[id].solo);
   const pool = buyers.length ? buyers : Object.values(S.clubs).filter(c => c.ai && !c.solo && c.divisions[p.game]).map(c => c.id);
   const buyer = S.clubs[pick(pool)];
   const fee = Math.round(playerValue(p) * rand(0.75, 1.1) / 500) * 500;
+  const game = p.game;
   removeFromClub(p);
   joinClub(p, buyer, salaryDemand(p, buyer), randi(1, 3));
-  u.budget += fee;
+  book("sales", fee, game, `Vente de ${p.handle} à ${buyer.name}`);
+  arrangeUnits(game);
   const roster = clubPlayers(buyer.id, p.game);
   if (roster.length > GAMES[p.game].size + 2) {
     const worst = roster.filter(x => x.id !== p.id).sort((a, b) => a.rating - b.rating)[0];
@@ -579,8 +732,9 @@ function sellPlayer(pid) {
 function releasePlayer(pid, silent) {
   const p = S.players[pid], u = user();
   const cost = Math.round(p.salary * 52 * p.years * 0.25);
-  u.budget -= cost;
+  book("release", -cost, p.game, "Rupture de contrat : " + p.handle);
   removeFromClub(p); p.years = 0; p.morale = 60;
+  arrangeUnits(p.game);
   if (!silent) mail(`Libération : ${p.handle}`, `Le contrat de ${p.handle} est résilié. Indemnité versée : ${money(cost)}.`, "transfer");
   return cost;
 }
@@ -600,6 +754,7 @@ function joinClub(p, club, salary, years) {
     if (mate && playRegion(mate) !== playRegion(p)) { p.region = playRegion(mate); p.movedAt = nowIndex(); }
     autoStarters(club.id, p.game);
   }
+  else if (unitGame(p.game) && club.id === S.userId) arrangeUnits(p.game);
   else if (clubPlayers(club.id, p.game).filter(x => x.starter).length < GAMES[p.game].size) p.starter = true;
 }
 function removeFromClub(p, keepContract) {
@@ -609,7 +764,97 @@ function removeFromClub(p, keepContract) {
   // sans contrat, le joueur rentre jouer chez lui
   if (!keepContract) { delete p.region; delete p.movedAt; }
 }
+// ---------- Fortnite : plusieurs duos/trios par club ----------
+// Pas de banc : chaque joueur du club joue dans un duo (ou trio). Le club peut aligner plusieurs équipes, chacune dans sa région
+// (un duo américain en FNCS Amérique du Nord, un duo européen en FNCS Europe). Un joueur seul se trouve un partenaire hors du club,
+// que le club ne paie pas.
+const unitGame = game => !!(GAMES[game] && GAMES[game].open);
+const playerZone = (p, game = p.game) => zoneFrom(game, playRegion(p), p.nat);
+function createUnit(game, zone) {
+  const u = user(); let n = 2; while (S.clubs[`${u.id}~${game}~${n}`]) n++;
+  const c = baseClub(`${u.id}~${game}~${n}`, u.name, u.tag, u.country, u.color, u.fame, false);
+  c.parent = u.id; c.unitOf = game;
+  c.divisions[game] = { tier: 3, zone, players: [], mates: [] };   // un nouveau duo démarre en statut Open
+  S.clubs[c.id] = c;
+  const L = S.leagues[lkey(game, 1, zone)];
+  L.teams.push(c.id); L.table[c.id] = emptyRow(GAMES[game].fmt);
+  return c;
+}
+function removeUnit(id, game) {
+  const L = leagueOf(id, game);
+  if (L) { L.teams = L.teams.filter(x => x !== id); delete L.table[id]; }
+  delete S.clubs[id];
+}
+// change une équipe de région (elle repart de zéro au classement de sa nouvelle région)
+function moveTeamZone(id, game, zone) {
+  const d = divOf(id, game); if (!d || d.zone === zone) return;
+  const old = leagueOf(id, game);
+  if (old) { old.teams = old.teams.filter(x => x !== id); delete old.table[id]; }
+  d.zone = zone;
+  const L = S.leagues[lkey(game, 1, zone)];
+  if (!L.teams.includes(id)) { L.teams.push(id); L.table[id] = emptyRow(GAMES[game].fmt); }
+}
+// partenaires extérieurs : des agents libres de la même région, du niveau du joueur
+function refreshMates(id, game) {
+  const d = divOf(id, game), g = GAMES[game]; if (!d) return;
+  const own = clubPlayers(id, game), need = Math.max(0, g.size - own.length);
+  const taken = new Set(userTeams(game).filter(x => x !== id).flatMap(x => (divOf(x, game).mates || [])));
+  const ok = pid => { const p = S.players[pid]; return p && !p.club && p.game === game && playerZone(p) === d.zone && !taken.has(pid); };
+  d.mates = (d.mates || []).filter(ok).slice(0, need);
+  if (!own.length) { d.mates = []; return; }
+  const level = own.reduce((s, p) => s + p.rating, 0) / own.length;
+  const cand = Object.values(S.players).filter(p => ok(p.id) && !d.mates.includes(p.id) && p.rating <= level + 2).sort((a, b) => Math.abs(a.rating - level + 3) - Math.abs(b.rating - level + 3));
+  while (d.mates.length < need && cand.length) d.mates.push(cand.shift().id);
+}
+// range les joueurs Fortnite du club : pas plus de joueurs que la taille d'une équipe, tous de la région de leur équipe ;
+// l'équipe principale (le club) n'est jamais vide s'il reste des joueurs
+function arrangeUnits(game) {
+  if (!unitGame(game) || !user().divisions[game]) return;
+  const g = GAMES[game], u = user();
+  const teams = () => userTeams(game).filter(id => !S.clubs[id].academyOf);
+  const homeless = [];
+  for (const id of teams()) {
+    const d = divOf(id, game);
+    for (const p of clubPlayers(id, game)) {
+      const keep = clubPlayers(id, game).filter(x => playerZone(x) === d.zone);
+      if (playerZone(p) !== d.zone || keep.indexOf(p) >= g.size) { d.players = d.players.filter(x => x !== p.id); homeless.push(p); }
+    }
+  }
+  // l'équipe principale vide prend la région du premier joueur à placer
+  if (!clubPlayers(u.id, game).length && homeless.length) moveTeamZone(u.id, game, playerZone(homeless[0]));
+  for (const p of homeless) {
+    const z = playerZone(p);
+    let id = teams().find(t => divOf(t, game).zone === z && clubPlayers(t, game).length < g.size);
+    if (!id) id = createUnit(game, z).id;
+    divOf(id, game).players.push(p.id); p.club = id;
+  }
+  // une équipe secondaire vide disparaît ; si le club n'a plus personne, une équipe secondaire devient l'équipe principale
+  for (const id of teams()) if (id !== u.id && !clubPlayers(id, game).length) removeUnit(id, game);
+  if (!clubPlayers(u.id, game).length) {
+    const other = teams().find(id => id !== u.id);
+    if (other) { const d = divOf(other, game); moveTeamZone(u.id, game, d.zone); for (const p of clubPlayers(other, game)) { u.divisions[game].players.push(p.id); p.club = u.id; } d.players = []; removeUnit(other, game); }
+  }
+  for (const id of teams()) { clubPlayers(id, game).forEach(p => p.starter = true); refreshMates(id, game); }
+}
+// déplace un joueur dans une autre équipe du club (to : id d'équipe, ou "new" pour un nouveau duo/trio dans sa région)
+function assignUnit(pid, to) {
+  const p = S.players[pid], game = p.game, g = GAMES[game];
+  if (!isMine(p.club)) return "Ce joueur n'est pas dans votre club.";
+  if (to !== "new") {
+    const d = divOf(to, game);
+    if (!d) return "Équipe introuvable.";
+    if (d.zone !== playerZone(p)) return `${p.handle} joue en ${ZONE_NAMES[playerZone(p)]} : il ne peut pas rejoindre une équipe inscrite en ${ZONE_NAMES[d.zone]}. Renégociez sa région de jeu dans son contrat.`;
+    if (clubPlayers(to, game).length >= g.size) return `Cette équipe a déjà ${g.size} joueurs.`;
+  }
+  const from = p.club;
+  divOf(from, game).players = divOf(from, game).players.filter(x => x !== pid);
+  const target = to === "new" ? createUnit(game, playerZone(p)).id : to;
+  divOf(target, game).players.push(pid); p.club = target;
+  arrangeUnits(game);
+  return null;
+}
 function autoStarters(clubId, game) {
+  if (unitGame(game) && isMine(clubId)) return arrangeUnits(game);
   const ps = clubPlayers(clubId, game).sort((a, b) => effRating(b) - effRating(a));
   // les titulaires doivent tous être inscrits dans la même région : on garde celle qui donne la meilleure équipe
   const size = GAMES[game].size;
@@ -626,8 +871,10 @@ function aiFillRoster(clubId, game) {
   let added = 0;
   while (clubPlayers(clubId, game).length < want) {
     added++;
-    const fa = Object.values(S.players).filter(p => !p.club && p.game === game && p.rating <= hi + 2)
-      .sort((a, b) => b.rating - a.rating)[0];
+    // agents libres du jeu, du meilleur au moins bon (liste mise en cache pendant une fin de saison)
+    const pool = aiFillRoster.pool ? (aiFillRoster.pool[game] = aiFillRoster.pool[game] || Object.values(S.players).filter(p => !p.club && p.game === game).sort((a, b) => b.rating - a.rating))
+      : Object.values(S.players).filter(p => !p.club && p.game === game).sort((a, b) => b.rating - a.rating);
+    const fa = pool.find(p => !p.club && S.players[p.id] && p.rating <= hi + 2);
     const p = fa && fa.rating >= lo - 6 ? fa : genPlayer(game, lo, hi, 17, 26);
     if (!S.players[p.id]) addPlayer(p);
     joinClub(p, c, salaryDemand(p, c), randi(1, 3));
@@ -638,6 +885,7 @@ function aiFillRoster(clubId, game) {
 }
 function toggleStarter(pid) {
   const p = S.players[pid];
+  if (unitGame(p.game) && isMine(p.club)) return `Pas de banc en ${GAMES[p.game].name} : chaque joueur joue dans un ${GAMES[p.game].unit}. Changez-le d'équipe pour le faire jouer avec un autre.`;
   if (p.starter) { p.starter = false; return null; }
   if (clubPlayers(p.club, p.game).filter(x => x.starter).length >= GAMES[p.game].size) return `Déjà ${GAMES[p.game].size} titulaire(s). Passez d'abord un joueur sur le banc.`;
   const other = clubPlayers(p.club, p.game).find(x => x.starter && playRegion(x) !== playRegion(p));
@@ -689,8 +937,8 @@ function relocateWill(p) {
   const base = (hashOf(p.id + "|move") % 100) / 100;
   return clamp(base + ({ Ambitieux: 0.2, Mercenaire: 0.25, Loyal: -0.15, "Jeune talent": -0.1 }[pers] || 0) - (p.age <= 17 ? 0.15 : 0), 0, 1);
 }
-// semaines écoulées depuis un instant nowIndex() (≈ 14 semaines par saison)
-const weeksSince = t => (S.season - Math.floor(t / 100)) * 14 + (S.week - t % 100);
+// semaines écoulées depuis un instant nowIndex()
+const weeksSince = t => (S.season - Math.floor(t / 100)) * 52 + (S.week - t % 100);
 const ADAPT_WEEKS = 8;
 // malus d'adaptation après un changement de région (nouveau ping, nouveaux horaires, déménagement)
 function adaptFactor(p) {
@@ -788,7 +1036,10 @@ function acceptContract(N, offer) {
   const p = S.players[N.pid], u = user();
   const upfront = offer.bonus + offer.agentFee + (N.ctx === "transfer" ? N.fee : 0);
   if (u.budget < upfront) return `Budget insuffisant : il faut ${money(upfront)} tout de suite (prime, commission${N.ctx === "transfer" ? ", transfert" : ""}).`;
-  u.budget -= upfront;
+  const be = budgetCheck(p.game, upfront, offer.salary - (N.ctx === "renew" ? p.salary : 0)); if (be) return be;
+  book("signing", -offer.bonus, p.game, "Prime à la signature : " + p.handle);
+  book("agents", -offer.agentFee, p.game, "Commission d'agent : " + p.handle);
+  if (N.ctx === "transfer") book("transfers", -N.fee, p.game, `Transfert : ${p.handle} (${S.clubs[p.club].name})`);
   const prevRegion = playRegion(p), prevMoved = p.movedAt;
   let from = "";
   if (N.ctx === "transfer") {
@@ -806,9 +1057,10 @@ function acceptContract(N, offer) {
   const region = offer.region || prevRegion;
   if (region !== homeRegion(p)) p.region = region; else delete p.region;
   if (region !== prevRegion) p.movedAt = nowIndex(); else if (prevMoved) p.movedAt = prevMoved;
+  arrangeUnits(p.game);
   // un titulaire inscrit dans une autre région que ses coéquipiers passe sur le banc
   const tr = teamRegion(u.id, p.game);
-  if (p.starter && tr && clubPlayers(u.id, p.game).some(x => x.starter && x.id !== p.id && playRegion(x) !== playRegion(p))) p.starter = false;
+  if (!unitGame(p.game) && p.starter && tr && clubPlayers(u.id, p.game).some(x => x.starter && x.id !== p.id && playRegion(x) !== playRegion(p))) p.starter = false;
   p.morale = clamp(p.morale + 10, 0, 100);
   mail(`${N.ctx === "renew" ? "Prolongation" : "Signature"} : ${p.handle}`,
     `${flag(p.nat)} <b>${p.handle}</b> (${GAMES[p.game].short}, ${p.rating})${from} — ${offer.years} an(s), ${money(offer.salary)}/sem, statut « ${offer.status} ».<br>
@@ -823,17 +1075,17 @@ function weeklyContractEffects() {
   for (const p of allUserPlayers()) {
     const promised = STATUSES.indexOf(p.status || "Titulaire");
     if (promised >= 3 && !p.starter) {
-      p.morale = clamp(p.morale - (promised === 4 ? 4 : 2.5), 0, 100);
+      p.morale = clamp(p.morale - (promised === 4 ? 2 : 1.2), 0, 100);
       p.promiseBroken = (p.promiseBroken || 0) + 1;
-      if (p.promiseBroken === 3) mail(`😠 ${p.handle} se sent trahi`, `On lui avait promis le statut « ${p.status} », mais il est sur le banc depuis 3 semaines. Son moral chute.`, "transfer");
+      if (p.promiseBroken === 6) mail(`😠 ${p.handle} se sent trahi`, `On lui avait promis le statut « ${p.status} », mais il est sur le banc depuis 6 semaines. Son moral chute.`, "transfer", p.game);
     } else p.promiseBroken = 0;
     // un club plus prestigieux peut payer la clause
-    if (p.clause > 0 && p.rating >= 75 && p.clause <= playerValue(p) * 1.6 && Math.random() < 0.04) {
+    if (p.clause > 0 && p.rating >= 75 && p.clause <= playerValue(p) * 1.6 && Math.random() < 0.04 * WEEK_SCALE) {
       const myTier = u.divisions[p.game].tier;
       const buyers = Object.values(S.clubs).filter(c => c.ai && !c.solo && c.divisions[p.game] && c.divisions[p.game].tier <= myTier && c.fame > u.fame - 5);
       if (!buyers.length) continue;
       const buyer = pick(buyers);
-      u.budget += p.clause;
+      book("clauses", p.clause, p.game, `Clause libératoire de ${p.handle} payée par ${buyer.name}`);
       removeFromClub(p);
       joinClub(p, buyer, salaryDemand(p, buyer), randi(2, 4));
       const roster = clubPlayers(buyer.id, p.game);
@@ -849,7 +1101,8 @@ function effRating(p) { return p.rating * (0.88 + 0.12 * p.form / 100) * (0.92 +
 function teamStrength(clubId, game) {
   const c = S.clubs[clubId], g = GAMES[game];
   const ps = clubPlayers(clubId, game);
-  let st = ps.filter(p => p.starter);
+  // un joueur seul dans son duo/trio joue avec un partenaire trouvé hors du club
+  let st = ps.filter(p => p.starter).concat(unitMates(clubId, game));
   if (st.length < g.size) st = st.concat(ps.filter(p => !p.starter).sort((a, b) => b.rating - a.rating));
   st = st.slice(0, g.size);
   const sum = st.reduce((s, p) => s + effRating(p), 0) + (g.size - st.length) * 30;
@@ -863,12 +1116,27 @@ function afterResult(lineup, won) {
     won ? p.stats.w++ : p.stats.l++;
   });
 }
-function clubResult(id, won, weight = 1) {
+// enjeu d'un match pour les fans : tier de la ligue et popularité du jeu
+const stakeOf = (game, tier) => [1, 0.35, 0.12][(tier || 3) - 1] * (0.4 + 0.6 * GAMES[game].mult);
+const isMine = id => id === S.userId || (S.clubs[id] && S.clubs[id].parent === S.userId);
+function clubResult(id, won, weight = 1, label) {
   const c = S.clubs[id];
-  c.fame = clamp(c.fame + (won ? 0.25 : -0.15) * weight, 1, 100);
-  c.fans = Math.max(100, Math.round(c.fans * (won ? 1 + 0.002 * weight : 0.999) + (won ? 40 * weight : 0)));
+  c.fame = clamp(c.fame + (won ? 0.25 : -0.15) * Math.min(2, weight), 1, 100);
+  fanChange(id, won ? 1 : -1, weight, label);
 }
-function playSeries(game, a, b, bestOf) {
+// fans gagnés ou perdus après un résultat (sign : 1 victoire, -1 défaite, 0 nul ; weight : enjeu).
+// Ordres de grandeur réels : une victoire en ligue majeure fait gagner ~0,1 % de fans, un titre mondial 5 à 10 %.
+// Une bonne image (sponsors éthiques) amplifie les gains et amortit les défaites ; une mauvaise image fait l'inverse.
+function fanChange(id, sign, weight, label) {
+  const c = S.clubs[id]; if (!c) return 0;
+  const host = c.parent && S.clubs[c.parent] ? S.clubs[c.parent] : c, img = host.image ?? 60;
+  const pct = sign > 0 ? 0.0006 * weight * (0.5 + img / 100) : sign < 0 ? -0.0004 * weight * (1.5 - img / 100) : 0;
+  const delta = Math.round(host.fans * pct + (sign > 0 ? 20 * weight : 0));
+  host.fans = Math.max(100, host.fans + delta);
+  if (host.id === S.userId && label) weekReport().fans.push([label, delta]);
+  return delta;
+}
+function playSeries(game, a, b, bestOf, stake = 1, stage = "") {
   const g = GAMES[game];
   const A = teamStrength(a, game), B = teamStrength(b, game);
   const need = Math.ceil(bestOf / 2);
@@ -884,11 +1152,13 @@ function playSeries(game, a, b, bestOf) {
   afterResult(wl, true); afterResult(winner === a ? B.lineup : A.lineup, false);
   const mvp = wl.slice().sort((x, y) => effRating(y) * rand(0.9, 1.1) - effRating(x) * rand(0.9, 1.1))[0];
   if (mvp) mvp.stats.mvp++;
-  clubResult(winner, true); clubResult(loser, false);
+  const nm = id => { const c = S.clubs[id]; return c.solo ? soloName(c, game) : (c.divisions[game] && c.divisions[game].label) || c.name; };
+  clubResult(winner, true, stake, isMine(winner) ? `${g.short} · victoire ${Math.max(wa, wb)}-${Math.min(wa, wb)} contre ${nm(loser)}${stage ? " (" + stage + ")" : ""}` : null);
+  clubResult(loser, false, stake, isMine(loser) ? `${g.short} · défaite ${Math.min(wa, wb)}-${Math.max(wa, wb)} contre ${nm(winner)}${stage ? " (" + stage + ")" : ""}` : null);
   return { a, b, sa: wa, sb: wb, winner, loser, maps, mvp: mvp ? mvp.handle : null, bestOf };
 }
 // Battle royale : un lobby complet (les places restantes sont prises par des équipes de l'open)
-function playLobby(L, entrants, nGames) {
+function playLobby(L, entrants, nGames, stake = 0.6, stage = "") {
   const g = GAMES[L.game];
   const [lo, hi] = TIER_RATING[L.tier - 1];
   const S0 = entrants.map(id => ({ id, ...teamStrength(id, L.game) }));
@@ -913,7 +1183,10 @@ function playLobby(L, entrants, nGames) {
   ranked.forEach((id, i) => {
     const good = i < ranked.length / 2;
     afterResult(S0.find(e => e.id === id).lineup, good);
-    clubResult(id, good, 0.6);
+    // les fans suivent le classement du lobby : top 3 = victoire, première moitié = neutre
+    const sign = i < 3 ? 1 : good ? 0 : -1;
+    S.clubs[id].fame = clamp(S.clubs[id].fame + (good ? 0.15 : -0.1) * stake, 1, 100);
+    fanChange(id, sign, stake * (i === 0 ? 2 : 1), isMine(id) ? `${GAMES[L.game].short} · ${i + 1}e du lobby${stage ? " (" + stage + ")" : ""}` : null);
   });
   const best = S0.flatMap(e => e.lineup).sort((x, y) => effRating(y) * rand(0.85, 1.15) - effRating(x) * rand(0.85, 1.15))[0];
   if (best) best.stats.mvp++;
@@ -921,103 +1194,178 @@ function playLobby(L, entrants, nGames) {
 }
 
 // ---------- semaine ----------
+// rapport de la semaine en cours : il se remplit au fil des matchs lancés à la main, puis à la fin de la semaine
+function weekReport() {
+  if (!S.rep || S.rep.season !== S.season || S.rep.week !== S.week)
+    S.rep = { season: S.season, week: S.week, matches: [], lobbies: [], tournaments: [], income: {}, expenses: {}, events: [], fans: [], done: {}, fields: {} };
+  return S.rep;
+}
+// nom d'une équipe en texte simple
+function clubLabel(id, game) { const c = S.clubs[id]; if (!c) return "?"; return c.solo ? soloName(c, game) : (c.divisions[game] && c.divisions[game].label) || c.name; }
+// gains : le club du joueur ne garde que la part prévue dans les contrats (le reste revient aux joueurs)
+function payPrize(id, amount, game, label) {
+  if (!S.clubs[id]) return;
+  if (S.clubs[id].parent === S.userId) id = S.userId;
+  if (id === S.userId) return book("prize", amount * clubKeep(game), game, label);
+  S.clubs[id].budget += Math.round(amount);
+}
+// une journée de ligue (toutes les rencontres de la ligue cette semaine)
+function playLeagueDay(L) {
+  const rep = weekReport(), key = "L:" + L.key;
+  if (rep.done[key]) return; rep.done[key] = true;
+  const g = GAMES[L.game], w = S.week, md = matchday(w), prize = tierPrize(L.game, L.tier), name = leagueName(L);
+  const payL = (id, amount) => payPrize(id, amount, L.game, name), stake = stakeOf(L.game, L.tier);
+  if (g.fmt === "br") {
+    if (md) {
+      const lob = playLobby(L, L.teams.filter(id => S.clubs[id]), g.gamesPerWeek, stake * 0.6, "journée " + md);
+      for (const [id, r] of Object.entries(lob.res)) {
+        const t = L.table[id] || (L.table[id] = emptyRow("br"));
+        t.pts += r.pts; t.kills += r.kills; t.top1 += r.top1; t.games += r.places.length; t.place += r.places.reduce((a, b) => a + b, 0);
+      }
+      lob.ranked.slice(0, 3).forEach((id, i) => payL(id, prize * [0.01, 0.005, 0.0025][i]));
+      L.results.push({ week: w, day: md, top: lob.ranked.slice(0, 3), pts: lob.ranked.slice(0, 3).map(id => lob.res[id].pts), mvp: lob.mvp });
+      for (const id of L.teams.filter(isMine)) rep.lobbies.push({ game: L.game, tier: S.clubs[id].divisions[L.game].tier, ...lob, stage: `${name} — journée ${md}`, mine: lob.res[id], rank: lob.ranked.indexOf(id) + 1, club: id });
+    } else if (w === PO_SEMI || w === PO_FINAL) {
+      // grande finale sur 2 semaines : les 8 meilleurs du classement
+      if (w === PO_SEMI) L.playoffs = { finalists: standings(L.key).slice(0, 8).map(x => x.id), pts: {}, top1: {} };
+      const P = L.playoffs; if (!P) return;
+      const lob = playLobby(L, P.finalists.filter(id => S.clubs[id]), g.gamesPerWeek + 2, stake * 1.5, "grande finale");
+      for (const [id, r] of Object.entries(lob.res)) { P.pts[id] = (P.pts[id] || 0) + r.pts; P.top1[id] = (P.top1[id] || 0) + r.top1; }
+      for (const id of P.finalists.filter(isMine)) rep.lobbies.push({ game: L.game, tier: S.clubs[id].divisions[L.game].tier, ...lob, stage: `${name} — grande finale, jour ${w - PO_SEMI + 1}`, mine: lob.res[id], rank: lob.ranked.indexOf(id) + 1, club: id });
+      if (w === PO_FINAL) {
+        const order = P.finalists.filter(id => S.clubs[id]).sort((a, b) => (P.pts[b] || 0) - (P.pts[a] || 0));
+        P.order = order; L.champion = order[0];
+        [0.4, 0.2, 0.1, 0.1].forEach((part, i) => order[i] && payL(order[i], prize * part));
+        crown(L, order[0], order[1], `${P.pts[order[0]]} pts sur la finale`);
+      }
+    }
+    return;
+  }
+  const t = id => L.table[id] || (L.table[id] = emptyRow(g.fmt));
+  if (md && md <= L.schedule.length) {
+    for (const [a, b] of L.schedule[md - 1]) {
+      if (!S.clubs[a] || !S.clubs[b]) continue;
+      const r = playSeries(L.game, a, b, 3, stake, name);
+      r.week = w; r.day = md; r.stage = `${name} — journée ${md}`;
+      L.results.push(r);
+      const ta = t(a), tb = t(b);
+      ta.mw += r.sa; ta.ml += r.sb; tb.mw += r.sb; tb.ml += r.sa;
+      r.winner === a ? (ta.w++, tb.l++) : (tb.w++, ta.l++);
+      payL(r.winner, prize * 0.0025);
+      if (isMine(a) || isMine(b)) rep.matches.push({ ...r, game: L.game, tier: L.tier });
+    }
+  } else if (w === PO_SEMI) {
+    const st = standings(L.key).slice(0, 4).map(x => x.id);
+    if (st.length < 4) return;
+    L.playoffs = { semis: [playSeries(L.game, st[0], st[3], 3, stake * 2, "demi-finale"), playSeries(L.game, st[1], st[2], 3, stake * 2, "demi-finale")], final: null };
+    L.playoffs.semis.forEach(r => { r.stage = `${name} — demi-finale`; r.week = w; if (isMine(r.a) || isMine(r.b)) rep.matches.push({ ...r, game: L.game, tier: L.tier }); });
+  } else if (w === PO_FINAL && L.playoffs) {
+    const [s1, s2] = L.playoffs.semis;
+    const f = playSeries(L.game, s1.winner, s2.winner, 5, stake * 3, "finale");
+    f.stage = `${name} — grande finale`; f.week = w;
+    L.playoffs.final = f; L.champion = f.winner;
+    if (isMine(f.a) || isMine(f.b)) rep.matches.push({ ...f, game: L.game, tier: L.tier });
+    payL(f.winner, prize * 0.4); payL(f.loser, prize * 0.2); payL(s1.loser, prize * 0.1); payL(s2.loser, prize * 0.1);
+    crown(L, f.winner, f.loser, `${f.sa}-${f.sb} · MVP ${f.mvp}`);
+  }
+}
+function crown(L, winner, runnerUp, detail) {
+  const champ = S.clubs[winner], label = `${leagueName(L)} ${S.season}`;
+  champ.fame = clamp(champ.fame + [5, 2.5, 1][L.tier - 1], 0, 100);
+  fanChange(winner, 1, stakeOf(L.game, L.tier) * 15, isMine(winner) ? `🏆 Titre : ${label}` : null);
+  champ.titles.push(label);
+  S.titles.push({ season: S.season, game: L.game, tier: L.tier, zone: L.zone, name: leagueName(L), club: clubLabel(winner, L.game), clubId: champ.id });
+  if (isMine(winner)) mail(`🏆 CHAMPIONS ! ${label}`, `${user().name} remporte le <b>${label}</b> (${tierLabel(L.game, L.tier)}) face à ${clubLabel(runnerUp, L.game)} — ${detail}.`, "trophy", L.game);
+}
+// tournois de la semaine : [jeu, tournoi]
+function weekTournaments(w = S.week) {
+  const out = [];
+  for (const game of Object.keys(GAMES)) for (const t of allTournaments(game)) if (t[1] === w) out.push([game, t]);
+  return out;
+}
+const tourKey = (game, name) => "T:" + game + "|" + name;
+// plateau d'un tournoi de la semaine, tiré une seule fois : celui affiché avant le match est celui qui joue
+function weekField(game, t) {
+  const rep = weekReport(), k = tourKey(game, t[0]);
+  if (!rep.fields[k]) rep.fields[k] = tournamentField(game, t[3], t[4], t[5], t[0]);
+  return rep.fields[k];
+}
+// événements du club du joueur cette semaine (à lancer un par un, ou tous d'un coup)
+function weekEvents() {
+  const w = S.week, md = matchday(w), out = [], rep = weekReport();
+  for (const g of Object.keys(user().divisions)) arrangeUnits(g);
+  for (const L of Object.values(S.leagues)) {
+    const mine = L.teams.filter(isMine); if (!mine.length) continue;
+    const g = GAMES[L.game]; let what = null;
+    if (g.fmt === "br") {
+      if (md) what = `Journée ${md} · lobby de ${L.teams.length} ${g.unit}s, ${g.gamesPerWeek} parties`;
+      else if (w === PO_SEMI || w === PO_FINAL) {
+        const fin = w === PO_SEMI ? standings(L.key).slice(0, 8).map(x => x.id) : L.playoffs ? L.playoffs.finalists : [];
+        if (mine.some(id => fin.includes(id))) what = `Grande finale (top 8) — jour ${w - PO_SEMI + 1}`;
+      }
+    } else if (md && md <= L.schedule.length) {
+      const m = L.schedule[md - 1].find(m => m.some(isMine));
+      if (m) what = `Journée ${md} : contre ${clubLabel(isMine(m[0]) ? m[1] : m[0], L.game)} (BO3)`;
+    } else if (w === PO_SEMI) { if (standings(L.key).slice(0, 4).some(x => isMine(x.id))) what = "Demi-finale des playoffs (BO3)"; }
+    else if (w === PO_FINAL && L.playoffs && L.playoffs.semis.some(x => isMine(x.winner))) what = "Grande finale des playoffs (BO5)";
+    if (what) out.push({ id: "L:" + L.key, kind: "league", game: L.game, title: leagueName(L), what, done: !!rep.done["L:" + L.key] });
+  }
+  for (const [game, t] of weekTournaments()) {
+    const field = weekField(game, t);
+    if (field.length >= 2 && field.some(isMine)) out.push({ id: tourKey(game, t[0]), kind: "tour", game, title: t[0], what: `${t[2] ? "Dotation " + money(t[2]) + " · " : ""}${field.length} ${GAMES[game].fmt === "br" ? GAMES[game].unit + "s" : "participants"}`, done: !!rep.done[tourKey(game, t[0])] });
+  }
+  return out;
+}
+// lance un événement de la semaine et renvoie ce qui s'y est passé pour le club
+function playEvent(id) {
+  const rep = weekReport(), u = user();
+  const b = { m: rep.matches.length, l: rep.lobbies.length, t: rep.tournaments.length, f: rep.fans.length, budget: u.budget, fans: u.fans };
+  if (id.startsWith("L:")) { const L = S.leagues[id.slice(2)]; if (L) playLeagueDay(L); }
+  else { const hit = weekTournaments().find(([game, t]) => tourKey(game, t[0]) === id); if (hit) playTournament(hit[0], hit[1]); }
+  scheduleSave();
+  return { matches: rep.matches.slice(b.m), lobbies: rep.lobbies.slice(b.l), tournaments: rep.tournaments.slice(b.t), fans: rep.fans.slice(b.f), money: u.budget - b.budget, fanDelta: u.fans - b.fans };
+}
+// image du club (0-100) : les sponsors éthiques la font monter, les sponsors controversés la font chuter
+function imageTarget(u) {
+  return clamp(60 + u.sponsorDeals.reduce((s, d) => s + (d.ethic === "ethique" ? 8 : d.ethic === "controverse" ? -16 : 0), 0) + (u.imageBonus || 0), 5, 98);
+}
 function advanceWeek() {
   if (S.over) return;
-  const u = user();
-  const report = { matches: [], lobbies: [], tournaments: [], income: {}, expenses: {}, events: [] };
+  const u = user(), w = S.week, report = weekReport();
   for (const aca of userAcademies()) autoStarters(aca.id, aca.academyOf);
-  const w = S.week, R = REGULAR_WEEKS;
-  // gains : le club du joueur ne garde que la part prévue dans les contrats (le reste revient aux joueurs)
-  const pay = (id, amount, game) => {
-    if (S.clubs[id] && S.clubs[id].parent === u.id) id = u.id;
-    if (id === u.id) { amount = Math.round(amount * clubKeep(game)); report.income.prize = (report.income.prize || 0) + amount; }
-    S.clubs[id].budget += amount;
-  };
-
-  for (const L of Object.values(S.leagues)) {
-    const g = GAMES[L.game], prize = tierPrize(L.game, L.tier), mine = L.teams.includes(u.id);
-    const payL = (id, amount) => pay(id, amount, L.game);
-    if (g.fmt === "br") {
-      if (w <= R) {
-        const lob = playLobby(L, L.teams.filter(id => S.clubs[id]), g.gamesPerWeek);
-        for (const [id, r] of Object.entries(lob.res)) {
-          const t = L.table[id] || (L.table[id] = emptyRow("br"));
-          t.pts += r.pts; t.kills += r.kills; t.top1 += r.top1; t.games += r.places.length; t.place += r.places.reduce((a, b) => a + b, 0);
-        }
-        lob.ranked.slice(0, 3).forEach((id, i) => payL(id, prize * [0.02, 0.01, 0.005][i]));
-        L.results.push({ week: w, top: lob.ranked.slice(0, 3), pts: lob.ranked.slice(0, 3).map(id => lob.res[id].pts), mvp: lob.mvp });
-        if (mine) report.lobbies.push({ game: L.game, tier: L.tier, ...lob, stage: "Journée " + w, mine: lob.res[u.id], rank: lob.ranked.indexOf(u.id) + 1 });
-      } else {
-        // Grande finale sur 2 semaines : les 8 meilleurs du classement
-        if (w === R + 1) L.playoffs = { finalists: standings(L.key).slice(0, 8).map(x => x.id), pts: {}, top1: {} };
-        const P = L.playoffs;
-        const lob = playLobby(L, P.finalists.filter(id => S.clubs[id]), g.gamesPerWeek + 2);
-        for (const [id, r] of Object.entries(lob.res)) { P.pts[id] = (P.pts[id] || 0) + r.pts; P.top1[id] = (P.top1[id] || 0) + r.top1; }
-        if (P.finalists.includes(u.id)) report.lobbies.push({ game: L.game, tier: L.tier, ...lob, stage: "Grande finale — jour " + (w - R), mine: lob.res[u.id], rank: lob.ranked.indexOf(u.id) + 1 });
-        if (w === R + 2) {
-          const order = P.finalists.filter(id => S.clubs[id]).sort((a, b) => (P.pts[b] || 0) - (P.pts[a] || 0));
-          P.order = order; L.champion = order[0];
-          [0.4, 0.2, 0.1, 0.1].forEach((part, i) => order[i] && payL(order[i], prize * part));
-          crown(L, order[0], order[1], `${P.pts[order[0]]} pts sur la finale`);
-        }
-      }
-      continue;
-    }
-    if (w <= L.schedule.length) {
-      for (const [a, b] of L.schedule[w - 1]) {
-        if (!S.clubs[a] || !S.clubs[b]) continue;
-        const r = playSeries(L.game, a, b, 3);
-        r.week = w; r.stage = "Saison régulière";
-        L.results.push(r);
-        const ta = L.table[a] || (L.table[a] = emptyRow(g.fmt)), tb = L.table[b] || (L.table[b] = emptyRow(g.fmt));
-        ta.mw += r.sa; ta.ml += r.sb; tb.mw += r.sb; tb.ml += r.sa;
-        r.winner === a ? (ta.w++, tb.l++) : (tb.w++, ta.l++);
-        payL(r.winner, prize * 0.005);
-        if (a === u.id || b === u.id) report.matches.push({ ...r, game: L.game, tier: L.tier });
-      }
-    } else if (w === R + 1) {
-      const st = standings(L.key).slice(0, 4).map(x => x.id);
-      if (st.length < 4) continue;
-      L.playoffs = { semis: [playSeries(L.game, st[0], st[3], 3), playSeries(L.game, st[1], st[2], 3)], final: null };
-      L.playoffs.semis.forEach(r => { r.stage = "Demi-finale"; r.week = w; if (r.a === u.id || r.b === u.id) report.matches.push({ ...r, game: L.game, tier: L.tier }); });
-    } else if (w === R + 2 && L.playoffs) {
-      const [s1, s2] = L.playoffs.semis;
-      const f = playSeries(L.game, s1.winner, s2.winner, 5);
-      f.stage = "Grande finale"; f.week = w;
-      L.playoffs.final = f; L.champion = f.winner;
-      if (f.a === u.id || f.b === u.id) report.matches.push({ ...f, game: L.game, tier: L.tier });
-      payL(f.winner, prize * 0.4); payL(f.loser, prize * 0.2); payL(s1.loser, prize * 0.1); payL(s2.loser, prize * 0.1);
-      crown(L, f.winner, f.loser, `${f.sa}-${f.sb} · MVP ${f.mvp}`);
-    }
-  }
-
-  runTournaments(w, report, pay);
+  for (const g of Object.keys(u.divisions)) arrangeUnits(g);
+  // tout ce qui n'a pas été lancé à la main se joue maintenant
+  for (const L of Object.values(S.leagues)) playLeagueDay(L);
+  for (const [game, t] of weekTournaments()) playTournament(game, t);
   if (w === EWC_LAST_WEEK) awardEwcClubChampionship(report);
+  // un tournoi décliné : les joueurs du jeu se reposent
+  for (const [game, t] of weekTournaments()) if (declined(game, t[0]) && u.divisions[game]) gamePlayers(game).forEach(p => p.form = clamp(p.form + 6, 0, 100));
 
   // primes de victoire prévues dans les contrats
-  let winBonuses = 0;
-  for (const r of report.matches) if (r.winner === u.id) winBonuses += clubPlayers(u.id, r.game).filter(p => p.starter).reduce((t, p) => t + (p.winBonus || 0), 0);
-  if (winBonuses) report.expenses.bonuses = winBonuses;
+  for (const r of report.matches) if (isMine(r.winner)) book("bonuses", -clubPlayers(r.winner, r.game).filter(p => p.starter).reduce((t, p) => t + (p.winBonus || 0), 0), r.game, r.stage);
   weeklyContractEffects();
 
-  // économie du club joueur
+  // économie du club joueur : chaque ligne est inscrite au grand livre, jeu par jeu quand c'est possible
   const fac = u.facilities;
-  const sponsors = Math.round(300 + 3.6 * u.fame * u.fame + Object.values(u.divisions).reduce((s, d) => s + TIER_SPONSOR[d.tier - 1], 0) * (0.5 + u.fame / 100))
-    + u.sponsorDeals.reduce((s, d) => s + d.weekly, 0);
-  const merch = Math.round(u.fans * (0.012 + fac.content * 0.003));
-  const salaries = allUserPlayers().reduce((s, p) => s + p.salary, 0);
-  const opCost = Object.entries(u.divisions).reduce((s, [gm, d]) => s + TIER_OP[d.tier - 1] * GAMES[gm].size * GAMES[gm].mult, 0)
-    + userAcademies().reduce((s, a) => s + TIER_OP[a.divisions[a.academyOf].tier - 1] * GAMES[a.academyOf].size * GAMES[a.academyOf].mult * 0.7, 0);
-  const upkeep = Object.values(fac).reduce((s, l) => s + l * 800, 0);
-  report.income.sponsors = sponsors; report.income.merch = merch;
-  report.expenses.salaries = salaries; report.expenses.operations = Math.round(opCost); report.expenses.facilities = upkeep;
-  const inc = Object.values(report.income).reduce((a, b) => a + b, 0);
-  const exp = Object.values(report.expenses).reduce((a, b) => a + b, 0);
-  u.budget += sponsors + merch - salaries - opCost - upkeep - winBonuses;
-  u.fans = Math.round(u.fans * (1 + fac.content * 0.0015) + fac.content * 20);
+  book("sponsors", 300 + 3.6 * u.fame * u.fame + Object.values(u.divisions).reduce((s, d) => s + TIER_SPONSOR[d.tier - 1], 0) * (0.5 + u.fame / 100), "", "Partenaires historiques et droits de diffusion");
+  for (const d of u.sponsorDeals) book("sponsors", d.weekly, "", d.name);
+  book("merch", u.fans * (0.012 + fac.content * 0.003), "", "Merch, abonnements et streaming");
+  for (const game of Object.keys(u.divisions)) {
+    book("salaries", -gamePlayers(game).reduce((s, p) => s + p.salary, 0), game, "Salaires");
+    book("operations", -TIER_OP[u.divisions[game].tier - 1] * GAMES[game].size * GAMES[game].mult, game, "Frais de fonctionnement");
+    const aca = academyOf(game);
+    if (aca) book("academy", -TIER_OP[aca.divisions[game].tier - 1] * GAMES[game].size * GAMES[game].mult * 0.7, game, "Frais de l'académie");
+  }
+  book("facilities", -Object.values(fac).reduce((s, l) => s + l * 800, 0), "", "Entretien des infrastructures");
+  // image et fans : l'image tend vers ce que reflètent les sponsors ; une bonne image attire des fans chaque semaine
+  u.image = u.image ?? 60;
+  u.image = clamp(u.image + (imageTarget(u) - u.image) * 0.12, 0, 100);
+  const drift = Math.round(u.fans * ((u.image - 55) / 45 * 0.0004 + fac.content * 0.00025) + fac.content * 5);
+  if (drift) { u.fans = Math.max(100, u.fans + drift); report.fans.push([u.image >= 55 ? "Image du club et contenus" : "Image du club (sponsors controversés)", drift]); }
   u.sponsorDeals = u.sponsorDeals.filter(d => --d.weeks > 0);
-  S.finance.push({ label: `S${S.season % 100}-W${w}`, inc: Math.round(inc), exp: Math.round(exp), budget: Math.round(u.budget) });
-  if (S.finance.length > 60) S.finance.shift();
+  const inc = Object.values(report.income).reduce((a, b) => a + b, 0), exp = Object.values(report.expenses).reduce((a, b) => a + b, 0);
+  S.finance.push({ label: weekLabel(S.season, w), season: S.season, week: w, inc: Math.round(inc), exp: Math.round(exp), budget: Math.round(u.budget), fans: u.fans });
+  if (S.finance.length > 120) S.finance.shift();
 
   // entraînement, forme, moral
   for (const p of Object.values(S.players)) {
@@ -1025,28 +1373,38 @@ function advanceWeek() {
     if (!c) continue;
     const f = facOf(c);
     // à l'académie, les jeunes qui jouent progressent plus vite
-    const aca = c.parent && p.starter ? 0.04 + f.academy * 0.02 : 0;
-    if (p.rating < p.pot && Math.random() < 0.06 + f.coaching * 0.025 + (p.age <= 21 ? 0.05 : 0) + aca) p.rating++;
+    const aca = c.academyOf && p.starter ? 0.04 + f.academy * 0.02 : 0;
+    if (p.rating < p.pot && Math.random() < (0.06 + f.coaching * 0.025 + (p.age <= 21 ? 0.05 : 0) + aca) * WEEK_SCALE) p.rating++;
     p.form = clamp(p.form + (65 - p.form) * 0.08 + rand(-3, 3) + f.house * 0.3, 20, 100);
     let dm = (70 - p.morale) * 0.05 + f.house * 0.3;
-    if (!p.starter && p.rating >= 80) dm -= 2;
+    if (!p.starter && p.rating >= 80) dm -= 1;
     p.morale = clamp(p.morale + dm + rand(-2, 2), 5, 100);
   }
 
   if (u.budget < 0) {
-    S.board.confidence = clamp(S.board.confidence - 6, 0, 100);
-    if (w % 2) mail("⚠️ Budget dans le rouge", `Le budget est négatif (${money(u.budget)}). Le conseil s'inquiète. Vendez des joueurs ou réduisez la masse salariale.`, "board");
+    S.board.confidence = clamp(S.board.confidence - 2, 0, 100);
+    if (w % 4 === 0) mail("⚠️ Budget dans le rouge", `Le budget est négatif (${money(u.budget)}). Le conseil s'inquiète. Vendez des joueurs ou réduisez la masse salariale.`, "board");
   }
-  if (w === R) {
+  if (w === 45) {
     const exp = allUserPlayers().filter(p => p.years <= 1);
-    if (exp.length) mail("⏳ Contrats en fin de saison", `Ces joueurs partiront à la fin de la saison si vous ne les prolongez pas : <b>${exp.map(p => p.handle).join(", ")}</b>.`, "transfer");
+    if (exp.length) mail("⏳ Contrats en fin de saison", `Ces joueurs partiront à la fin de la saison (mi-décembre) si vous ne les prolongez pas : <b>${exp.map(p => p.handle).join(", ")}</b>.`, "transfer");
   }
-  if (Math.random() < 0.3) { const ev = randomEvent(); if (ev) report.events.push(ev); }
+  if (Math.random() < 0.1) { const ev = randomEvent(); if (ev) report.events.push(ev); }
   aiMarket();
+  // un message de résultats par jeu (comme le compte rendu de match de Football Manager)
+  const byGame = {};
+  for (const r of report.matches) (byGame[r.game] = byGame[r.game] || []).push(`${r.stage || ""} : <b>${clubLabel(r.a, r.game)} ${r.sa}-${r.sb} ${clubLabel(r.b, r.game)}</b>${r.mvp ? " · MVP " + r.mvp : ""}`);
+  for (const l of report.lobbies) (byGame[l.game] = byGame[l.game] || []).push(`${l.stage} : <b>${l.rank}e</b> (${l.mine.pts} pts, ${l.mine.kills} éliminations)`);
+  for (const t of report.tournaments) (byGame[t.game] = byGame[t.game] || []).push(`${t.name} : <b>${t.place === 1 ? "🏆 vainqueur" : t.place + "e sur " + t.n}</b>${t.prize ? " · " + money(t.prize) : ""}`);
+  for (const [g, lines] of Object.entries(byGame)) {
+    const wins = report.matches.filter(r => r.game === g && isMine(r.winner)).length, losses = report.matches.filter(r => r.game === g && isMine(r.loser)).length;
+    mail(`📋 ${GAMES[g].short} : résultats de la semaine${wins + losses ? ` (${wins}V-${losses}D)` : ""}`, lines.join("<br>"), "match", g);
+  }
 
-  report.week = w; report.season = S.season;
-  S.lastWeek = report;
-  if (w === R + 2) report.seasonEnd = endSeason();
+  S.lastWeek = { ...report, fields: undefined, done: undefined };
+  const out = S.lastWeek;
+  S.rep = null;
+  if (w >= SEASON_LAST) out.seasonEnd = endSeason();
   else S.week++;
 
   if (S.board.confidence <= 0 || u.budget < -Math.max(150000, u.fame * 20000)) {
@@ -1054,17 +1412,10 @@ function advanceWeek() {
     mail("❌ Licencié", `Le conseil d'administration a perdu confiance. ${S.ceo} est démis de ses fonctions de CEO de ${u.name}.`, "board");
   }
   scheduleSave();
-  return report;
-}
-function crown(L, winner, runnerUp, detail) {
-  const champ = S.clubs[winner], label = `${leagueName(L)} ${S.season}`;
-  champ.fame = clamp(champ.fame + [5, 2.5, 1][L.tier - 1], 0, 100); champ.fans = Math.round(champ.fans * [1.08, 1.05, 1.03][L.tier - 1]);
-  champ.titles.push(label);
-  S.titles.push({ season: S.season, game: L.game, tier: L.tier, club: champ.solo ? soloName(champ, L.game) : (champ.divisions[L.game] && champ.divisions[L.game].label) || champ.name, clubId: champ.id });
-  if (winner === S.userId) mail(`🏆 CHAMPIONS ! ${label}`, `${user().name} remporte le <b>${label}</b> (${tierLabel(L.game, L.tier)}) face à ${S.clubs[runnerUp] ? S.clubs[runnerUp].name : "?"} — ${detail}.`, "trophy");
+  return out;
 }
 // ---------- tournois à cashprize ----------
-const EWC_LAST_WEEK = 10;
+const EWC_FIRST = 28, EWC_LAST_WEEK = 35;   // Esports World Cup : juillet-août
 // grands tournois fixes + petits tournois générés pour la saison
 function allTournaments(game) {
   return (TOURNAMENTS[game] || []).concat((S.smallTours || []).filter(t => t[5] === game).map(t => t.slice(0, 5)));
@@ -1077,8 +1428,9 @@ function genSmallEvents() {
     const used = {};
     const name = list => { const n = list[(randi(0, list.length - 1))]; used[n] = (used[n] || 0) + 1; return used[n] > 1 ? `${n} #${used[n]}` : n; };
     const prize = ([a, b]) => Math.round(randi(a, b) / 100) * 100;
-    for (let w = 1; w <= REGULAR_WEEKS; w += (E.every3 || 2)) out.push([name(E.t3), w, prize(E.p3), g.fmt === "team" ? "23" : "3", br ? g.lobby : 16, game]);
-    for (let w = 2; w <= REGULAR_WEEKS; w += (E.every2 || 4)) out.push([name(E.t2), w, prize(E.p2), "2", br ? g.lobby : 8, game]);
+    // cash cups toutes les 4 semaines (2 en CS2), circuits tier 2 toutes les 8 semaines (4 en CS2), sauf en décembre
+    for (let w = SEASON_FIRST + 2; w <= SEASON_LAST - 3; w += (E.every3 || 2) * 2) out.push([name(E.t3), w, prize(E.p3), g.fmt === "team" ? "23" : "3", br ? g.lobby : 16, game]);
+    for (let w = SEASON_FIRST + 4; w <= SEASON_LAST - 3; w += (E.every2 || 4) * 2) out.push([name(E.t2), w, prize(E.p2), "2", br ? g.lobby : 8, game]);
   }
   return out;
 }
@@ -1103,8 +1455,8 @@ function awardEwcClubChampionship(report) {
   ranking = ranking.slice(0, EWC_CLUB_PRIZES.length);
   ranking.forEach((x, i) => {
     const prize = EWC_CLUB_PRIZES[i];
-    S.clubs[x.id].budget += prize; x.prize = prize;
-    if (x.id === u.id) report.income.ewc = prize;
+    x.prize = prize;
+    if (x.id === u.id) book("ewc", prize, "", "EWC Club Championship"); else S.clubs[x.id].budget += prize;
   });
   if (ranking[0]) {
     const champ = S.clubs[ranking[0].id];
@@ -1132,66 +1484,76 @@ function inRegion(clubId, game, region) {
 }
 const REGION_LABEL = r => r ? r.split("|").map(x => ({ CN: "Chine", PAC: "Pacifique" })[x] || REGIONS[x]).join(" / ") : "Monde";
 function tournamentPool(game, tiers, region) {
-  const ids = GAMES[game].open ? S.leagues[lkey(game, 1)].teams : [...new Set([...tiers].filter(t => t >= "1" && t <= "3"))].flatMap(t => S.leagues[lkey(game, +t)].teams);
+  const ids = leaguesOf(game).filter(L => GAMES[game].open || tiers.includes(String(L.tier))).flatMap(L => L.teams);
   return ids.filter(id => S.clubs[id] && divOf(id, game) && tiers.includes(String(S.clubs[id].divisions[game].tier)) && inRegion(id, game, region));
 }
-// le club du joueur participe-t-il ? (open : dès qu'il est dans un tier admis ; invitation : s'il fait partie des mieux classés)
-function tournamentField(game, tiers, size, region) {
-  const g = GAMES[game], u = user();
-  // invitations : les mieux classés ; opens avec le tier 3 : inscriptions libres, donc un plateau tiré au hasard
-  const ranked = tournamentPool(game, tiers, region).map(id => ({ id, s: teamStrength(id, game).str + S.clubs[id].fame * 0.05 })).sort((a, b) => b.s - a.s).map(x => x.id);
+// plateau d'un tournoi (open : tous les clubs des tiers admis peuvent s'inscrire ; invitation : les mieux classés).
+// Les équipes du club du joueur qui ont décliné le tournoi n'y sont pas.
+function tournamentField(game, tiers, size, region, name) {
+  const g = GAMES[game];
+  const ranked = tournamentPool(game, tiers, region).filter(id => !(isMine(id) && name && declined(game, name)))
+    .map(id => ({ id, s: teamStrength(id, game).str + S.clubs[id].fame * 0.05 })).sort((a, b) => b.s - a.s).map(x => x.id);
   // open (tiers 2-3 ou 3) : inscriptions libres, plateau tiré au hasard ; sinon les mieux classés
   const pool = tiers.includes("3") && !tiers.includes("1") ? shuffle(ranked) : ranked;
   let n = Math.min(size, pool.length);
   if (g.fmt !== "br") n = n >= 2 ? 2 ** Math.floor(Math.log2(n)) : 0;
   const field = pool.slice(0, n);
-  if (!invitational(tiers) && n > 1 && pool.includes(u.id) && !field.includes(u.id)) field[n - 1] = u.id;
+  // open : les équipes inscrites du club du joueur ont leur place
+  if (!invitational(tiers) && n > 1) {
+    let slot = n - 1;
+    for (const id of pool.filter(isMine)) if (!field.includes(id)) { while (slot > 0 && isMine(field[slot])) slot--; field[slot--] = id; }
+  }
   return field;
 }
-function runTournaments(w, report, pay) {
-  const u = user();
-  S.tourResults = S.tourResults || [];
-  for (const game of Object.keys(GAMES)) for (const [name, week, prize, tiers, size, region] of allTournaments(game)) {
-    if (week !== w) continue;
-    const g = GAMES[game], field = tournamentField(game, tiers, size, region);
-    if (field.length < 2) continue;
-    let order;
-    if (g.fmt === "br") {
-      const lob = playLobby({ game, tier: Math.max(...[...tiers].map(Number)) }, field, 6);
-      order = lob.ranked;
-      if (field.includes(u.id)) report.lobbies.push({ game, tier: u.divisions[game].tier, ...lob, stage: name, mine: lob.res[u.id], rank: lob.ranked.indexOf(u.id) + 1 });
-    } else {
-      // élimination directe : 1er contre dernier, BO3 puis finale en BO5
-      let round = field.slice();
-      const out = [];
-      while (round.length > 1) {
-        const next = [], losers = [];
-        for (let i = 0; i < round.length / 2; i++) {
-          const a = round[i], b = round[round.length - 1 - i];
-          const r = playSeries(game, a, b, round.length === 2 ? 5 : 3);
-          next.push(r.winner); losers.push(r.loser);
-          if (a === u.id || b === u.id) report.matches.push({ ...r, game, tier: u.divisions[game].tier, stage: `${name} — ${ROUND_NAME[round.length] || "Tour"}` });
-        }
-        out.unshift(losers);
-        round = next;
+// le club du joueur a-t-il décliné ce tournoi cette saison ?
+const declined = (game, name) => S.tourChoice && S.tourChoice[game + "|" + name] === "out";
+function playTournament(game, t) {
+  const rep = weekReport(), k = tourKey(game, t[0]);
+  if (rep.done[k]) return; rep.done[k] = true;
+  const [name, week, prize, tiers] = t;
+  const g = GAMES[game], field = weekField(game, t), w = S.week;
+  if (field.length < 2) return;
+  const stake = (prize >= 1e6 ? 2.5 : prize >= 2e5 ? 1.2 : prize >= 5e4 ? 0.5 : 0.2) * (0.4 + 0.6 * g.mult);
+  let order;
+  if (g.fmt === "br") {
+    const lob = playLobby({ game, tier: Math.max(...[...tiers].filter(x => x >= "1" && x <= "3").map(Number)) }, field, 6, stake, name);
+    order = lob.ranked;
+    for (const id of field.filter(isMine)) rep.lobbies.push({ game, tier: S.clubs[id].divisions[game].tier, ...lob, stage: name, mine: lob.res[id], rank: lob.ranked.indexOf(id) + 1, club: id });
+  } else {
+    // élimination directe : 1er contre dernier, BO3 puis finale en BO5
+    let round = field.slice();
+    const out = [];
+    while (round.length > 1) {
+      const next = [], losers = [];
+      for (let i = 0; i < round.length / 2; i++) {
+        const a = round[i], b = round[round.length - 1 - i];
+        const stage = ROUND_NAME[round.length] || "Tour";
+        const r = playSeries(game, a, b, round.length === 2 ? 5 : 3, stake * (round.length <= 4 ? 1.5 : 1), `${name}, ${stage.toLowerCase()}`);
+        next.push(r.winner); losers.push(r.loser);
+        if (isMine(a) || isMine(b)) rep.matches.push({ ...r, game, tier: S.clubs[isMine(a) ? a : b].divisions[game].tier, stage: `${name} — ${stage}` });
       }
-      order = round.concat(out.flat());
+      out.unshift(losers);
+      round = next;
     }
-    // les clubs IA gardent la moitié des gains ; le vôtre garde ce que prévoient les contrats
-    order.forEach((id, i) => { const amt = prize * (PLACE_SHARE[i] || 0); pay(id, Math.round(id === u.id ? amt : amt * CLUB_SHARE), game); });
-    const champ = S.clubs[order[0]];
-    champ.fame = clamp(champ.fame + (prize >= 1e6 ? 4 : prize >= 1e5 ? 2 : 0.5), 0, 100);
-    champ.fans = Math.round(champ.fans * (prize >= 1e6 ? 1.05 : 1.01));
-    champ.titles.push(`${name} ${S.season}`);
-    S.titles.push({ season: S.season, game, tier: 0, name, club: champ.solo ? soloName(champ, game) : (champ.divisions[game] && champ.divisions[game].label) || champ.name, clubId: champ.id });
-    if (name.startsWith("EWC")) ewcPoints(order, game);
-    const mine = order.indexOf(u.id) + 1;
-    S.tourResults.push({ season: S.season, week: w, game, name, prize, n: field.length, top: order.slice(0, 4), mine: mine || null });
-    if (mine) {
-      const won = Math.round(prize * (PLACE_SHARE[mine - 1] || 0) * clubKeep(game));
-      report.tournaments.push({ game, name, place: mine, n: field.length, prize: won, winner: order[0] });
-      if (mine === 1) mail(`🏆 ${name} remporté !`, `${u.name} remporte le <b>${name} ${S.season}</b> (${GAMES[game].name}) et empoche ${money(won)}.`, "trophy");
-    }
+    order = round.concat(out.flat());
+  }
+  // les grands tournois se jouent en LAN : billets d'avion et hôtel pour les joueurs
+  const mineIn = field.filter(isMine);
+  if (prize >= 100000 && mineIn.length) book("travel", -mineIn.length * g.size * (t[5] ? 900 : 2200), game, name);
+  // les clubs IA gardent la moitié des gains ; le vôtre garde ce que prévoient les contrats
+  order.forEach((id, i) => { const amt = prize * (PLACE_SHARE[i] || 0); payPrize(id, isMine(id) ? amt : amt * CLUB_SHARE, game, name); });
+  const champ = S.clubs[order[0]];
+  champ.fame = clamp(champ.fame + (prize >= 1e6 ? 4 : prize >= 1e5 ? 2 : 0.5), 0, 100);
+  fanChange(order[0], 1, stake * 4, isMine(order[0]) ? `🏆 ${name} remporté` : null);
+  champ.titles.push(`${name} ${S.season}`);
+  S.titles.push({ season: S.season, game, tier: 0, name, club: clubLabel(order[0], game), clubId: champ.id });
+  if (name.startsWith("EWC")) ewcPoints(order.map(id => S.clubs[id] && S.clubs[id].parent === S.userId && !S.clubs[id].academyOf ? S.userId : id), game);
+  const mine = order.findIndex(isMine) + 1;
+  (S.tourResults || (S.tourResults = [])).push({ season: S.season, week: w, game, name, prize, n: field.length, top: order.slice(0, 4), mine: mine || null });
+  if (mine) {
+    const won = Math.round(prize * (PLACE_SHARE[mine - 1] || 0) * clubKeep(game));
+    rep.tournaments.push({ game, name, place: mine, n: field.length, prize: won, winner: order[0] });
+    if (mine === 1) mail(`🏆 ${name} remporté !`, `${user().name} remporte le <b>${name} ${S.season}</b> (${GAMES[game].name}) et empoche ${money(won)}.`, "trophy", game);
   }
 }
 
@@ -1234,41 +1596,43 @@ function endSeason() {
   const moves = [];
   for (const game of Object.keys(GAMES)) {
     if (GAMES[game].open) {
-      // circuit ouvert : le statut de chaque club suit son classement de la saison
-      const [a, b] = GAMES[game].tierSizes;
-      finalOrder(S.leagues[lkey(game, 1)]).forEach((id, i) => {
-        const d = S.clubs[id] && S.clubs[id].divisions[game]; if (!d) return;
-        const nt = i < a ? 1 : i < a + b ? 2 : 3;
-        if (id === u.id && nt !== d.tier) moves.push(`${nt < d.tier ? "⬆️" : "⬇️"} ${GAMES[game].short} : ${i + 1}e du circuit, statut ${tierLabel(game, nt)}${nt < d.tier ? " !" : ""}`);
-        d.tier = nt;
-      });
+      // circuit ouvert : le statut de chaque club suit son classement de la saison dans sa région
+      for (const L of leaguesOf(game)) {
+        const [a, b] = statusCuts(L.teams.length);
+        finalOrder(L).forEach((id, i) => {
+          const d = S.clubs[id] && S.clubs[id].divisions[game]; if (!d) return;
+          const nt = i < a ? 1 : i < b ? 2 : 3;
+          if ((id === u.id || (S.clubs[id].parent === u.id)) && nt !== d.tier) moves.push(`${nt < d.tier ? "⬆️" : "⬇️"} ${GAMES[game].short} ${ZONE_NAMES[L.zone]} : ${i + 1}e du circuit, statut ${tierLabel(game, nt)}${nt < d.tier ? " !" : ""}`);
+          d.tier = nt;
+        });
+      }
       continue;
     }
-    for (let t = 1; t <= 2; t++) {
-      const up = S.leagues[lkey(game, t)], low = S.leagues[lkey(game, t + 1)];
+    for (const zone of gameZones(game)) for (let t = 1; t <= 2; t++) {
+      const up = S.leagues[lkey(game, t, zone)], low = S.leagues[lkey(game, t + 1, zone)];
       // une académie ne monte jamais dans la division de son équipe première
       const blocked = id => { const c = S.clubs[id]; return c && c.parent && S.clubs[c.parent] && S.clubs[c.parent].divisions[game] && S.clubs[c.parent].divisions[game].tier <= t; };
       const down = finalOrder(up).slice(-2), promo = finalOrder(low).filter(id => !blocked(id)).slice(0, 2);
       for (const id of finalOrder(low).slice(0, 2)) if (blocked(id) && id === academyId(game)) moves.push(`🎓 ${GAMES[game].short} : votre académie finit ${finalOrder(low).indexOf(id) + 1}e mais ne peut pas monter dans la division de l'équipe première.`);
       for (const id of down) {
         up.teams = up.teams.filter(x => x !== id); low.teams.push(id); S.clubs[id].divisions[game].tier = t + 1;
-        if (id === u.id) moves.push(`⬇️ ${GAMES[game].short} : relégation en ${TIER_LABEL[t]}`);
+        if (id === u.id) moves.push(`⬇️ ${GAMES[game].short} : relégation en ${TIER_LABEL[t]} (${tierName(game, t + 1, zone)})`);
       }
       for (const id of promo) {
         if (down.includes(id)) continue;
         low.teams = low.teams.filter(x => x !== id); up.teams.push(id); S.clubs[id].divisions[game].tier = t;
-        if (id === u.id) moves.push(`⬆️ ${GAMES[game].short} : MONTÉE en ${TIER_LABEL[t - 1]} !`);
+        if (id === u.id) moves.push(`⬆️ ${GAMES[game].short} : MONTÉE en ${TIER_LABEL[t - 1]} (${tierName(game, t, zone)}) !`);
       }
     }
   }
   for (const aca of userAcademies()) {
     const game = aca.academyOf, main = u.divisions[game];
     if (!main) { closeAcademy(game); moves.push(`🎓 ${GAMES[game].short} : sans équipe première, l'académie ferme.`); continue; }
-    const at = aca.divisions[game].tier;
+    const at = aca.divisions[game].tier, zone = aca.divisions[game].zone || "W";
     if (at > main.tier) continue;
     if (at < 3) {
       // l'académie descend d'un tier ; le meilleur club du tier inférieur prend sa place
-      const up = S.leagues[lkey(game, at)], low = S.leagues[lkey(game, at + 1)];
+      const up = S.leagues[lkey(game, at, zone)], low = S.leagues[lkey(game, at + 1, zone)];
       const swap = finalOrder(low).find(id => id !== aca.id && !S.clubs[id].parent);
       up.teams = up.teams.filter(x => x !== aca.id); low.teams.push(aca.id); aca.divisions[game].tier = at + 1;
       if (swap) { low.teams = low.teams.filter(x => x !== swap); up.teams.push(swap); S.clubs[swap].divisions[game].tier = at; }
@@ -1276,12 +1640,12 @@ function endSeason() {
     } else {
       // plus de division en dessous : les jeunes rejoignent l'équipe première
       for (const p of clubPlayers(aca.id, game)) { removeFromClub(p, true); main.players.push(p.id); p.club = u.id; p.starter = false; }
-      const L = S.leagues[lkey(game, 3)]; swapInLeague(L, aca.id, fillerClub(game, 3).id); delete S.clubs[aca.id];
+      const L = S.leagues[lkey(game, 3, zone)]; swapInLeague(L, aca.id, fillerClub(game, 3, zone).id); delete S.clubs[aca.id];
       moves.push(`🎓 ${GAMES[game].short} : l'équipe première et l'académie sont dans la même division ; l'académie est dissoute et ses joueurs rejoignent l'équipe première.`);
     }
   }
   for (const aca of userAcademies()) {
-    const L = S.leagues[lkey(aca.academyOf, aca.divisions[aca.academyOf].tier)], pos = finalOrder(L).indexOf(aca.id) + 1;
+    const L = leagueOf(aca.id, aca.academyOf), pos = finalOrder(L).indexOf(aca.id) + 1;
     lines.push(`🎓 ${GAMES[aca.academyOf].short} académie (${TIER_LABEL[aca.divisions[aca.academyOf].tier - 1]}) : <b>${pos ? pos + "e" : "-"}</b>`);
   }
   mail(`Bilan de la saison ${S.season}`,
@@ -1325,7 +1689,9 @@ function endSeason() {
     joinClub(p, aca || u, 300, 3);
     mail("🎓 Pépite de l'académie", `${flag(p.nat)} <b>${p.handle}</b> (${p.age} ans, ${GAMES[gm].short}, note ${p.rating}) sort de votre centre de formation et signe son premier contrat pro${aca ? ` avec ${aca.name}` : ""}.`, "info");
   }
+  aiFillRoster.pool = {};
   for (const c of Object.values(S.clubs)) if (c.ai) for (const gm of Object.keys(c.divisions)) aiFillRoster(c.id, gm);
+  aiFillRoster.pool = null;
   // la notoriété tend vers le niveau de la meilleure division du club
   for (const c of Object.values(S.clubs)) {
     const ts = Object.values(c.divisions).map(d => d.tier);
@@ -1339,7 +1705,7 @@ function endSeason() {
 }
 
 function aiMarket() {
-  if (Math.random() > 0.35) return;
+  if (Math.random() > 0.15) return;
   const fas = shuffle(Object.values(S.players).filter(p => !p.club && p.rating >= 72));
   for (const p of fas.slice(0, 1)) {
     const cands = Object.values(S.clubs).filter(c => c.ai && !c.solo && c.divisions[p.game]);
@@ -1361,8 +1727,8 @@ const EVENTS = [
     const u = user(); const b = pick(["CryptoMoon", "BetZilla", "QuickCasino", "NFT Arena"]);
     const lump = Math.round((15000 + u.fame * 8000) / 1000) * 1000;
     return { title: `Sponsor controversé : ${b}`, body: `<b>${b}</b> offre ${money(lump)} immédiatement pour apparaître sur vos maillots. Les fans risquent de mal le prendre.`,
-      choices: [{ label: "Accepter 💰", fx: () => { u.budget += lump; u.fans = Math.round(u.fans * 0.94); u.fame = Math.max(1, u.fame - 2); return `+${money(lump)}, mais les fans grondent (-6 % de fans).`; } },
-                { label: "Refuser", fx: () => { u.fame = Math.min(100, u.fame + 0.5); return "Les fans saluent votre intégrité."; } }] };
+      choices: [{ label: "Accepter 💰", fx: () => { book("events", lump, "", "Sponsor controversé : " + b); u.imageBonus = (u.imageBonus || 0) - 6; const lost = Math.round(u.fans * 0.03); u.fans -= lost; u.fame = Math.max(1, u.fame - 2); return `+${money(lump)}, mais les fans grondent (-${lost.toLocaleString("fr-FR")} fans) et l'image du club en prend un coup.`; } },
+                { label: "Refuser", fx: () => { u.fame = Math.min(100, u.fame + 0.5); u.imageBonus = (u.imageBonus || 0) + 2; return "Les fans saluent votre intégrité (image du club en hausse)."; } }] };
   },
   () => {
     const p = randomUserPlayer(); if (!p) return null;
@@ -1382,7 +1748,7 @@ const EVENTS = [
     const big = u.fame >= 40;
     const cost = Math.round(((big ? 20000 : 2000) + Object.keys(u.divisions).length * (big ? 15000 : 1500)) / 500) * 500;
     return { title: big ? "Bootcamp à Séoul" : "Bootcamp LAN le week-end", body: `Un bootcamp intensif est disponible pour ${money(cost)}. Forme de tous les joueurs boostée.`,
-      choices: [{ label: "Réserver ✈️", fx: () => { if (u.budget < cost) return "Budget insuffisant."; u.budget -= cost; allUserPlayers().forEach(p => p.form = clamp(p.form + 18, 0, 100)); return "Les joueurs reviennent affûtés !"; } },
+      choices: [{ label: "Réserver ✈️", fx: () => { if (u.budget < cost) return "Budget insuffisant."; book("staff", -cost, "", "Bootcamp"); allUserPlayers().forEach(p => p.form = clamp(p.form + 18, 0, 100)); return "Les joueurs reviennent affûtés !"; } },
                 { label: "Non merci", fx: () => "Bootcamp annulé." }] };
   },
   () => {
@@ -1391,7 +1757,7 @@ const EVENTS = [
       : pick(["Gotaga", "Kameto", "Squeezie", "Ibai", "xQc", "Pokimane", "TheGrefg", "Domingo", "Zerator", "Locklear", "Ninja", "Shroud"]);
     const cost = Math.round((u.fame < 30 ? 3000 + u.fame * 300 : 80000 + u.fame * 3000) / 500) * 500;
     return { title: `Un créateur veut rejoindre le club`, body: `<b>${s}</b> propose de devenir ambassadeur du club pour ${money(cost)} par saison.`,
-      choices: [{ label: "Signer 🎙️", fx: () => { if (u.budget < cost) return "Budget insuffisant."; u.budget -= cost; u.fans = Math.round(u.fans * 1.15 + (u.fame < 30 ? 600 : 5000)); u.fame = Math.min(100, u.fame + (u.fame < 30 ? 1.5 : 3)); return `Accord signé ! Fans +15 %.`; } },
+      choices: [{ label: "Signer 🎙️", fx: () => { if (u.budget < cost) return "Budget insuffisant."; book("staff", -cost, "", "Ambassadeur : " + s); u.fans = Math.round(u.fans * 1.05 + (u.fame < 30 ? 400 : 3000)); u.fame = Math.min(100, u.fame + (u.fame < 30 ? 1.5 : 3)); return `Accord signé ! Ses abonnés découvrent le club (+5 % de fans).`; } },
                 { label: "Décliner", fx: () => "Peut-être une autre fois." }] };
   },
   () => {
@@ -1401,7 +1767,7 @@ const EVENTS = [
   () => {
     const u = user(); const amount = Math.round((50000 + u.fame * 15000) / 5000) * 5000;
     return { title: "Investisseur intéressé", body: `Un business angel propose d'injecter ${money(amount)} contre 10 % des parts du club. Le conseil exigera plus de résultats.`,
-      choices: [{ label: "Accepter", fx: () => { u.budget += amount; S.board.confidence = clamp(S.board.confidence - 10, 0, 100); return `+${money(amount)} dans les caisses.`; } },
+      choices: [{ label: "Accepter", fx: () => { book("investors", amount, "", "Entrée d'un investisseur (10 % des parts)"); S.board.confidence = clamp(S.board.confidence - 10, 0, 100); return `+${money(amount)} dans les caisses.`; } },
                 { label: "Refuser", fx: () => { S.board.confidence = clamp(S.board.confidence + 3, 0, 100); return "Le conseil apprécie votre indépendance."; } }] };
   },
 ];
@@ -1418,14 +1784,20 @@ const BRANDS_SMALL = ["Le Kebab du Coin", "Garage Auto Martin", "Boulangerie du 
 const BRANDS_MID = ["LDLC", "Materiel.net", "Konix", "Glorious", "Cooler Master", "NZXT", "Fnac", "Boulanger", "Uber Eats", "Deliveroo"];
 const BRANDS_BIG = ["HyperX", "Red Bull", "Logitech G", "Monster Energy", "Secretlab", "Razer", "Alienware", "Intel", "Corsair", "Mercedes-Benz", "BMW", "Orange", "Lacoste", "Puma", "Adidas", "Coca-Cola", "Samsung"];
 const round50 = v => Math.round(v / 50) * 50;
-function sponsorOffer() {
-  const u = user();
-  const brand = pick(u.fame >= 55 ? BRANDS_BIG : u.fame >= 25 ? BRANDS_MID : BRANDS_SMALL);
+// éthique d'une marque : « ethique » (énergie verte, réemploi, sport, éducation), « neutre », « controverse » (paris, crypto, vape, pétrole)
+const BRANDS_ETHIC = { small: ["Recyclerie du Quartier", "Coopérative Bio Locale", "Vélo Atelier", "Librairie Le Pixel"], mid: ["Back Market", "Ecosia", "Too Good To Go", "Fairphone", "Veja"], big: ["Decathlon", "SNCF Connect", "Patagonia", "La Poste", "Engie Énergies Vertes"] };
+const BRANDS_SHADY = { small: ["PariFoot Express", "VapeCloud", "CryptoBros"], mid: ["BetZilla", "QuickCasino", "NFT Arena", "FastCrédit"], big: ["CryptoMoon Exchange", "Royal Spin Casino", "PetroGulf Energy", "MegaBet"] };
+function sponsorOffer(kind) {
+  const u = user(), size = u.fame >= 55 ? "big" : u.fame >= 25 ? "mid" : "small";
+  const ethic = kind || (Math.random() < 0.25 ? "ethique" : Math.random() < 0.3 ? "controverse" : "neutre");
+  const brand = pick(ethic === "ethique" ? BRANDS_ETHIC[size] : ethic === "controverse" ? BRANDS_SHADY[size] : { big: BRANDS_BIG, mid: BRANDS_MID, small: BRANDS_SMALL }[size]);
   const tierBonus = Object.values(u.divisions).reduce((s, d) => s + [3000, 600, 80][d.tier - 1], 0);
-  const weekly = round50(200 + u.fame * u.fame * rand(1.5, 3) + tierBonus * rand(0.5, 1));
+  // les marques controversées paient bien plus cher, les marques éthiques un peu moins (et regardent l'image du club)
+  const mult = ethic === "controverse" ? rand(1.6, 2.2) : ethic === "ethique" ? rand(0.8, 0.95) * (0.7 + (u.image ?? 60) / 200) : 1;
+  const weekly = round50((200 + u.fame * u.fame * rand(1.5, 3) + tierBonus * rand(0.5, 1)) * mult);
   // plafond secret de la marque : plus le club a de fans, plus elle est prête à payer
   const max = weekly * rand(1.1, 1.45) * (1 + Math.min(0.3, u.fans / 3e6));
-  return { brand, weekly, weeks: randi(10, 26), max, patience: randi(2, 4), round: 0, history: [] };
+  return { brand, ethic, weekly, weeks: randi(10, 26), max, patience: randi(2, 4), round: 0, history: [] };
 }
 // ask : montant hebdo demandé ; weeks : durée demandée. Un contrat plus long fait baisser le plafond hebdo de la marque.
 function negotiateSponsor(o, ask, weeks) {
@@ -1442,16 +1814,19 @@ function negotiateSponsor(o, ask, weeks) {
 }
 function signSponsor(o, weekly, weeks) {
   const u = user();
-  u.sponsorDeals.push({ name: o.brand, weekly, weeks });
-  mail(`Sponsor signé : ${o.brand}`, `<b>${o.brand}</b> devient partenaire du club : ${money(weekly)}/semaine pendant ${weeks} semaines (${money(weekly * weeks)} au total).`, "info");
+  u.sponsorDeals.push({ name: o.brand, weekly, weeks, ethic: o.ethic || "neutre" });
+  mail(`Sponsor signé : ${o.brand}`, `<b>${o.brand}</b> devient partenaire du club : ${money(weekly)}/semaine pendant ${weeks} semaines (${money(weekly * weeks)} au total).` +
+    (o.ethic === "controverse" ? `<br>⚠️ Marque controversée : l'image du club va se dégrader tant que le contrat court. Les fans seront moins nombreux à vous rejoindre après les victoires et plus nombreux à partir après les défaites.` : o.ethic === "ethique" ? `<br>🌱 Marque éthique : l'image du club s'améliore, vos victoires attireront plus de fans.` : ""), "sponsor");
 }
 // démarchage actif : une tentative par semaine, la réussite dépend de la notoriété
-function prospectSponsor() {
-  const key = S.season + "-" + S.week;
+// kind : type de marque visé (éthique, neutre, controversée). Les marques éthiques exigent une bonne image ; les controversées disent presque toujours oui.
+function prospectSponsor(kind = "neutre") {
+  const key = S.season + "-" + S.week, u = user();
   if (S.prospect === key) return { error: "Vous avez déjà démarché des marques cette semaine." };
   S.prospect = key;
-  if (Math.random() > 0.35 + user().fame / 150) return { error: "Aucune marque n'a donné suite cette semaine. Réessayez la semaine prochaine." };
-  return { offer: sponsorOffer() };
+  const chance = (0.35 + u.fame / 150) * (kind === "controverse" ? 1.5 : kind === "ethique" ? 0.5 + (u.image ?? 60) / 120 : 1);
+  if (Math.random() > chance) return { error: kind === "ethique" && (u.image ?? 60) < 50 ? "Les marques éthiques refusent : l'image du club est trop dégradée. Réessayez quand elle sera meilleure." : "Aucune marque n'a donné suite cette semaine. Réessayez la semaine prochaine." };
+  return { offer: sponsorOffer(kind) };
 }
 
 // ---------- installations ----------
@@ -1461,15 +1836,22 @@ function upgradeFacility(key) {
   if (lvl >= MAX_FAC) return "Niveau maximum atteint.";
   const cost = facilityCost(lvl);
   if (u.budget < cost) return "Budget insuffisant.";
-  u.budget -= cost; u.facilities[key]++;
+  book("upgrades", -cost, "", `${FACILITIES[key].name} niveau ${lvl + 1}`); u.facilities[key]++;
   mail(`Installation améliorée`, `${FACILITIES[key].icon} ${FACILITIES[key].name} → niveau ${u.facilities[key]} (${money(cost)}).`, "info");
   return null;
 }
 
 // ---------- messagerie ----------
-function mail(title, body, type = "info") {
-  S.inbox.unshift({ id: uid("m"), season: S.season, week: S.week, title, body, type, read: false });
-  if (S.inbox.length > 150) S.inbox.pop();
+// jeu d'un message, deviné d'après son texte quand il n'est pas précisé (le nom le plus long d'abord : « Valorant Game Changers » avant « Valorant »)
+function mailGame(title, body) {
+  const keys = mailGame.k || (mailGame.k = Object.keys(GAMES).sort((a, b) => GAMES[b].name.length - GAMES[a].name.length));
+  const t = title + " " + body;
+  return keys.find(k => t.includes(GAMES[k].name)) || keys.find(k => new RegExp("(^|[^A-Za-z])" + GAMES[k].short.replace(/ /g, " ") + "([^A-Za-z]|$)").test(title)) || null;
+}
+function mail(title, body, type = "info", game = null) {
+  if (!game) game = mailGame(title, body);
+  S.inbox.unshift({ id: uid("m"), season: S.season, week: S.week, title, body, type, game, read: false });
+  if (S.inbox.length > 300) S.inbox.pop();
 }
 function news(text) { mail("📰 " + text, text, "news"); }
 
@@ -1524,6 +1906,7 @@ function scheduleSave() {
 if (typeof window !== "undefined" && window.addEventListener) window.addEventListener("beforeunload", () => { if (scheduleSave.t) save(); });
 function readSave() { const s = localStorage.getItem(SAVE_KEY); return s ? unpackSave(s) : null; }
 function save() {
+  try { localStorage.removeItem("esports-manager-save-v2"); } catch (e) { }   // ancienne version incompatible : libère la place
   try { localStorage.setItem(SAVE_KEY, packSave(JSON.stringify(S))); S.saveError = false; }
   catch (e) { if (!S.saveError) { S.saveError = true; if (typeof toast === "function") toast("⚠️ Sauvegarde impossible : stockage du navigateur plein ou bloqué."); } }
 }

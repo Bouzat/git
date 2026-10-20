@@ -127,11 +127,47 @@ tr:hover td { background: #ffffff06; }
 .cal-head { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 4px; }
 .chip.now { border-color: var(--club); color: var(--text); }
 .chip.ewc { border-color: #2ecc71; }
-.cal-item { display: grid; grid-template-columns: 70px 1fr auto; gap: 8px; align-items: baseline; font-size: 13px; padding: 4px 0; border-top: 1px solid #1c2338; }
+.cal-item { display: grid; grid-template-columns: minmax(70px, 34%) 1fr auto; gap: 8px; align-items: baseline; font-size: 13px; padding: 4px 0; border-top: 1px solid #1c2338; }
 .cal-item.ewc .cal-what b { color: #2ecc71; }
 .cal-item.tour .cal-what b { color: var(--accent2); }
-.cal-game { color: var(--muted); white-space: nowrap; }
+.cal-game { color: var(--muted); min-width: 0; overflow-wrap: anywhere; }
 .cal-what { min-width: 0; }
 .cal-res { white-space: nowrap; text-align: right; }
 th.sortable { cursor: pointer; user-select: none; }
 th.sortable:hover { color: var(--text); }
+
+/* ---------- jour de match ---------- */
+.md-list { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; }
+.md-ev { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel2); }
+.md-ev.done { opacity: .6; }
+.md-result { margin-bottom: 8px; border-color: var(--accent); }
+.recap { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--panel2); }
+.recap-h { display: flex; justify-content: space-between; font-weight: 700; margin-bottom: 6px; }
+.recap-r { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; padding: 2px 0; border-top: 1px solid #1c2338; }
+.recap-r span:first-child { color: var(--muted); min-width: 0; }
+select.small-sel { padding: 3px 6px; font-size: 12px; }
+tr.mate td { color: var(--muted); font-style: italic; }
+
+/* ---------- messagerie ---------- */
+.inbox { display: grid; grid-template-columns: 210px minmax(240px, 1fr) minmax(280px, 1.4fr); gap: 12px; align-items: start; }
+.inbox .card { padding: 10px; }
+.inbox-side { display: flex; flex-direction: column; gap: 2px; position: sticky; top: 70px; }
+.inbox-h { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); padding: 4px 8px; }
+.inbox-cat { display: flex; justify-content: space-between; align-items: center; gap: 6px; text-align: left; border: none; background: none; padding: 6px 8px; border-radius: 8px; color: var(--muted); font-size: 13px; }
+.inbox-cat:hover { background: var(--panel2); color: var(--text); }
+.inbox-cat.active { background: var(--panel2); color: var(--text); box-shadow: inset 3px 0 0 var(--accent2); }
+.inbox-list { max-height: 72vh; overflow: auto; padding: 0 !important; }
+.inbox-day { position: sticky; top: 0; background: var(--panel); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); padding: 8px 12px 4px; border-bottom: 1px solid var(--line); }
+.inbox-item { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 1px solid #1c2338; cursor: pointer; }
+.inbox-item:hover { background: #ffffff06; }
+.inbox-item.unread .t { font-weight: 700; color: var(--text); }
+.inbox-item.unread { box-shadow: inset 3px 0 0 var(--accent2); }
+.inbox-item.sel { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.inbox-item .t { font-size: 13px; color: #c8cde0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inbox-ic { flex: none; }
+.inbox-read { position: sticky; top: 70px; padding: 16px !important; min-height: 200px; }
+.inbox-meta { font-size: 12px; color: var(--muted); display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.inbox-title { text-transform: none; letter-spacing: 0; color: var(--text); font-size: 18px; margin: 8px 0 12px; }
+.inbox-body { color: #c8cde0; line-height: 1.6; }
+@media (max-width: 1100px) { .inbox { grid-template-columns: 1fr 1.3fr; } .inbox-side { grid-column: 1 / -1; position: static; flex-direction: row; flex-wrap: wrap; } .inbox-h { width: 100%; } }
+@media (max-width: 700px) { .inbox { grid-template-columns: 1fr; } .inbox-read, .inbox-side { position: static; } .inbox-list { max-height: 45vh; } }

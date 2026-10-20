@@ -21,11 +21,20 @@ La partie est sauvegardée automatiquement dans le navigateur (localStorage) à 
 
 League of Legends · Counter-Strike 2 · Valorant · Dota 2 · Rocket League · Overwatch 2 · Rainbow Six Siege · Call of Duty: Black Ops 7 · Call of Duty: Warzone · Mobile Legends · Honor of Kings · Crossfire · Fortnite · Apex Legends · PUBG · PUBG Mobile · Free Fire · Teamfight Tactics · Trackmania · EA Sports FC · Street Fighter 6 · Tekken 8 · Fatal Fury · Échecs · StarCraft II
 
-Pour les jeux ajoutés, seuls les échecs (Carlsen, Nakamura, Firouzja, Gukesh…) et Tekken 8 (Arslan Ash, Knee…) ont de vrais joueurs ; les autres scènes sont peuplées de clubs et joueurs inventés.
+Pour les jeux ajoutés, les échecs (Carlsen, Nakamura, Firouzja, Gukesh…), Tekken 8 (Arslan Ash, Knee…) et **Warzone** ont de vrais joueurs. Warzone se joue en trios, avec les équipes du World Series of Warzone 2025 et de l'EWC 2025 : Team Vision (Fifakill, Echo1867, Lenun), Twisted Minds (Aydan, Almond, zSmit), Gentle Mates (HalloW, Gromalok, Enkeo), Team Falcons (Biffle, Shifty, Hisoka), Team BDS, ROC, ESC Champenois, ONIC, Raven eSports, 100 Thieves et le trio indépendant de Stukex. Les autres scènes sont peuplées de clubs et joueurs inventés.
 
-Chaque jeu a 3 tiers (ex. CS2 : Majors/BLAST/IEM → ESL Challenger/CCT → ESEA/FACEIT). Les 2 premiers de chaque tier montent, les 2 derniers descendent. On peut aussi acheter une place plus haut quand le club est assez connu.
+**Ligues régionales et tiers.** Comme dans la réalité, chaque jeu a ses ligues par région, sur 3 tiers. Les équipes réelles sont placées dans la ligue de leur région, les meilleures en tier 1 :
+- **LoL** : LEC, LCK, LPL, LCS, CBLOL, LCP en tier 1 ; EMEA Masters et ligues régionales, LCK CL, LDL, NACL, Circuito Desafiante… en tier 2 ; Open Tour en tier 3.
+- **Valorant** : VCT EMEA, Americas, Pacific et China (12 équipes) ; Challengers de chaque région (16) ; Premier.
+- **Valorant Game Changers** (EMEA, Amérique du Nord, Brésil/Amérique du Sud, Pacifique), **Rocket League** (RLCS Europe, Amérique du Nord, Amérique du Sud, MENA, Océanie, Asie-Pacifique), **Overwatch** (OWCS EMEA, NA, Asie), **Rainbow Six** (European League, NA League, Brasileirão, Asia-Pacific League).
+- **Fortnite** : une FNCS par région.
+- Les jeux sans ligues régionales (CS2, Dota 2, CoD, jeux de combat, échecs…) gardent un classement mondial.
 
-**Fortnite est un circuit ouvert** : un seul classement FNCS pour tous les duos (pros et amateurs), sans divisions. Chaque club a un statut recalculé en fin de saison d'après son classement : **Élite** (top 20), **Pro** (top 80) ou **Open**. Ce statut fixe les invitations aux grands tournois, l'accès aux cash cups, les sponsors et les frais. Un nouveau club entre en statut Open. Comme la vraie FNCS, le format alterne : **duos les années paires (2026), trios les années impaires (2027)**. Les clubs de l'IA complètent leurs équipes, mais le vôtre doit recruter son troisième joueur. Dans les classements, un duo d'organisation s'affiche avec le nom du club, par exemple « XSET (Clix & Rapid) ».
+Les 2 premiers de chaque ligue montent dans le tier au-dessus de leur région, les 2 derniers descendent. On peut aussi acheter une place plus haut quand le club est assez connu.
+
+**Fortnite est un circuit ouvert**, joué par région : chaque région a sa FNCS, sans divisions. Chaque équipe a un statut recalculé en fin de saison d'après son classement dans sa région : **Élite** (top 10 %), **Pro** (top 40 %) ou **Open**. Ce statut fixe les invitations aux grands tournois, l'accès aux cash cups, les sponsors et les frais. Un nouveau club entre en statut Open. Comme la vraie FNCS, le format alterne : **duos les années paires (2026), trios les années impaires (2027)**. Dans les classements, un duo d'organisation s'affiche avec le nom du club, par exemple « XSET (Clix & Rapid) ».
+
+**Plusieurs duos/trios Fortnite, sans banc.** Chaque joueur Fortnite du club joue dans un duo (ou trio), et le club peut en aligner autant qu'il veut. Chaque équipe joue dans la FNCS de sa région : un duo américain en Amérique du Nord, un duo européen en Europe. Dans l'onglet Effectifs, vous choisissez qui joue avec qui (« Changer d'équipe… »), ou vous isolez un joueur dans un nouveau duo. Un joueur seul se trouve un partenaire hors du club, un agent libre de sa région et de son niveau (marqué d'un *). Vous ne le payez pas. Reprendre une organisation comme Solary donne tous ses duos.
 
 Trois formats de compétition :
 - **Équipes** : séries BO3 en saison régulière, playoffs avec demies BO3 et finale BO5.
@@ -45,7 +54,9 @@ Dans les jeux en équipe (LoL, CS2, Valorant, Dota 2, CoD, R6, Overwatch, Rocket
 - **Effectifs** : titulaires / remplaçants, prolongations, ventes, libérations, ouverture et fermeture de divisions.
 - **Mercato** : 697 joueurs pros réels rangés dans leurs équipes, des pros indépendants (FGC, StarCraft, Fortnite…) et des milliers d'agents libres générés. Les stars refusent les clubs trop modestes.
 - **Joueurs** : note, potentiel, âge, forme, moral, salaire, contrat. Les jeunes progressent, les vétérans déclinent.
-- **Finances** : sponsors, merch/stream, cashprizes, salaires, frais de fonctionnement selon le tier.
+- **Finances** : chaque euro passe par un grand livre (catégorie, jeu, détail) : sponsors, merch et streaming, cashprizes (part du club), ventes, salaires et frais de chaque section, primes, commissions d'agents, déplacements en LAN… L'onglet affiche le compte de résultat de la saison, le résultat par jeu et les 60 dernières opérations, filtrables par jeu.
+- **Budget mercato par section** : en début de saison, comme dans FM, vous répartissez votre budget de transferts entre vos jeux et fixez une masse salariale maximale pour chacun. Une signature qui dépasse l'enveloppe ou le plafond du jeu est refusée, et les ventes renflouent l'enveloppe. La répartition se modifie à tout moment.
+- **Image du club et fans** : les sponsors sont éthiques, classiques ou controversés (paris, crypto, casinos). Les controversés paient environ deux fois plus, mais l'image du club baisse : les victoires attirent moins de fans, les défaites en font partir plus, et des fans partent chaque semaine. Une bonne image fait l'inverse. Après chaque match, un récapitulatif montre combien de fans le club a gagnés ou perdus et pourquoi. Les ordres de grandeur sont réalistes : environ +0,1 % de fans pour une victoire en ligue majeure, quelques pourcents pour un titre.
 - **Infrastructures** : Gaming House, staff de coaching, cellule d'analyse, studio de contenu, académie.
 - **Sponsors négociables** : du kebab du coin à Red Bull, avec contre-offres.
 - **Événements**, polémiques, créateurs de contenu, bootcamps, investisseurs…
@@ -69,21 +80,31 @@ python3 tools/build_live.py data js/data_live.js     # génère js/data_live.js
 - **Potentiel** : marge de progression selon l'âge (un joueur de 25 ans ou plus a atteint son plafond), affichée par votre staff avec une marge d'erreur qui diminue avec le niveau du coaching.
 - Tout est modifiable dans `js/data.js` (format joueur : `[pseudo, nationalité, note, âge]`).
 
-## Calendrier
+## Calendrier réel et jours de match
 
-L'onglet **Calendrier** montre la saison semaine par semaine : tous vos matchs de ligue (adversaire, puis résultat), les playoffs, les tournois auxquels vous êtes inscrit et la fenêtre de l'EWC. Filtres : vos matchs et tournois, tous les tournois de vos jeux, ou tous les tournois du monde.
+La saison suit l'année réelle, semaine par semaine (dates affichées : « 12-18 janv. 2026 ») :
+- **Split 1** de mi-janvier à fin mars, puis **split 2** d'avril à mi-juin : 22 journées de ligue en matchs aller-retour.
+- **Esports World Cup** en juillet-août.
+- **Playoffs** des ligues en septembre.
+- Championnats du monde et grands tournois jusqu'à mi-décembre, à leurs vraies dates (les Majors RLCS, le VCT et les Masters viennent des calendriers fournis).
+
+L'onglet **Calendrier** regroupe les semaines par mois. Il montre vos matchs de ligue, les playoffs et les tournois, et on peut **s'inscrire à un tournoi ou le décliner** : décliner évite les frais de déplacement en LAN et repose vos joueurs.
+
+**Jour de match** : quand votre club joue, le bouton « 🎮 Jour de match » liste vos rencontres de la semaine. Vous les lancez une par une (résultat, fans gagnés et gains après chaque match), ou vous simulez toute la semaine d'un coup, ce qui est pratique avec beaucoup de jeux. « ⏭ Prochain match » passe directement les semaines sans match.
+
+**Messagerie façon FM** : catégories (résultats, mercato et contrats, sponsors et finances, conseil, vie du club, actualités), filtre par jeu (combinable avec les catégories), recherche, volet de lecture avec raccourcis (mercato, classement…). Chaque semaine, un compte rendu des résultats par jeu y arrive.
 
 ## Tournois à cashprize
 
 En plus des ligues, chaque jeu a son calendrier de grands tournois (onglet **Tournois**) : First Stand, MSI et Worlds en LoL ; IEM, BLAST, les deux Majors et l'EWC en CS2 ; Masters et Champions en Valorant ; The International, DreamLeague et l'EWC en Dota 2 ; FNCS Majors et Global Championship en Fortnite ; Capcom Cup et EVO en SF6… plus des cash cups pour les petites scènes. Les tournois sur invitation prennent les meilleures équipes du tier 1, les opens accueillent tous les clubs des tiers admis. Le club garde 50 % des gains.
 
-**Valorant** compte 262 équipes. Il y a les 48 de VLR (octobre 2026), puis 214 équipes Challengers, académies, universités et équipes régionales (Europe, Turquie, CIS, Amériques, Brésil, Japon, Corée, Asie du Sud-Est, Chine, Inde, Océanie…), tirées de la Google Sheet de l'utilisateur (portails joueurs et effectifs Liquipedia, dans `tools/sources/valorant/`). Plus de 1 500 vrais joueurs sans équipe sont agents libres. Le tier 1 réunit 16 équipes et le tier 2 en réunit 32.
+**Valorant** compte 262 équipes. Il y a les 48 de VLR (octobre 2026), puis 214 équipes Challengers, académies, universités et équipes régionales (Europe, Turquie, CIS, Amériques, Brésil, Japon, Corée, Asie du Sud-Est, Chine, Inde, Océanie…), tirées de la Google Sheet de l'utilisateur (portails joueurs et effectifs Liquipedia, dans `tools/sources/valorant/`). Plus de 1 500 vrais joueurs sans équipe sont agents libres. Les équipes sont réparties dans les ligues VCT de leur région.
 
-**Rocket League** compte 250 équipes dans toutes les régions RLCS (Europe, Amérique du Nord, Amérique du Sud, Moyen-Orient & Afrique, Asie-Pacifique, Océanie), tirées de la Google Sheet de l'utilisateur (portails joueurs et effectifs Liquipedia, dans `tools/sources/rocketleague/`). Les effectifs déjà vérifiés (Falcons, Karmine Corp, Vitality, NRG) sont conservés. Environ 1 450 vrais joueurs sans équipe sont agents libres. Le tier 1 réunit 16 équipes et le tier 2 en réunit 32.
+**Rocket League** compte 250 équipes dans toutes les régions RLCS (Europe, Amérique du Nord, Amérique du Sud, Moyen-Orient & Afrique, Asie-Pacifique, Océanie), tirées de la Google Sheet de l'utilisateur (portails joueurs et effectifs Liquipedia, dans `tools/sources/rocketleague/`). Les effectifs déjà vérifiés (Falcons, Karmine Corp, Vitality, NRG) sont conservés. Environ 1 450 vrais joueurs sans équipe sont agents libres. Les équipes jouent dans la ligue RLCS de leur région.
 
 Le **calendrier Rocket League** est la vraie saison RLCS 2026 (`tools/sources/rocketleague_tournois.csv`), qui se répète chaque saison (2027, 2028…) : Kick-Off Weekend, Boston Major et Paris Major précédés de leurs 6 Opens régionaux dans chaque région (EU, NA, SAM, MENA, OCE, APAC, SSA), EWC, Championnat du monde, CRL (universitaire), Saudi eLeague et tournois B-Tier (SwitzerLAN, Prime eLeague, Rival Rush…). Cela fait 67 tournois avec leurs vraies dotations. Les Opens sont ouverts à toutes les équipes de la région. Les résultats 2024-2025 forment le palmarès réel.
 
-**Valorant Game Changers** est un circuit à part, séparé de la VCT. Il a ses propres ligues (12 équipes en tier 1, 24 en tier 2), son mercato, ses séries régionales et le Game Changers Championship. Ses 47 équipes (205 joueuses) sont rattachées à leur organisation et gardent leur nom : Karmine Corp GC, G2 Gozen, Team Liquid Brazil, Shopify Rebellion Gold, MIBR GC, FURIA Female, SEN Otters, Gen.G GC… Un club peut donc avoir à la fois une équipe VCT et une équipe Game Changers. Le palmarès réel du Championship (2022-2025) est attribué dès le début.
+**Valorant Game Changers** est un circuit à part, séparé de la VCT. Il a ses propres ligues régionales, son mercato, ses séries régionales et le Game Changers Championship. Ses 47 équipes (205 joueuses) sont rattachées à leur organisation et gardent leur nom : Karmine Corp GC, G2 Gozen, Team Liquid Brazil, Shopify Rebellion Gold, MIBR GC, FURIA Female, SEN Otters, Gen.G GC… Un club peut donc avoir à la fois une équipe VCT et une équipe Game Changers. Le palmarès réel du Championship (2022-2025) est attribué dès le début.
 
 **Valorant** utilise le vrai calendrier (fichier `tools/sources/valorant/tournois.csv`, tiré d'une Google Sheet d'après Liquipedia). On y trouve les Kickoffs, Stages 1 et 2 de chaque ligue VCT, les Masters (Santiago, Londres), l'EWC, Champions, les Ascensions et Threshold, la China Evolution Series, l'EMEA Clash, Project Blender, Red Bull Home Ground, SOOP League, Saudi eLeague, etc. C'est la dernière édition de chaque compétition, avec ses dotations et son nombre d'équipes. Les compétitions régionales sont réservées aux équipes de la région (Europe/Moyen-Orient, Amériques, Pacifique, Chine). Le palmarès réel 2021-2025 (127 titres) est attribué aux clubs dès le début de la partie.
 
@@ -99,12 +120,12 @@ Chaque signature, transfert ou prolongation se négocie avec le joueur et son ag
 
 ## Esports World Cup et petits tournois
 
-- **EWC** (semaines 7 à 10) : un tournoi par jeu avec les dotations 2026, et le **Club Championship** : chaque top 8 rapporte des points au club, il faut un top 8 dans au moins 2 jeux pour être classé, et 24 clubs se partagent 30 M€ (7 M€ pour le champion).
+- **EWC** (juillet-août) : un tournoi par jeu avec les dotations 2026, et le **Club Championship** : chaque top 8 rapporte des points au club, il faut un top 8 dans au moins 2 jeux pour être classé, et 24 clubs se partagent 30 M€ (7 M€ pour le champion).
 - **Petits tournois générés chaque saison** pour tous les jeux : cash cups et LAN ouvertes (FACEIT, ESEA, DreamHack Open, Gamers Assembly… en CS2, chaque semaine) et circuits tier 2 (CCT, NODWIN Clutch Series, European Pro League, Skyesports…). De quoi faire grandir un nouveau club.
 
 ## Sponsors
 
-Les offres arrivent au fil des semaines, et vous pouvez démarcher des marques depuis l'onglet Finances (une fois par semaine). Chaque offre se négocie : contre-proposez un montant et une durée, la marque se rapproche de votre demande jusqu'à son plafond secret, mais elle peut rompre si vous êtes trop gourmand ou si les discussions s'éternisent.
+Les offres arrivent au fil des semaines, et vous pouvez démarcher une marque éthique, classique ou controversée depuis l'onglet Finances (une fois par semaine ; les marques éthiques refusent un club à l'image dégradée). Chaque offre se négocie : contre-proposez un montant et une durée, la marque se rapproche de votre demande jusqu'à son plafond secret, mais elle peut rompre si vous êtes trop gourmand ou si les discussions s'éternisent.
 
 ## Structure
 

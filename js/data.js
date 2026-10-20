@@ -7,7 +7,7 @@
 // =====================================================================
 
 // version de js/data_live.js attendue (voir LIVE_FORMAT dans tools/build_live.py)
-const LIVE_EXPECTED = 3;
+const LIVE_EXPECTED = 4;
 
 // fmt : "team" (séries BO3/BO5), "br" (battle royale en lobby), "duel" (1 contre 1)
 const GAMES = {
@@ -54,7 +54,8 @@ const GAMES = {
           tiers: ["KPL · Honor of Kings World Cup", "KPL Development League", "Open Cups"] },
   cf:   { name: "Crossfire",         short: "CF",   icon: "🪖", fmt: "team", size: 5, roles: ["IGL", "Sniper", "Entry", "Rifler", "Support"], prize: 1000000, mult: 0.4, color: "#c0392b", rounds: 11,
           tiers: ["CFS Grand Finals", "CF Pro League", "Open Cups"] },
-  wz:   { name: "Call of Duty: Warzone", short: "WZ", icon: "🪂", fmt: "br", size: 4, lobby: 38, gamesPerWeek: 4, roles: ["IGL", "Fragger", "Fragger", "Support"], prize: 1000000, mult: 0.45, color: "#6b8e23", unit: "quad",
+  // la scène pro (World Series of Warzone, EWC) se joue en trios
+  wz:   { name: "Call of Duty: Warzone", short: "WZ", icon: "🪂", fmt: "br", size: 3, lobby: 50, gamesPerWeek: 4, roles: ["IGL", "Fragger", "Support"], prize: 1000000, mult: 0.45, color: "#6b8e23", unit: "trio",
           tiers: ["Warzone World Series", "Warzone Pro Circuit", "Kill Race Cups"] },
   pubgm:{ name: "PUBG Mobile",       short: "PUBGM", icon: "📲", fmt: "br", size: 4, lobby: 16, gamesPerWeek: 4, roles: ["IGL", "Fragger", "Assaulter", "Support"], prize: 2000000, mult: 0.5, color: "#f4b400", unit: "squad",
           tiers: ["PMGC · PMWC", "PUBG Mobile Super League", "Open Cups"] },
@@ -290,6 +291,23 @@ const O = (org, h, cc, r, a) => [org, [[h, cc, r, a]]];
 
 // Joueurs solo : indépendants, ou [org, [joueur]] quand ils sont signés dans une organisation.
 // Pour Fortnite, chaque entrée est un duo.
+// Warzone : les trios du World Series of Warzone 2025 (Global Final, Las Vegas) et de l'EWC 2025 (Riyad), d'après le wiki Call of Duty Esports et Liquipedia.
+// Nationalité laissée vide quand elle n'est pas connue.
+Object.assign(ORGS, {
+  teamvision: ["Team Vision", "VSN", "GB", "#3a7bd5", 55], escchampenois: ["ESC Champenois", "ESC", "FR", "#c9a227", 35], ravenesports: ["Raven eSports", "RVN", "US", "#5b5b6b", 38],
+});
+ROSTERS.wz = [
+  ["teamvision", [["Fifakill", "GB", 88], ["Echo1867", "GB", 87], ["Lenun", "GB", 87]], true],          // champions WSOW 2025
+  ["tm", [["Aydan", "US", 88], ["Almond", "", 86], ["zSmit", "", 87]], true],                           // champions EWC 2025
+  ["m8", [["HalloW", "FR", 87], ["Gromalok", "FR", 86], ["Enkeo", "FR", 86]], true],                      // 2es WSOW et EWC 2025
+  ["falcons", [["Biffle", "US", 87], ["Shifty", "US", 86], ["Hisoka", "US", 86]], true],
+  ["bds", [["Jukeyz", "GB", 86], ["Gooy", "", 85], ["FLS", "", 84]], true],
+  ["roc", [["Prxdigy", "", 83], ["WarsZ", "", 83], ["iVisionSR", "", 82]], true],
+  ["escchampenois", [["Master5K", "", 82], ["Niasen", "", 82], ["KingChawk", "", 81]], true],
+  ["onic", [["abWizz", "", 82], ["Disrrpt", "", 81], ["BubbleCT", "", 81]], true],
+  ["ravenesports", [["UnRationaL", "US", 81], ["Destroy", "US", 81], ["Grimey", "", 80]], true],
+  ["100t", [["Skullface", "", 79], ["Blazt", "", 78], ["GabeKuun", "", 78]], true],
+];
 const SOLOS = {
   // EA FC : FC Pro World Championship 2026 (EWC Paris) et favoris de la saison
   fc: [O("hyperspirit","RvPLegend","RO",92,0), ["levyfinn","DE",90,0], O("mancity","Bonanno","IT",90,0), ["Nassada","",89,0], ["Alihan","",88,0],
@@ -342,7 +360,9 @@ const SOLOS = {
     // ---- Océanie ----
     D(81, ["Resignz","AU"], ["Tinka","AU"]), D(80, ["Solvey","AU",15], ["Sazers","AU"]), D(77, ["Spookz","AU"], ["Deymo","AU"]),
   ],
-};
+};// trio sans organisation (4e du WSOW 2025)
+SOLOS.wz = [[["Stukex", "", 85], ["Layze", "", 85], ["Dekii", "", 84]]];
+
 
 // Clubs fictifs pour compléter les circuits (surtout les petites scènes)
 const FILLER_NAMES = [
@@ -358,6 +378,14 @@ const FILLER_NAMES = [
   ["Seoul Phantoms","SPH","#9b59b6","KR"],["Tokyo Ronin","TKR","#c0392b","JP"],["Shanghai Pandas","SHP","#2ecc71","CN"],["Riyadh Hawks","RYH","#27ae60","SA"],
   ["Dubai Mirage","DXB","#f1c40f","AE"],["São Paulo Jaguars","SPJ","#f39c12","BR"],["Buenos Aires Tango","BAT","#5dade2","AR"],["Austin Outlaws","AUS","#a04000","US"],
   ["Chicago Wind","CHI","#2874a6","US"],["Vancouver Orcas","VAN","#1abc9c","CA"],["Istanbul Sultans","IST","#e74c3c","TR"],["Kyiv Defenders","KYV","#f4d03f","UA"],
+  ["Sydney Sharks","SYD","#0abde3","AU"],["Melbourne Magpies","MEL","#222f3e","AU"],["Auckland Kiwis","AKL","#10ac84","NZ"],["Perth Scorchers","PRS","#ff9f43","AU"],
+  ["Manila Thunder","MNL","#ee5253","PH"],["Jakarta Garudas","JKT","#feca57","ID"],["Bangkok Elephants","BKK","#5f27cd","TH"],["Hanoi Tigers","HAN","#ff6b6b","VN"],
+  ["Singapore Merlions","SGM","#c8d6e5","SG"],["Kuala Lumpur Hornbills","KLH","#1dd1a1","MY"],["Taipei Bears","TPB","#576574","TW"],["Osaka Kitsune","OSK","#ff9ff3","JP"],
+  ["Busan Wave","BSW","#2e86de","KR"],["Incheon Falcons","ICF","#8395a7","KR"],["Chengdu Pandas","CDP","#10ac84","CN"],["Shenzhen Dragons","SZD","#ee5253","CN"],
+  ["Beijing Lions","BJL","#feca57","CN"],["Hangzhou Cranes","HZC","#48dbfb","CN"],["Doha Falcons","DOH","#8e44ad","QA"],["Cairo Pharaohs","CAI","#f6b93b","EG"],
+  ["Jeddah Tide","JED","#079992","SA"],["Kuwait Storm","KWS","#3c6382","KW"],["Lima Llamas","LIM","#e55039","PE"],["Santiago Pumas","SCL","#4a69bd","CL"],
+  ["Bogotá Cóndores","BOG","#f6b93b","CO"],["Rio Tubarões","RIO","#38ada9","BR"],["Mexico Aztecas","MEX","#b71540","MX"],["Toronto Northmen","TOR","#0c2461","CA"],
+  ["Miami Heatwave","MIA","#fa983a","US"],["Seattle Rain","SEA","#60a3bc","US"],["Denver Peaks","DEN","#6a89cc","US"],["Atlanta Phoenix","ATP","#e58e26","US"],
 ];
 
 const COUNTRIES = {
@@ -385,6 +413,39 @@ const REGION_OVERRIDES = {
 const REGION_OF = {};
 for (const [r, ccs] of Object.entries(REGION_COUNTRIES)) for (const cc of ccs.split(" ")) REGION_OF[cc] = r;
 
+// ---------- ligues régionales ----------
+// Chaque jeu a ses zones (une ligue par zone et par tier), comme dans la réalité : LEC, LCK, LPL… en LoL, VCT EMEA / Americas /
+// Pacific / China en Valorant. Les jeux sans ligues régionales (CS2, Dota, jeux de combat…) n'ont qu'une zone « Monde ».
+const ZONE_NAMES = { W: "Monde", EU: "Europe", EMEA: "EMEA", NA: "Amérique du Nord", AMER: "Amériques", SA: "Amérique du Sud", MENA: "Moyen-Orient & Afrique",
+  KR: "Corée", CN: "Chine", PAC: "Pacifique", ASIA: "Asie-Pacifique", OCE: "Océanie" };
+// map : région (REGIONS) -> zone, ou fonction (pays de l'organisation) ; sizes : taille des ligues tier 1 et tier 2 ; names : nom de chaque ligue
+const GAME_ZONES = {
+  lol: { zones: ["EU", "KR", "CN", "NA", "SA", "PAC"], map: { EU: "EU", MENA: "EU", NA: "NA", SA: "SA", OCE: "PAC", ASIA: cc => cc === "KR" ? "KR" : cc === "CN" ? "CN" : "PAC" },
+    sizes: [10, 10], names: [{ EU: "LEC", KR: "LCK", CN: "LPL", NA: "LCS", SA: "CBLOL", PAC: "LCP" },
+      { EU: "EMEA Masters · ligues régionales (LFL, Prime League…)", KR: "LCK Challengers League", CN: "LDL", NA: "NACL", SA: "Circuito Desafiante", PAC: "Ligues nationales du Pacifique (VCS, PCS, LJL)" },
+      "Open Tour {z}"] },
+  val: { zones: ["EMEA", "AMER", "PAC", "CN"], map: { EU: "EMEA", MENA: "EMEA", NA: "AMER", SA: "AMER", OCE: "PAC", ASIA: cc => cc === "CN" ? "CN" : "PAC" },
+    sizes: [12, 16], names: [{ EMEA: "VCT EMEA", AMER: "VCT Americas", PAC: "VCT Pacific", CN: "VCT China" }, "VCT Challengers {z}", "Premier {z}"] },
+  valgc: { zones: ["EMEA", "NA", "SA", "PAC"], map: { EU: "EMEA", MENA: "EMEA", NA: "NA", SA: "SA", OCE: "PAC", ASIA: "PAC" },
+    sizes: [8, 10], names: ["Game Changers {z}", "Game Changers {z} — Division 2", "Game Changers Academy {z}"] },
+  rl: { zones: ["EU", "NA", "SA", "MENA", "OCE", "ASIA"], map: { EU: "EU", NA: "NA", SA: "SA", MENA: "MENA", OCE: "OCE", ASIA: "ASIA" },
+    sizes: [12, 16], names: ["RLCS {z} — Élite", "RLCS {z} — Open", "Ranked Cups 3v3 {z}"] },
+  ow: { zones: ["EU", "NA", "ASIA"], map: { EU: "EU", MENA: "EU", NA: "NA", SA: "NA", OCE: "ASIA", ASIA: "ASIA" },
+    sizes: [8, 8], names: [{ EU: "OWCS EMEA", NA: "OWCS North America", ASIA: "OWCS Asia" }, "OWCS {z} — Open", "Open Cups {z}"] },
+  r6: { zones: ["EU", "NA", "SA", "ASIA"], map: { EU: "EU", MENA: "EU", NA: "NA", SA: "SA", OCE: "ASIA", ASIA: "ASIA" },
+    sizes: [10, 10], names: [{ EU: "European League", NA: "North America League", SA: "Brasileirão", ASIA: "Asia-Pacific League" }, "Challenger League {z}", "Open Cups {z}"] },
+  // la FNCS se joue par région (lobbies séparés) ; le statut Élite / Pro / Open dépend du classement dans sa région
+  fn: { zones: ["EU", "NA", "SA", "MENA", "ASIA", "OCE"], map: { EU: "EU", NA: "NA", SA: "SA", MENA: "MENA", OCE: "OCE", ASIA: "ASIA" },
+    names: ["FNCS {z}", "FNCS {z}", "FNCS {z}"] },
+};
+// zone d'une équipe dans un jeu, d'après sa région (et le pays de son organisation pour l'Asie)
+function zoneFrom(game, region, cc) {
+  const Z = GAME_ZONES[game]; if (!Z) return "W";
+  const z = Z.map[region || "EU"];
+  return typeof z === "function" ? z(cc) : z || Z.zones[0];
+}
+const gameZones = game => GAME_ZONES[game] ? GAME_ZONES[game].zones : ["W"];
+
 // Syllabes pour générer des pseudos réalistes
 const NAME_PARTS = {
   a: ["zen","kai","rex","nova","blitz","vex","lynx","fury","zero","ace","myth","sky","drak","jin","ryu","volt","echo","flux","grim","haze",
@@ -401,37 +462,37 @@ const NAME_PARTS = {
 //  Les petits tournois (cash cups, circuits tier 2) sont générés à part chaque saison : voir SMALL_EVENTS.
 // =====================================================================
 const TOURNAMENTS = {
-  lol:  [["First Stand", 3, 1000000, "1", 8], ["Mid-Season Invitational (MSI)", 5, 2000000, "1", 8], ["EWC — League of Legends", 7, 2000000, "1", 8],
-         ["EMEA Masters", 11, 300000, "2", 16], ["Worlds (Championnat du monde)", 13, 5000000, "1", 16]],
-  cs2:  [["IEM Kraków", 2, 1000000, "1", 16], ["BLAST Open", 4, 400000, "1", 8], ["Major (printemps)", 6, 1250000, "1", 16], ["EWC — Counter-Strike 2", 8, 2000000, "1", 16],
-         ["IEM Cologne Major", 11, 1250000, "1", 16], ["Thunderpick World Championship", 12, 1000000, "12", 16], ["BLAST World Final", 13, 1000000, "1", 8]],
-  val:  [["VCT Masters (1)", 4, 1000000, "1", 8], ["Challengers Finals", 6, 200000, "2", 8], ["EWC — VALORANT", 9, 2000000, "1", 8],
-         ["VCT Masters (2)", 11, 1000000, "1", 8], ["VALORANT Champions", 13, 2250000, "1", 16]],
-  dota: [["DreamLeague", 2, 1000000, "1", 16], ["PGL Wallachia", 4, 1000000, "1", 16], ["BLAST Slam", 6, 1000000, "1", 8], ["EWC — Dota 2", 7, 2000000, "1", 16],
-         ["The International", 12, 2500000, "1", 16]],
-  rl:   [["RLCS Major (1)", 4, 350000, "1", 16], ["RLCS Major (2)", 6, 350000, "1", 16], ["EWC — Rocket League", 9, 1000000, "1", 16], ["RLCS World Championship", 12, 1000000, "1", 16]],
-  ow:   [["OWCS Midseason Championship", 5, 500000, "1", 8], ["EWC — Overwatch 2", 8, 1000000, "1", 8], ["OWCS World Finals", 12, 1000000, "1", 8]],
-  r6:   [["Six Invitational", 3, 3000000, "1", 16], ["R6 Major (1)", 6, 750000, "1", 16], ["EWC — Rainbow Six Siege X", 10, 2000000, "1", 16], ["R6 Major (2)", 12, 750000, "1", 16]],
-  cod:  [["CDL Major (1)", 3, 500000, "1", 8], ["CDL Major (2)", 5, 500000, "1", 8], ["EWC — Call of Duty: Black Ops 7", 8, 1500000, "1", 8],
-         ["CDL Major (3)", 11, 500000, "1", 8], ["CDL Championship (Champs)", 12, 2000000, "1", 8]],
-  mlbb: [["MPL Invitational", 5, 300000, "1", 8], ["EWC — Mobile Legends: Mid Season Cup", 9, 3000000, "1", 16], ["M World Championship", 13, 1000000, "1", 16]],
-  hok:  [["KPL Spring Finals", 4, 1000000, "1", 8], ["EWC — Honor of Kings", 8, 2000000, "1", 16], ["Honor of Kings World Cup", 12, 2000000, "1", 16]],
-  cf:   [["CFS Invitational", 4, 300000, "1", 8], ["EWC — Crossfire", 10, 1000000, "1", 8], ["CFS Grand Finals", 12, 500000, "1", 8]],
-  fn:   [["FNCS Major (1)", 4, 600000, "12", 33], ["EWC — Fortnite Reload Elite Series", 8, 1000000, "1", 16], ["FNCS Major (2)", 9, 600000, "12", 33],
-         ["FNCS Global Championship", 12, 2000000, "1", 16]],
-  apex: [["ALGS Open", 4, 1000000, "12", 20], ["EWC — Apex Legends", 9, 2000000, "1", 12], ["ALGS Championship", 12, 2000000, "1", 12]],
-  pubg: [["PGS (1)", 3, 500000, "1", 12], ["PGS (2)", 6, 500000, "1", 12], ["EWC — PUBG: Battlegrounds", 10, 1000000, "1", 12], ["PUBG Global Championship (PGC)", 12, 1000000, "1", 12]],
-  pubgm:[["PMWC Points Finals", 4, 500000, "1", 16], ["EWC — PUBG Mobile", 7, 3000000, "1", 16], ["PUBG Mobile Global Championship", 13, 3000000, "1", 16]],
-  ff:   [["FFWS Spring", 4, 300000, "1", 12], ["EWC — Free Fire", 9, 1000000, "1", 12], ["Free Fire World Series Global Finals", 12, 1000000, "1", 12]],
-  wz:   [["Warzone World Series (1)", 4, 300000, "12", 38], ["EWC — Call of Duty: Warzone", 10, 1000000, "1", 25], ["Warzone World Series Finals", 12, 500000, "1", 25]],
-  fc:   [["FC Pro Open", 4, 250000, "12", 16], ["eChampions League", 6, 280000, "1", 16], ["EWC — EA Sports FC 26 (FC Pro World Championship)", 8, 1000000, "1", 16]],
-  sf6:  [["Capcom Cup", 3, 1000000, "1", 16], ["EVO", 6, 250000, "12", 16], ["EWC — Street Fighter 6", 9, 1000000, "1", 16], ["Evo France", 12, 100000, "12", 16]],
-  tk8:  [["EVO — Tekken 8", 6, 150000, "12", 16], ["EWC — TEKKEN 8", 10, 1000000, "1", 16], ["Tekken World Tour Finals", 13, 300000, "1", 16]],
-  fatal:[["EVO — Fatal Fury", 6, 50000, "12", 16], ["EWC — FATAL FURY: City of the Wolves", 7, 1000000, "1", 16], ["SNK World Championship", 12, 200000, "1", 16]],
-  chess:[["Champions Chess Tour — Spring Finals", 3, 300000, "1", 16], ["EWC — Chess", 8, 1500000, "1", 16], ["Champions Chess Tour Finals", 13, 500000, "1", 16]],
-  tft:  [["TFT Open", 4, 300000, "12", 8], ["EWC — Teamfight Tactics", 7, 500000, "1", 8], ["TFT World Championship", 12, 500000, "1", 8]],
-  trackmania: [["Trackmania Grand League Finals", 5, 100000, "1", 16], ["EWC — Trackmania", 10, 500000, "1", 16], ["Trackmania World Cup", 12, 100000, "1", 16]],
-  sc2:  [["IEM Katowice", 3, 500000, "1", 16], ["HomeStory Cup", 10, 50000, "12", 16], ["SC2 World Championship", 12, 300000, "1", 16]],
+  lol:  [["First Stand", 11, 1000000, "1", 8], ["Mid-Season Invitational (MSI)", 27, 2000000, "1", 8], ["EWC — League of Legends", 28, 2000000, "1", 8],
+         ["EMEA Masters", 38, 300000, "2", 16], ["Worlds (Championnat du monde)", 45, 5000000, "1", 16]],
+  cs2:  [["IEM Kraków", 6, 1000000, "1", 16], ["BLAST Open", 12, 400000, "1", 8], ["Major (printemps)", 23, 1250000, "1", 16], ["EWC — Counter-Strike 2", 34, 2000000, "1", 16],
+         ["IEM Cologne Major", 25, 1250000, "1", 16], ["Thunderpick World Championship", 42, 1000000, "12", 16], ["BLAST World Final", 49, 1000000, "1", 8]],
+  val:  [["VCT Masters (1)", 10, 1000000, "1", 8], ["Challengers Finals", 22, 200000, "2", 8], ["EWC — VALORANT", 28, 2000000, "1", 8],
+         ["VCT Masters (2)", 24, 1000000, "1", 8], ["VALORANT Champions", 41, 2250000, "1", 16]],
+  dota: [["DreamLeague", 9, 1000000, "1", 16], ["PGL Wallachia", 15, 1000000, "1", 16], ["BLAST Slam", 20, 1000000, "1", 8], ["EWC — Dota 2", 29, 2000000, "1", 16],
+         ["The International", 36, 2500000, "1", 16]],
+  rl:   [["RLCS Major (1)", 8, 350000, "1", 16], ["RLCS Major (2)", 24, 350000, "1", 16], ["EWC — Rocket League", 32, 1000000, "1", 16], ["RLCS World Championship", 38, 1000000, "1", 16]],
+  ow:   [["OWCS Midseason Championship", 26, 500000, "1", 8], ["EWC — Overwatch 2", 31, 1000000, "1", 8], ["OWCS World Finals", 46, 1000000, "1", 8]],
+  r6:   [["Six Invitational", 7, 3000000, "1", 16], ["R6 Major (1)", 19, 750000, "1", 16], ["EWC — Rainbow Six Siege X", 32, 2000000, "1", 16], ["R6 Major (2)", 47, 750000, "1", 16]],
+  cod:  [["CDL Major (1)", 6, 500000, "1", 8], ["CDL Major (2)", 12, 500000, "1", 8], ["EWC — Call of Duty: Black Ops 7", 30, 1500000, "1", 8],
+         ["CDL Major (3)", 18, 500000, "1", 8], ["CDL Championship (Champs)", 26, 2000000, "1", 8]],
+  mlbb: [["MPL Invitational", 11, 300000, "1", 8], ["EWC — Mobile Legends: Mid Season Cup", 28, 3000000, "1", 16], ["M World Championship", 49, 1000000, "1", 16]],
+  hok:  [["KPL Spring Finals", 22, 1000000, "1", 8], ["EWC — Honor of Kings", 30, 2000000, "1", 16], ["Honor of Kings World Cup", 45, 2000000, "1", 16]],
+  cf:   [["CFS Invitational", 14, 300000, "1", 8], ["EWC — Crossfire", 33, 1000000, "1", 8], ["CFS Grand Finals", 48, 500000, "1", 8]],
+  fn:   [["FNCS Major (1)", 12, 600000, "12", 33], ["EWC — Fortnite Reload Elite Series", 31, 1000000, "1", 16], ["FNCS Major (2)", 22, 600000, "12", 33],
+         ["FNCS Global Championship", 36, 2000000, "1", 16]],
+  apex: [["ALGS Open", 18, 1000000, "12", 20], ["EWC — Apex Legends", 29, 2000000, "1", 12], ["ALGS Championship", 5, 2000000, "1", 12]],
+  pubg: [["PGS (1)", 17, 500000, "1", 12], ["PGS (2)", 20, 500000, "1", 12], ["EWC — PUBG: Battlegrounds", 29, 1000000, "1", 12], ["PUBG Global Championship (PGC)", 48, 1000000, "1", 12]],
+  pubgm:[["PMWC Points Finals", 28, 500000, "1", 16], ["EWC — PUBG Mobile", 30, 3000000, "1", 16], ["PUBG Mobile Global Championship", 48, 3000000, "1", 16]],
+  ff:   [["FFWS Spring", 18, 300000, "1", 12], ["EWC — Free Fire", 29, 1000000, "1", 12], ["Free Fire World Series Global Finals", 46, 1000000, "1", 12]],
+  wz:   [["World Series of Warzone — finales régionales", 36, 500000, "12", 50], ["EWC — Call of Duty: Warzone", 32, 1000000, "1", 21], ["World Series of Warzone — Global Final", 40, 1000000, "1", 50]],
+  fc:   [["FC Pro Open", 10, 250000, "12", 16], ["eChampions League", 22, 280000, "1", 16], ["EWC — EA Sports FC 26 (FC Pro World Championship)", 31, 1000000, "1", 16]],
+  sf6:  [["Capcom Cup", 10, 1000000, "1", 16], ["EVO", 31, 250000, "12", 16], ["EWC — Street Fighter 6", 33, 1000000, "1", 16], ["Evo France", 41, 100000, "12", 16]],
+  tk8:  [["EVO — Tekken 8", 31, 150000, "12", 16], ["EWC — TEKKEN 8", 34, 1000000, "1", 16], ["Tekken World Tour Finals", 49, 300000, "1", 16]],
+  fatal:[["EVO — Fatal Fury", 31, 50000, "12", 16], ["EWC — FATAL FURY: City of the Wolves", 32, 1000000, "1", 16], ["SNK World Championship", 48, 200000, "1", 16]],
+  chess:[["Champions Chess Tour — Spring Finals", 22, 300000, "1", 16], ["EWC — Chess", 34, 1500000, "1", 16], ["Champions Chess Tour Finals", 49, 500000, "1", 16]],
+  tft:  [["TFT Open", 15, 300000, "12", 8], ["EWC — Teamfight Tactics", 29, 500000, "1", 8], ["TFT World Championship", 37, 500000, "1", 8]],
+  trackmania: [["Trackmania Grand League Finals", 20, 100000, "1", 16], ["EWC — Trackmania", 33, 500000, "1", 16], ["Trackmania World Cup", 45, 100000, "1", 16]],
+  sc2:  [["IEM Katowice", 6, 500000, "1", 16], ["HomeStory Cup", 25, 50000, "12", 16], ["SC2 World Championship", 44, 300000, "1", 16]],
 };
 
 // Petits tournois générés chaque saison : cash cups ouvertes (tier 3) et circuits professionnels (tier 2).
