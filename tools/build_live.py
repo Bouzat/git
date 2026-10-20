@@ -105,9 +105,17 @@ if os.path.exists(eef):
             k = EE_ALIAS.get(norm(m["h"]), norm(m["h"]))
             info.setdefault(k, (m["cc"], 0, m["h"]))
     # organisations des duos (Liquipedia via presse, Wikipedia : Pollo chez Falcons, Gen.G signe Ritual…)
-    FN_ORGS = {("peterbot", "pollo"): "falcons", ("tjino", "pablowingu"): "havok", ("ritual", "cold"): "geng", ("swizzy", "pixie"): "vitality",
-               ("shxrk", "t3eny"): "aurora", ("vic0", "malibuca"): "big", ("acorn", "boltz"): "tm", ("916gon", "night"): "furia", ("rax", "jannisz"): "m8"}
+    # tags du classement du Global Championship 2026 (TechWiser, esports.gg), listes du Pro-Am 2026 (Liquipedia), Wikipedia, presse.
+    # Un club n'a qu'une équipe par jeu : quand une org a deux duos, le second joue sous l'org partenaire (HavoK by Vitality).
+    FN_ORGS = {("peterbot", "pollo"): "falcons", ("tjino", "pablowingu"): "havok", ("swizzy", "pixie"): "vitality",
+               ("ritual", "cold"): "geng", ("shxrk", "t3eny"): "aurora", ("vic0", "malibuca"): "big", ("acorn", "boltz"): "tm",
+               ("916gon", "night"): "furia", ("rax", "jannisz"): "m8", ("sky", "scroll"): "ag", ("darm", "demus"): "t1",
+               ("yuma", "koyota"): "zeta", ("higgs", "curve"): "xset", ("victerv", "queasy"): "dignitas", ("charyy", "kami"): "alqadsiah"}
     live_orgs.setdefault("havok", ["HavoK", "HVK", "SE", "#e63946", 58])
+    live_orgs.setdefault("ag", ["AG", "AG", "DK", "#c9a227", 55])
+    live_orgs.setdefault("xset", ["XSET", "XSET", "US", "#7b2cbf", 56])
+    live_orgs.setdefault("dignitas", ["Dignitas", "DIG", "US", "#f2c94c", 56])
+    live_orgs.setdefault("alqadsiah", ["Al Qadsiah", "QAD", "SA", "#e0b100", 52])
     duos, seen = [], set()
     for x in cur["SOLOS"]["fn"]:
         duo = x[1] if isinstance(x[0], str) else x
@@ -119,6 +127,15 @@ if os.path.exists(eef):
         key = tuple(sorted(norm(p[0]) for p in ps))
         org = next((o for k, o in FN_ORGS.items() if tuple(sorted(k)) == key), None)
         duos.append([org, ps] if org else ps)
+    # duos qualifiés au Global Championship 2026 par le Last Chance Qualifier (Hotspawn)
+    LCQ = [("Momsy", "Seyyto"), ("Huty", "F1shyx"), ("Izzi", "Nociff"), ("Hcube", "Encrypted"), ("slepzi", "Wagers"), ("Ark", "Khanada"),
+           ("Randu", "Grx"), ("Rura", "Pinq"), ("Mshary", "SaLva"), ("Phazma", "Crusades"), ("Howly", "1Lusha"), ("5aald", "Smiky")]
+    for i, (a1, a2) in enumerate(LCQ):
+        if norm(a1) in seen or norm(a2) in seen: continue
+        r = 84 - i // 3
+        ps = [[h, info.get(norm(h), ("", 0, h))[0], r - j, info.get(norm(h), ("", 0, h))[1]] for j, h in enumerate((a1, a2))]
+        seen.update((norm(a1), norm(a2)))
+        duos.insert(40, ps)
     # duos du Major 1 2026 absents de la base
     for r in ee["results"]:
         if "Major 1" not in r["t"] or len(r["members"]) != 2: continue
