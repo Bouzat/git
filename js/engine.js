@@ -121,10 +121,14 @@ function findOrgId(name) {
 function seedRealHistory() {
   if (typeof LIVE_HISTORY === "undefined") return;
   for (const [game, list] of Object.entries(LIVE_HISTORY)) {
+    // équipes au nom propre dans ce jeu (« Team Liquid Brazil », section GC de Team Liquid)
+    const byLabel = {};
+    for (const c of Object.values(S.clubs)) if (c.divisions[game] && c.divisions[game].label) byLabel[normTeam(c.divisions[game].label)] = c.id;
     for (const [year, name, winner] of list.slice().sort((a, b) => a[0] - b[0])) {
-      const id = findOrgId(winner), c = id && S.clubs[id];
+      const nw = normTeam(winner);
+      const id = byLabel[nw] || findOrgId(winner) || Object.entries(byLabel).find(([k]) => nw.length > 3 && k.startsWith(nw))?.[1], c = id && S.clubs[id];
       if (c) c.titles.push(name);
-      S.titles.push({ season: year, game, name, club: c ? c.name : winner, clubId: c ? id : null, real: true });
+      S.titles.push({ season: year, game, name, club: c ? (c.divisions[game] && c.divisions[game].label) || c.name : winner, clubId: c ? id : null, real: true });
     }
   }
 }
@@ -271,7 +275,8 @@ function newWorld(opts) {
   applySeasonFormats();
   for (const game of Object.keys(GAMES)) {
     const entries = [];
-    for (const [orgId, roster, verified] of (ROSTERS[game] || [])) entries.push({ orgId, roster, verified: !!verified, avg: roster.reduce((s, p) => s + p[2], 0) / roster.length });
+    // 4e champ facultatif : nom propre de l'équipe dans ce jeu (ex. « G2 Gozen » pour la section Game Changers de G2)
+    for (const [orgId, roster, verified, label] of (ROSTERS[game] || [])) entries.push({ orgId, roster, verified: !!verified, label, avg: roster.reduce((s, p) => s + p[2], 0) / roster.length });
     // entrée SOLOS : un joueur, un duo, ou [org, duo] pour un duo signé dans une organisation
     const solos = (SOLOS[game] || []).map(x => typeof x[0] === "string" && Array.isArray(x[1]) && Array.isArray(x[1][0]) ? { orgId: x[0], roster: x[1] } : { roster: Array.isArray(x[0]) ? x : [x] })
       .map(e => ({ ...e, avg: e.roster.reduce((s, p) => s + p[2], 0) / e.roster.length }));
@@ -284,7 +289,7 @@ function newWorld(opts) {
       // une org peut aligner plusieurs duos/joueurs dans un jeu solo : les suivants jouent dans une équipe « sœur » à ses couleurs
       let c = e.orgId ? orgClub(e.orgId) : null;
       if (c && c.divisions[game]) c = GAMES[game].size <= 2 ? sisterClub(e.orgId, game) : null;
-      if (c) { addDivision(c, game, tier, e.roster); c.divisions[game].verified = e.verified || !!SOLOS[game]; }
+      if (c) { addDivision(c, game, tier, e.roster); c.divisions[game].verified = e.verified || !!SOLOS[game]; if (e.label) c.divisions[game].label = e.label; }
       const club = c || soloClub(game, tier, e.roster);
       byTier[tier - 1].push(club.id);
     });
@@ -1051,7 +1056,7 @@ function crown(L, winner, runnerUp, detail) {
   const champ = S.clubs[winner], label = `${leagueName(L)} ${S.season}`;
   champ.fame = clamp(champ.fame + [5, 2.5, 1][L.tier - 1], 0, 100); champ.fans = Math.round(champ.fans * [1.08, 1.05, 1.03][L.tier - 1]);
   champ.titles.push(label);
-  S.titles.push({ season: S.season, game: L.game, tier: L.tier, club: champ.solo ? soloName(champ, L.game) : champ.name, clubId: champ.id });
+  S.titles.push({ season: S.season, game: L.game, tier: L.tier, club: champ.solo ? soloName(champ, L.game) : (champ.divisions[L.game] && champ.divisions[L.game].label) || champ.name, clubId: champ.id });
   if (winner === S.userId) mail(`🏆 CHAMPIONS ! ${label}`, `${user().name} remporte le <b>${label}</b> (${tierLabel(L.game, L.tier)}) face à ${S.clubs[runnerUp] ? S.clubs[runnerUp].name : "?"} — ${detail}.`, "trophy");
 }
 // ---------- tournois à cashprize ----------
@@ -1173,7 +1178,7 @@ function runTournaments(w, report, pay) {
     champ.fame = clamp(champ.fame + (prize >= 1e6 ? 4 : prize >= 1e5 ? 2 : 0.5), 0, 100);
     champ.fans = Math.round(champ.fans * (prize >= 1e6 ? 1.05 : 1.01));
     champ.titles.push(`${name} ${S.season}`);
-    S.titles.push({ season: S.season, game, tier: 0, name, club: champ.solo ? soloName(champ, game) : champ.name, clubId: champ.id });
+    S.titles.push({ season: S.season, game, tier: 0, name, club: champ.solo ? soloName(champ, game) : (champ.divisions[game] && champ.divisions[game].label) || champ.name, clubId: champ.id });
     if (name.startsWith("EWC")) ewcPoints(order, game);
     const mine = order.indexOf(u.id) + 1;
     S.tourResults.push({ season: S.season, week: w, game, name, prize, n: field.length, top: order.slice(0, 4), mine: mine || null });

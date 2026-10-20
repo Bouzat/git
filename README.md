@@ -17,7 +17,7 @@ La partie est sauvegardée automatiquement dans le navigateur (localStorage) à 
 - **🚀 Créer un club** : partez de zéro avec 250 k€ sur une **petite scène (tier 3)** du jeu de votre choix. Recrutez des amateurs, montez de division en division.
 - **👔 Reprendre un club** : prenez les commandes d'une organisation réelle (T1, G2, Karmine Corp, Vitality, Fnatic, NAVI, Team Liquid, Falcons, FURIA…) avec ses effectifs, son budget et des attentes élevées.
 
-## 25 jeux (les 24 titres de l'EWC 2026 + StarCraft II), 3 tiers, 75 circuits
+## 25 jeux (les 24 titres de l'EWC 2026 + StarCraft II) et le circuit Valorant Game Changers
 
 League of Legends · Counter-Strike 2 · Valorant · Dota 2 · Rocket League · Overwatch 2 · Rainbow Six Siege · Call of Duty: Black Ops 7 · Call of Duty: Warzone · Mobile Legends · Honor of Kings · Crossfire · Fortnite · Apex Legends · PUBG · PUBG Mobile · Free Fire · Teamfight Tactics · Trackmania · EA Sports FC · Street Fighter 6 · Tekken 8 · Fatal Fury · Échecs · StarCraft II
 
@@ -77,7 +77,9 @@ L'onglet **Calendrier** montre la saison semaine par semaine : tous vos matchs d
 
 En plus des ligues, chaque jeu a son calendrier de grands tournois (onglet **Tournois**) : First Stand, MSI et Worlds en LoL ; IEM, BLAST, les deux Majors et l'EWC en CS2 ; Masters et Champions en Valorant ; The International, DreamLeague et l'EWC en Dota 2 ; FNCS Majors et Global Championship en Fortnite ; Capcom Cup et EVO en SF6… plus des cash cups pour les petites scènes. Les tournois sur invitation prennent les meilleures équipes du tier 1, les opens accueillent tous les clubs des tiers admis. Le club garde 50 % des gains.
 
-**Valorant** compte 262 équipes. Il y a les 48 de VLR (octobre 2026), puis 214 équipes Challengers, académies, universités et équipes régionales (Europe, Turquie, CIS, Amériques, Brésil, Japon, Corée, Asie du Sud-Est, Chine, Inde, Océanie…), tirées de la Google Sheet de l'utilisateur (portails joueurs et effectifs Liquipedia, dans `tools/sources/valorant/`). Plus de 1 500 vrais joueurs sans équipe sont agents libres. Le tier 1 réunit 16 équipes et le tier 2 en réunit 32. Le circuit féminin (Game Changers) n'est pas simulé.
+**Valorant** compte 262 équipes. Il y a les 48 de VLR (octobre 2026), puis 214 équipes Challengers, académies, universités et équipes régionales (Europe, Turquie, CIS, Amériques, Brésil, Japon, Corée, Asie du Sud-Est, Chine, Inde, Océanie…), tirées de la Google Sheet de l'utilisateur (portails joueurs et effectifs Liquipedia, dans `tools/sources/valorant/`). Plus de 1 500 vrais joueurs sans équipe sont agents libres. Le tier 1 réunit 16 équipes et le tier 2 en réunit 32.
+
+**Valorant Game Changers** est un circuit à part, séparé de la VCT. Il a ses propres ligues (12 équipes en tier 1, 24 en tier 2), son mercato, ses séries régionales et le Game Changers Championship. Ses 47 équipes (205 joueuses) sont rattachées à leur organisation et gardent leur nom : Karmine Corp GC, G2 Gozen, Team Liquid Brazil, Shopify Rebellion Gold, MIBR GC, FURIA Female, SEN Otters, Gen.G GC… Un club peut donc avoir à la fois une équipe VCT et une équipe Game Changers. Le palmarès réel du Championship (2022-2025) est attribué dès le début.
 
 **Valorant** utilise le vrai calendrier (fichier `tools/sources/valorant/tournois.csv`, tiré d'une Google Sheet d'après Liquipedia). On y trouve les Kickoffs, Stages 1 et 2 de chaque ligue VCT, les Masters (Santiago, Londres), l'EWC, Champions, les Ascensions et Threshold, la China Evolution Series, l'EMEA Clash, Project Blender, Red Bull Home Ground, SOOP League, Saudi eLeague, etc. C'est la dernière édition de chaque compétition, avec ses dotations et son nombre d'équipes. Les compétitions régionales sont réservées aux équipes de la région (Europe/Moyen-Orient, Amériques, Pacifique, Chine). Le palmarès réel 2021-2025 (127 titres) est attribué aux clubs dès le début de la partie.
 

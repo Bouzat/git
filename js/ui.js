@@ -20,6 +20,8 @@ const lchip = L => GAMES[L.game].open ? `<span class="chip tier t1">Circuit ouve
 function displayName(id, game) {
   const c = S.clubs[id]; if (!c) return "?";
   if (c.solo) return esc(soloName(c, game));
+  // équipe au nom propre dans ce jeu (« G2 Gozen », « Karmine Corp GC »)
+  if (game && c.divisions[game] && c.divisions[game].label) return esc(c.divisions[game].label);
   // jeux en solo ou en duo : on affiche le joueur, avec son club
   if (game && GAMES[game] && (GAMES[game].size <= 2 || GAMES[game].formats) && c.divisions[game]) return `${esc(c.name)} <small class="muted">(${esc(soloName(c, game))})</small>`;
   return esc(c.name);
@@ -238,7 +240,7 @@ function viewRoster() {
       <button class="small" data-act="sell" data-v="${p.id}">Vendre</button>
       <button class="small danger" data-act="release" data-v="${p.id}">Libérer</button></td></tr>`).join("");
   return `<h2>Effectifs</h2><div class="tabs">${tabs}</div>
-    <div class="card"><div class="toolbar"><div style="flex:1;min-width:0"><h3 style="margin:0">${g.icon} ${g.name} — Titulaires ${nSt}/${g.size}${teamRegion(u.id, UI.rosterGame) ? " · " + REGIONS[teamRegion(u.id, UI.rosterGame)] : ""} · Force ${R(Math.round(teamStrength(u.id, UI.rosterGame).str))}</h3>
+    <div class="card"><div class="toolbar"><div style="flex:1;min-width:0"><h3 style="margin:0">${g.icon} ${g.name}${d.label ? ` (${esc(d.label)})` : ""} — Titulaires ${nSt}/${g.size}${teamRegion(u.id, UI.rosterGame) ? " · " + REGIONS[teamRegion(u.id, UI.rosterGame)] : ""} · Force ${R(Math.round(teamStrength(u.id, UI.rosterGame).str))}</h3>
       <div style="margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">${tchip(d.tier, UI.rosterGame)}<span class="muted">${GAMES[UI.rosterGame].open ? GAMES[UI.rosterGame].circuit : tierName(UI.rosterGame, d.tier)}</span></div></div>
       <button class="small" data-act="auto-lineup">⚡ Composition auto</button>
       <button class="small" data-act="goto-market" data-v="${UI.rosterGame}">🔎 Recruter</button>
@@ -554,7 +556,7 @@ function viewWorld() {
 }
 function clubInfo(id) {
   const c = S.clubs[id];
-  const divs = Object.entries(c.divisions).map(([g, d]) => `<h3 style="margin-top:12px">${GAMES[g].icon} ${GAMES[g].name} · ${GAMES[g].open ? "statut " : ""}${tierLabel(g, d.tier)} ${d.generated ? "<span class='warn' title='Le club a bien une équipe dans ce jeu, mais son effectif réel est introuvable'>* joueurs inventés</span>" : d.verified ? "<span class='ok' title='Effectif recoupé dans des sources 2026'>✓ 2026</span>" : c.filler ? "" : "<span class='muted' title='Effectif établi de mémoire, peut être dépassé'>≈ non vérifié</span>"}</h3><div class="table-wrap"><table>${clubPlayers(id, g).sort((a, b) => b.starter - a.starter || b.rating - a.rating).map(p => `<tr><td>${p.starter ? "⭐" : ""}</td><td>${flag(p.nat)} ${esc(p.handle)}</td><td class="muted">${p.role}</td><td>${ageTxt(p)} ans</td><td>${R(p.rating)}</td><td>${potTxt(p)}</td></tr>`).join("")}</table></div>`).join("");
+  const divs = Object.entries(c.divisions).map(([g, d]) => `<h3 style="margin-top:12px">${GAMES[g].icon} ${GAMES[g].name}${d.label ? ` — ${esc(d.label)}` : ""} · ${GAMES[g].open ? "statut " : ""}${tierLabel(g, d.tier)} ${d.generated ? "<span class='warn' title='Le club a bien une équipe dans ce jeu, mais son effectif réel est introuvable'>* joueurs inventés</span>" : d.verified ? "<span class='ok' title='Effectif recoupé dans des sources 2026'>✓ 2026</span>" : c.filler ? "" : "<span class='muted' title='Effectif établi de mémoire, peut être dépassé'>≈ non vérifié</span>"}</h3><div class="table-wrap"><table>${clubPlayers(id, g).sort((a, b) => b.starter - a.starter || b.rating - a.rating).map(p => `<tr><td>${p.starter ? "⭐" : ""}</td><td>${flag(p.nat)} ${esc(p.handle)}</td><td class="muted">${p.role}</td><td>${ageTxt(p)} ans</td><td>${R(p.rating)}</td><td>${potTxt(p)}</td></tr>`).join("")}</table></div>`).join("");
   modal(`<div style="display:flex;gap:12px;align-items:center">${badge(c)}<div><h2 style="margin:0">${esc(c.name)} ${flag(c.country)}</h2><span class="muted">${c.solo ? "Pro indépendant · " : ""}Notoriété ${c.fame.toFixed(1)} · ${c.fans.toLocaleString("fr-FR")} fans${c.titles.length ? " · 🏆 " + c.titles.map(esc).join(", ") : ""}</span></div></div>${divs}<div class="actions"><button data-act="close-modal">Fermer</button></div>`);
 }
 

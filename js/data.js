@@ -17,6 +17,9 @@ const GAMES = {
           tiers: ["Circuit Majors (BLAST · IEM · ESL Pro League)", "ESL Challenger · CCT · European Pro League", "ESEA Open · FACEIT Cups"] },
   val:  { name: "Valorant",          short: "VAL",  icon: "🎯", fmt: "team", size: 5, tierSizes: [16, 32], roles: ["Duelliste", "Initiateur", "Contrôleur", "Sentinelle", "Flex"], prize: 2000000, mult: 0.9, color: "#ff4655", rounds: 13,
           tiers: ["VCT International (EMEA · Pacific · Americas · China)", "VCT Challengers", "Premier · Open Cups"] },
+  // circuit féminin et marginalisé de Riot, séparé de la VCT : ses propres équipes (souvent la section GC d'une organisation), ligues et tournois
+  valgc: { name: "Valorant Game Changers", short: "VAL GC", icon: "💜", fmt: "team", size: 5, tierSizes: [12, 24], roles: ["Duelliste", "Initiateur", "Contrôleur", "Sentinelle", "Flex"], prize: 500000, mult: 0.45, color: "#c56cf0", rounds: 13,
+          tiers: ["Game Changers — élite (Championship)", "Game Changers régionaux (EMEA · NA · Brésil · Pacifique)", "Game Changers Academy · Open"] },
   dota: { name: "Dota 2",            short: "DOTA", icon: "🛡️", fmt: "team", size: 5, roles: ["Carry", "Mid", "Offlane", "Soft Sup", "Hard Sup"], prize: 3000000, mult: 0.9, color: "#a72714",
           tiers: ["The International · Riyadh Masters · PGL", "DreamLeague Division 2 · CCT Dota", "Open Qualifiers"] },
   rl:   { name: "Rocket League",     short: "RL",   icon: "🚗", fmt: "team", size: 3, roles: ["Striker", "Playmaker", "Défenseur"], prize: 1000000, mult: 0.6, color: "#0f7bff",
@@ -438,6 +441,7 @@ const SMALL_EVENTS = {
           t2: ["CCT Europe Series", "NODWIN Clutch Series", "European Pro League", "ESL Challenger League", "RLG Tesla Cup", "FiRe Last Chance", "Exort Series", "Skyesports Championship"],
           p3: [1000, 6000], p2: [15000, 75000], every3: 1, every2: 2 },
   lol:  { t3: ["Open Tour France", "Prime League Cup", "Elite Series Open", "Superliga Cup", "Northern League Cup"], t2: ["LFL Cup", "Prime League Pokal", "LCK Challengers Cup", "NLC Finals"], p3: [1000, 5000], p2: [20000, 60000] },
+  valgc: { t3: ["Game Changers Academy Cup", "GC Open Series", "Riot Game Changers Open", "Valkyrie Cup"], t2: ["VCT Game Changers EMEA", "VCT Game Changers North America", "VCT Game Changers Brazil", "VCT Game Changers East Asia", "VCT Game Changers APAC"], p3: [500, 3000], p2: [10000, 50000] },
   val:  { t3: ["Premier Cash Cup", "VCL Open Cup", "Spike Nations", "Red Bull Campus Clutch"], t2: ["Challengers France", "Challengers DACH", "Challengers Spain", "Red Bull Home Ground"], p3: [1000, 5000], p2: [15000, 60000] },
   dota: { t3: ["Open Qualifier Cup", "Dota Pro Circuit Open", "European Pro League Dota"], t2: ["CCT Dota", "Elite League Qualifier", "FISSURE Playground"], p3: [1000, 5000], p2: [20000, 80000] },
   rl:   { t3: ["3v3 Cash Cup", "RLCS Open Cup", "Gamers8 Open"], t2: ["RLCS Open Regionals", "Rocket Baguette", "Elite Series"], p3: [500, 3000], p2: [10000, 40000] },

@@ -41,7 +41,7 @@ def age_of(g, h):
 # correspondance nom d'équipe -> org existante
 ALIASES = {"fnatic": "fnatic", "kiwoomdrx": "drx", "leviatan": "lev", "fluxow7m": "w7m", "nongshimredforce": "ns", "gentlemates": "m8",
            "kruesports": "kru", "allgamers": "al", "dplusesports": "dk", "dplus": "dk", "teamheretics": "heretics", "g2esports": "g2", "geng": "geng",
-           "gengesports": "geng"}
+           "gengesports": "geng", "g2": "g2", "sk": "sk", "falcons": "falcons"}
 by_name = {norm(v[0]): k for k, v in ORGS.items()}
 by_name.update({norm(v[1]): k for k, v in ORGS.items() if len(v[1]) > 2})
 def org_for(name):
@@ -148,10 +148,9 @@ if os.path.isdir(VDIR) and "val" in rosters:
     known_teams = sorted({t.strip() for t in known_teams if t.strip()}, key=len, reverse=True)
     for fn_ in ("players_cis.csv", "players_europe.csv"):
         for r in csv.DictReader(open(os.path.join(VDIR, fn_), encoding="utf-8")):
-            if r["Game Changers"].startswith("Oui"): continue
             txt = r["Nom Réel & Équipe"].strip()
             team = next((t for t in known_teams if txt == t or txt.endswith(" " + t)), "")
-            entries.append((r["ID"].strip(), ISO.get(r["Pays"], ""), team, "portal"))
+            entries.append((r["ID"].strip(), ISO.get(r["Pays"], ""), team, "gc" if r["Game Changers"].startswith("Oui") else "portal"))
     # effectifs par équipe : Europe (catégorie VCT / Challengers / GC, puis blocs turcs) et Amérique du Nord
     # les blocs « Équipe / ID,Real name,Role » n'existent qu'après la ligne vide (équipes turques)
     roster_rows, block, blocks = [], None, False
@@ -193,8 +192,8 @@ if os.path.isdir(VDIR) and "val" in rosters:
     teams_ = {}
     for h, t, cat, role in roster_rows:
         if t and not is_gc(t) and "Game Changers" not in cat: teams_.setdefault(t, {"src": cat, "ps": []})["ps"].append(h)
-    for h, c, t, _ in entries:
-        if t and not is_gc(t): teams_.setdefault(t, {"src": "portal", "ps": []})["ps"].append(h)
+    for h, c, t, src in entries:
+        if t and not is_gc(t) and src != "gc": teams_.setdefault(t, {"src": "portal", "ps": []})["ps"].append(h)
     order = sorted(teams_, key=lambda t: (bool(COLLEGE.search(t)), teams_[t]["src"] == "portal"))
     new_teams, skipped = [], 0
     for t in order:
@@ -223,12 +222,58 @@ if os.path.isdir(VDIR) and "val" in rosters:
     rosters["val"].sort(key=lambda t: -sum(sorted((p[2] for p in t[1]), reverse=True)[:5]) / max(1, min(5, len(t[1]))))
     # 3) vrais joueurs sans équipe (ou d'une équipe trop peu renseignée) : agents libres
     fa, seen_fa = [], set()
-    for h, c, t, _ in entries:
+    for h, c, t, src in entries:
         n = norm(h)
-        if n in used or n in seen_fa or (t and is_gc(t)): continue
+        if n in used or n in seen_fa or (t and is_gc(t)) or src == "gc": continue
         seen_fa.add(n)
         fa.append([h, c, 58 + zlib.crc32(h.encode()) % 11, age_of("val", h)])
     free_agents["val"] = fa
+    # ---------- Valorant Game Changers : un circuit à part ----------
+    # chaque équipe GC est rattachée à son organisation (Karmine Corp GC -> Karmine Corp, G2 Gozen -> G2…) et garde son nom
+    GC_TOP = {norm(t) for t in """Team Liquid Brazil|Shopify Rebellion Gold|G2 Gozen|Karmine Corp GC|MIBR GC|FURIA Female|KRÜ Blaze|Cloud9 GC|
+        Gen.G GC|Nova Esports GC|SEN Otters|FULL SENSE SISU|GIANTX GC|Evil Geniuses GC""".split("|")}
+    GC_SUFFIX = re.compile(r"\s+(GC|Female|Femenil|Women|Gozen|Vega|Ruby|SISU|Brazil|Gold|RED|Otters|Lyra|Siren|Sakura|Nightingale|Nebula|Sugar|Inari|"
+                           r"Aphrodite|Blossom|Puppies|Zero|Orchid|Black|Quartz|Changers|Game Changers|Female Stars|Miss|Aura|Academy)$")
+    def gc_base(t):
+        b = t.strip()
+        while True:
+            nb = GC_SUFFIX.sub("", b)
+            if nb == b: return b
+            b = nb
+    gc_teams = {}
+    for h, t, cat, role in roster_rows:
+        if t and (is_gc(t) or "Game Changers" in cat): gc_teams.setdefault(t, {"src": "roster", "ps": []})["ps"].append(h)
+    for h, c, t, src in entries:
+        if t and (is_gc(t) or src == "gc"): gc_teams.setdefault(t, {"src": "portal", "ps": []})["ps"].append(h)
+    gc_used, gc_rosters, gc_orgs_used = set(), [], set()
+    for t in sorted(gc_teams, key=lambda t: (norm(t) not in GC_TOP, gc_teams[t]["src"] == "portal")):
+        hs = []
+        for h in gc_teams[t]["ps"]:
+            n = norm(h)
+            # même joueuse saisie deux fois (« Tookii » / « TookiiTookii »)
+            if any(n == norm(x) * 2 or norm(x) == n * 2 for x in gc_teams[t]["ps"]): continue
+            if n not in gc_used and n not in {norm(x) for x in hs}: hs.append(h)
+        if len(hs) < 2: continue
+        # vainqueurs et finalistes du Game Changers Championship : les meilleures équipes du circuit
+        GC_ELITE = {"teamliquidbrazil", "shopifyrebelliongold", "g2gozen", "mibrgc"}
+        base_r = 85 if norm(t) in GC_ELITE else 80 if norm(t) in GC_TOP else 74 if gc_teams[t]["src"] == "roster" else 70
+        ps = []
+        for h in hs[:7]:
+            gc_used.add(norm(h))
+            ps.append([h, country(h, t), base_r + (zlib.crc32(h.encode()) % 7) - 3, age_of("val", h)])
+        base = gc_base(t)
+        org = org_for(base) or org_for(t) or next((k for k, v in live_orgs.items() if norm(v[0]) == norm(base)), None)
+        if not org or org in gc_orgs_used:   # pas d'organisation connue (ou déjà une équipe GC) : l'équipe est sa propre organisation
+            org = "gc_" + norm(t)[:20]
+            ccs = [p[1] for p in ps if p[1]]
+            live_orgs.setdefault(org, [t, make_tag(t), max(set(ccs), key=ccs.count) if ccs else "US", hcolor(t), int(max(8, min(35, (base_r - 60) * 1.6)))])
+        gc_orgs_used.add(org)
+        gc_rosters.append([org, ps, 1, t])
+    gc_rosters.sort(key=lambda t: -sum(sorted((p[2] for p in t[1]), reverse=True)[:5]) / max(1, min(5, len(t[1]))))
+    rosters["valgc"] = gc_rosters
+    free_agents["valgc"] = [[h, c, 60 + zlib.crc32(h.encode()) % 9, age_of("val", h)] for h, c, t, src in entries
+                            if (src == "gc" or (t and is_gc(t))) and norm(h) not in gc_used]
+    print("Valorant Game Changers : %d équipes (%d joueuses), %d agents libres" % (len(gc_rosters), sum(len(t[1]) for t in gc_rosters), len(free_agents["valgc"])), file=sys.stderr)
     print("Valorant (sheet) : %d pays complétés, %d nouvelles équipes (%d joueurs), %d agents libres réels"
           % (fixed, len(new_teams), sum(len(t[1]) for t in new_teams), len(fa)), file=sys.stderr)
 
@@ -480,8 +525,13 @@ if os.path.exists(val_csv):
         cal.append(t)
     cal.sort(key=lambda t: (t[1], -t[2]))
     live_tours["val"] = cal
-    live_history["val"] = [[row["year"], row["name"], row["win"], row["ru"], round(row["usd"] * 0.92), row["tier"]]
-                           for row in rows if row["year"] <= 2025 and row["win"] and row["win"] not in ("TBD", "Cancelled")]
+    hist = lambda gc: [[row["year"], row["name"], row["win"], row["ru"], round(row["usd"] * 0.92), row["tier"]]
+                       for row in rows if row["year"] <= 2025 and row["win"] and row["win"] not in ("TBD", "Cancelled") and ("game changers" in row["name"].lower()) == gc]
+    live_history["val"], live_history["valgc"] = hist(False), hist(True)
+    gc_latest = max((r for r in rows if "game changers championship" in r["name"].lower()), key=lambda r: r["year"], default=None)
+    if gc_latest:
+        doy = mid_doy(gc_latest["date"], gc_latest["year"])
+        live_tours["valgc"] = [["VALORANT Game Changers Championship", max(1, min(13, 1 + (doy - 15) // 25)), round(gc_latest["usd"] * 0.92 / 1000) * 1000, "1", min(16, gc_latest["n"])]]
     print("Valorant : %d tournois au calendrier, %d résultats historiques" % (len(cal), len(live_history["val"])), file=sys.stderr)
 
 with open(OUT, "w", encoding="utf-8") as f:
