@@ -121,7 +121,7 @@ function render() {
   const u = user();
   document.documentElement.style.setProperty("--club", u.color);
   const unread = S.inbox.filter(m => !m.read).length;
-  const navs = [["dash", "🏠 Tableau de bord"], ["roster", "👥 Effectifs"], ["market", "💱 Mercato"], ["comp", "🏆 Compétitions"], ["tours", "📅 Tournois"],
+  const navs = [["dash", "🏠 Tableau de bord"], ["roster", "👥 Effectifs"], ["market", "💱 Mercato"], ["calendar", "🗓️ Calendrier"], ["comp", "🏆 Compétitions"], ["tours", "📅 Tournois"],
     ["finance", "💰 Finances"], ["facilities", "🏗️ Infrastructures"], ["inbox", "✉️ Messagerie"], ["world", "🌍 Clubs & palmarès"]];
   const phase = S.week <= REGULAR_WEEKS ? `Semaine ${S.week}/${REGULAR_WEEKS}` : S.week === REGULAR_WEEKS + 1 ? "Playoffs" : "Grandes finales";
   $app.innerHTML = `<div class="game">
@@ -141,7 +141,7 @@ function render() {
         <div class="spacer"></div>
         ${S.over ? `<button class="danger" data-act="quit">Partie terminée — Menu</button>` : `<button class="primary" data-act="next">Semaine suivante ▶</button>`}
       </div>
-      ${({ dash: viewDash, roster: viewRoster, market: viewMarket, comp: viewComp, tours: viewTours, finance: viewFinance, facilities: viewFacilities, inbox: viewInbox, world: viewWorld })[UI.view]()}
+      ${({ dash: viewDash, roster: viewRoster, market: viewMarket, calendar: viewCalendar, comp: viewComp, tours: viewTours, finance: viewFinance, facilities: viewFacilities, inbox: viewInbox, world: viewWorld })[UI.view]()}
     </main></div>`;
 }
 
@@ -327,6 +327,66 @@ function viewComp() {
     </div>`;
 }
 
+// ---------- calendrier ----------
+// ce que le club joue (ou a joué) dans une ligue la semaine w
+function leagueEntry(L, w) {
+  const u = user(), g = GAMES[L.game], R = REGULAR_WEEKS;
+  const name = `${g.icon} ${g.short} T${L.tier}`;
+  if (g.fmt === "br") {
+    if (w <= R) { const r = L.results.find(x => x.week === w); return { name, what: `Journée ${w} — lobby de ${lobbyText(L.game)}`, res: r ? (r.top.includes(u.id) ? `${["🥇", "🥈", "🥉"][r.top.indexOf(u.id)]} du lobby` : "joué") : "" }; }
+    return { name, what: `Grande finale (top 8) — jour ${w - R}`, res: L.playoffs && L.playoffs.finalists && !L.playoffs.finalists.includes(u.id) ? "non qualifié" : "" };
+  }
+  if (w <= L.schedule.length) {
+    const m = L.schedule[w - 1].find(m => m.includes(u.id));
+    if (!m) return { name, what: "Repos", res: "" };
+    const opp = m[0] === u.id ? m[1] : m[0];
+    const r = L.results.find(x => x.week === w && (x.a === u.id || x.b === u.id));
+    return { name, what: `vs <b>${displayName(opp, L.game)}</b> (BO3)`, res: r ? resTxt(r) : "" };
+  }
+  if (w === R + 1) {
+    const s = L.playoffs && L.playoffs.semis.find(x => x.a === u.id || x.b === u.id);
+    return { name, what: "Demi-finales des playoffs (top 4)", res: s ? resTxt(s) : L.playoffs ? "non qualifié" : "" };
+  }
+  const f = L.playoffs && L.playoffs.final;
+  return { name, what: "Grande finale (BO5)", res: f ? (f.a === u.id || f.b === u.id ? resTxt(f) : "non qualifié") : "" };
+}
+function resTxt(r) {
+  const u = S.userId, me = r.a === u ? r.sa : r.sb, them = r.a === u ? r.sb : r.sa;
+  return `<b class="${r.winner === u ? "win" : "bad"}">${r.winner === u ? "V" : "D"} ${me}-${them}</b>`;
+}
+function viewCalendar() {
+  const u = user();
+  if (!UI.calMode) UI.calMode = "mine";
+  const myGames = Object.keys(u.divisions);
+  const modes = [["mine", "Mes matchs et mes tournois"], ["eligible", "+ tournois de mes jeux"], ["all", "Tous les tournois"]]
+    .map(([k, l]) => `<button class="tab small ${UI.calMode === k ? "active" : ""}" data-act="cal-mode" data-v="${k}">${l}</button>`).join("");
+  const weeks = [];
+  for (let w = 1; w <= REGULAR_WEEKS + 2; w++) {
+    const items = [];
+    for (const L of userLeagues()) items.push({ kind: "league", ...leagueEntry(L, w) });
+    const games = UI.calMode === "all" ? Object.keys(GAMES) : myGames;
+    for (const g of games) for (const [name, week, prize, tiers, size] of allTournaments(g)) {
+      if (week !== w) continue;
+      const d = u.divisions[g];
+      const eligible = d && tiers.includes(String(d.tier));
+      const r = tourStatus(g, name, week);
+      const playing = r ? !!r.mine : eligible && (tiers !== "1" || tournamentField(g, tiers, size).includes(S.userId));
+      if (UI.calMode === "mine" && !playing) continue;
+      items.push({ kind: name.startsWith("EWC") ? "ewc" : "tour", name: `${GAMES[g].icon} ${GAMES[g].short}`, what: `<b>${esc(name)}</b> · ${money(prize)}`,
+        res: r ? (r.mine ? (r.mine === 1 ? "<b class='win'>🏆 Vainqueur</b>" : `<b>${r.mine}e</b> / ${r.n}`) : `🏆 ${displayName(r.top[0], g)}`) : playing ? "<span class='ok'>inscrit</span>" : "" });
+    }
+    const label = w <= REGULAR_WEEKS ? `Semaine ${w}` : w === REGULAR_WEEKS + 1 ? `Semaine ${w} · Playoffs` : `Semaine ${w} · Finales`;
+    const tags = (w >= 7 && w <= EWC_LAST_WEEK ? "<span class='chip ewc'>🌍 EWC</span>" : "") + (w === REGULAR_WEEKS + 2 ? "<span class='chip'>🏁 Fin de saison</span>" : "");
+    weeks.push(`<div class="card cal-week ${w === S.week ? "now" : w < S.week ? "past" : ""}">
+      <div class="cal-head"><b>${label}</b>${w === S.week ? "<span class='chip now'>Cette semaine</span>" : ""}${tags}</div>
+      ${items.length ? items.map(it => `<div class="cal-item ${it.kind}"><span class="cal-game">${it.name}</span><span class="cal-what">${it.what}</span><span class="cal-res">${it.res}</span></div>`).join("") : "<p class='muted'>Rien de prévu.</p>"}
+    </div>`);
+  }
+  return `<h2>🗓️ Calendrier de la saison ${S.season}</h2>
+    <p class="muted" style="margin-top:-6px">Tous tes matchs de ligue, les playoffs et les tournois, semaine par semaine. Les semaines passées affichent les résultats.</p>
+    <div class="tabs">${modes}</div><div class="cal-grid">${weeks.join("")}</div>`;
+}
+
 // ---------- tournois ----------
 const accessLabel = t => ({ "1": "Invitation (tier 1)", "12": "Tiers 1 et 2", "2": "Tier 2", "23": "Open (tiers 2-3)", "3": "Open (tier 3)" }[t] || t);
 function tourStatus(game, name, week) {
@@ -477,6 +537,7 @@ const ACTIONS = {
   "comp-tier": v => { UI.compTier = +v; render(); },
   "tour-game": v => { UI.tourGame = v; render(); },
   "tour-size": v => { UI.tourSize = v; render(); },
+  "cal-mode": v => { UI.calMode = v; render(); },
   "goto-market": v => { UI.market.game = v; UI.view = "market"; render(); },
   "open-div": v => {
     const [game, t] = v.split("|"), tier = +t, g = GAMES[game];

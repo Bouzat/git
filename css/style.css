@@ -118,3 +118,18 @@ tr:hover td { background: #ffffff06; }
 .reply.insult, .reply.bad { border-left-color: var(--bad); }
 .reply.low { border-left-color: var(--warn); }
 .reply.close { border-left-color: var(--ok); }
+
+/* ---------- calendrier ---------- */
+.cal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+.cal-week { padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
+.cal-week.now { border-color: var(--club); box-shadow: 0 0 0 1px var(--club); }
+.cal-week.past { opacity: .75; }
+.cal-head { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 4px; }
+.chip.now { border-color: var(--club); color: var(--text); }
+.chip.ewc { border-color: #2ecc71; }
+.cal-item { display: grid; grid-template-columns: 70px 1fr auto; gap: 8px; align-items: baseline; font-size: 13px; padding: 4px 0; border-top: 1px solid #1c2338; }
+.cal-item.ewc .cal-what b { color: #2ecc71; }
+.cal-item.tour .cal-what b { color: var(--accent2); }
+.cal-game { color: var(--muted); white-space: nowrap; }
+.cal-what { min-width: 0; }
+.cal-res { white-space: nowrap; text-align: right; }

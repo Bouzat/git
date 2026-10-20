@@ -26,7 +26,7 @@ const GAMES = {
           tiers: ["Call of Duty League (CDL)", "CoD Challengers", "Amateur Cups"] },
   mlbb: { name: "Mobile Legends",    short: "MLBB", icon: "📱", fmt: "team", size: 5, roles: ["EXP", "Jungle", "Mid", "Gold", "Roam"], prize: 800000, mult: 0.6, color: "#2b6cff",
           tiers: ["MPL · M-Series World Championship", "MDL (Development League)", "Open Cups"] },
-  fn:   { name: "Fortnite",          short: "FN",   icon: "🏗️", fmt: "br", size: 2, lobby: 50, gamesPerWeek: 4, tierSizes: [16, 50], roles: ["Fragger", "IGL"], prize: 1500000, mult: 0.6, color: "#9d4dbb", unit: "duo",
+  fn:   { name: "Fortnite",          short: "FN",   icon: "🏗️", fmt: "br", size: 2, lobby: 50, gamesPerWeek: 4, tierSizes: [20, 60], roles: ["Fragger", "IGL"], prize: 1500000, mult: 0.6, color: "#9d4dbb", unit: "duo",
           tiers: ["FNCS Grand Finals (duos)", "FNCS Divisional Cups", "Cash Cups"] },
   apex: { name: "Apex Legends",      short: "APEX", icon: "🪂", fmt: "br", size: 3, lobby: 20, gamesPerWeek: 4, roles: ["IGL", "Fragger", "Support"], prize: 700000, mult: 0.5, color: "#da292a", unit: "trio",
           tiers: ["ALGS Pro League", "ALGS Challenger Circuit", "Online Tournaments"] },

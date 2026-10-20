@@ -43,10 +43,11 @@ Trois formats de compétition :
 
 ## Données
 
-Les effectifs Valorant (48 équipes, octobre 2026) viennent de **vlr.gg** et les âges réels de **Wikidata**, via les outils du dossier `tools/` :
+Les effectifs Valorant (48 équipes, octobre 2026) viennent de **vlr.gg**, les duos Fortnite (nationalités, âges, 110 duos) d'**esportsearnings.com** et les âges réels de **Wikidata**, via les outils du dossier `tools/` :
 
 ```bash
 python3 tools/fetch_vlr.py data/vlr_teams.json      # classements et effectifs Valorant
+python3 tools/fetch_esportsearnings.py 534-fortnite data/ee_fortnite.json 2026 "fncs|fortnite|reload"   # Fortnite : pays, âges, duos
 sh tools/fetch_wikidata.sh data/wd_players.csv       # dates de naissance des joueurs pros
 python3 tools/build_live.py data js/data_live.js     # génère js/data_live.js
 ```
@@ -57,6 +58,10 @@ python3 tools/build_live.py data js/data_live.js     # génère js/data_live.js
 - **Âges** : réels quand ils ont pu être vérifiés (sources 2026 pour une partie des joueurs Fortnite, années de naissance connues pour les stars) ; sinon l'âge est estimé et affiché avec un « ~ ».
 - **Potentiel** : marge de progression selon l'âge (un joueur de 25 ans ou plus a atteint son plafond), affichée par votre staff avec une marge d'erreur qui diminue avec le niveau du coaching.
 - Tout est modifiable dans `js/data.js` (format joueur : `[pseudo, nationalité, note, âge]`).
+
+## Calendrier
+
+L'onglet **Calendrier** montre la saison semaine par semaine : tous vos matchs de ligue (adversaire, puis résultat), les playoffs, les tournois auxquels vous êtes inscrit et la fenêtre de l'EWC. Filtres : vos matchs et tournois, tous les tournois de vos jeux, ou tous les tournois du monde.
 
 ## Tournois à cashprize
 

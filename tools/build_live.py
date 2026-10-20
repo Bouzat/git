@@ -90,6 +90,48 @@ if os.path.exists(vlr):
     keep = sorted(keep[:max(48, sum(1 for t in teams if t[3]))], key=lambda x: -x[0])
     rosters["val"] = [[org, ps, 1] for _, org, ps, _ in keep]
 
+# ---------- Fortnite (esportsearnings : nationalité, âge, duos du Major 1 2026) ----------
+solos = {}
+eef = os.path.join(SRC, "ee_fortnite.json")
+if os.path.exists(eef):
+    ee = json.load(open(eef, encoding="utf-8"))
+    EE_ALIAS = {"vic0try0na": "vic0", "shark": "shxrk", "t3enyy": "t3eny", "skyboy": "sky", "merstachhh": "merstach", "rezonay": "rezon"}
+    info = {}
+    for p in ee["players"].values():
+        k = EE_ALIAS.get(norm(p["h"]), norm(p["h"]))
+        info[k] = (p["cc"], p.get("age", 0), p["h"])
+    for r in ee["results"]:
+        for m in r["members"]:
+            k = EE_ALIAS.get(norm(m["h"]), norm(m["h"]))
+            info.setdefault(k, (m["cc"], 0, m["h"]))
+    # organisations des duos (Liquipedia via presse, Wikipedia : Pollo chez Falcons, Gen.G signe Ritual…)
+    FN_ORGS = {("peterbot", "pollo"): "falcons", ("tjino", "pablowingu"): "havok", ("ritual", "cold"): "geng", ("swizzy", "pixie"): "vitality",
+               ("shxrk", "t3eny"): "aurora", ("vic0", "malibuca"): "big", ("acorn", "boltz"): "tm", ("916gon", "night"): "furia", ("rax", "jannisz"): "m8"}
+    live_orgs.setdefault("havok", ["HavoK", "HVK", "SE", "#e63946", 58])
+    duos, seen = [], set()
+    for x in cur["SOLOS"]["fn"]:
+        duo = x[1] if isinstance(x[0], str) else x
+        ps = []
+        for h, cc, r, a in duo:
+            c2, a2, _ = info.get(norm(h), ("", 0, h))
+            ps.append([h, c2 or cc, r, a2 or a])
+            seen.add(norm(h))
+        key = tuple(sorted(norm(p[0]) for p in ps))
+        org = next((o for k, o in FN_ORGS.items() if tuple(sorted(k)) == key), None)
+        duos.append([org, ps] if org else ps)
+    # duos du Major 1 2026 absents de la base
+    for r in ee["results"]:
+        if "Major 1" not in r["t"] or len(r["members"]) != 2: continue
+        ms = [EE_ALIAS.get(norm(m["h"]), norm(m["h"])) for m in r["members"]]
+        if any(m in seen for m in ms): continue
+        oce = "Oceania" in r["t"]
+        place = sum(1 for q in ee["results"] if q["t"] == r["t"] and ee["results"].index(q) < ee["results"].index(r)) + 1
+        rating = int(round((80 if oce else 85) - place * (0.2 if oce else 0.15)))
+        ps = [[m["h"], m["cc"], rating - i, info.get(k, ("", 0, ""))[1]] for i, (m, k) in enumerate(zip(r["members"], ms))]
+        seen.update(ms)
+        duos.append(ps)
+    solos["fn"] = duos[:110]   # 20 en tier 1, 60 en tier 2, 30 en tier 3 (le reste de la scène est amateur)
+
 # âges réels (Wikidata) pour tous les joueurs déjà présents dans data.js
 age_fix = {}
 for g, lst in cur["ROSTERS"].items():
@@ -110,10 +152,12 @@ with open(OUT, "w", encoding="utf-8") as f:
     f.write("// Ces données remplacent celles de data.js pour les jeux concernés.\n")
     f.write("const LIVE_ORGS = " + json.dumps(live_orgs, ensure_ascii=False) + ";\n")
     f.write("const LIVE_ROSTERS = " + json.dumps(rosters, ensure_ascii=False) + ";\n")
+    f.write("const LIVE_SOLOS = " + json.dumps(solos, ensure_ascii=False) + ";\n")
     f.write("// âges réels (Wikidata, au 20 octobre 2026) : jeu|pseudo -> âge\n")
     f.write("const LIVE_AGES = " + json.dumps(age_fix, ensure_ascii=False) + ";\n")
     f.write("""Object.assign(ORGS, LIVE_ORGS);
 for (const [g, l] of Object.entries(LIVE_ROSTERS)) ROSTERS[g] = l;
+for (const [g, l] of Object.entries(LIVE_SOLOS)) SOLOS[g] = l;
 // applique les âges réels à tous les effectifs
 const fixAge = (g, p) => { const a = LIVE_AGES[g + "|" + p[0]]; if (a) p[3] = a; };
 for (const [g, l] of Object.entries(ROSTERS)) for (const [, ps] of l) ps.forEach(p => fixAge(g, p));
