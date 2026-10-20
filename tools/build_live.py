@@ -114,7 +114,9 @@ if os.path.exists(eef):
                # FNCS 2026 Major 2 (Liquipedia, via la presse) et pages d'organisations (Fandom)
                ("cr1nge", "twi"): "xp42", ("idrop", "ghonzo"): "solary", ("minori", "darkos"): "solary", ("ajerss", "veno"): "xset",
                ("muz", "rise"): "xset", ("clix", "rapid"): "xset", ("kingaling", "kraez"): "geng", ("josh", "eomzo"): "elite",
-               ("golden", "ozone"): "force", ("vadeal", "juu"): "wave"}
+               ("golden", "ozone"): "force", ("vadeal", "juu"): "wave", ("akiira", "kurama"): "m8"}
+    # précisions données par l'utilisateur (joueurs français)
+    CC_FIX = {"izzi": "FR", "nociff": "FR", "momsy": "FR", "seyyto": "FR", "kurama": "FR"}
     live_orgs.setdefault("havok", ["HavoK", "HVK", "SE", "#e63946", 58])
     live_orgs.setdefault("ag", ["All Gamers Global", "AG", "DK", "#c9a227", 55])
     for k, v in {"xp42": ["XP42 Esports", "XP42", "", "#3d5a80", 46], "solary": ["Solary", "SLY", "FR", "#00a2ff", 58],
@@ -136,10 +138,11 @@ if os.path.exists(eef):
         org = next((o for k, o in FN_ORGS.items() if tuple(sorted(k)) == key), None)
         duos.append([org, ps] if org else ps)
     # duos d'organisations trouvés sur les pages d'équipes (Fandom) et absents des grands classements
-    for org, a1, c1, a2, c2, r in [("solary", "Minori", "CH", "Darkos", "FR", 81), ("wave", "Vadeal", "", "Juu", "", 79)]:
+    for org, a1, c1, a2, c2, r in [("solary", "Minori", "CH", "Darkos", "FR", 81), ("wave", "Vadeal", "", "Juu", "", 79),
+                                   (None, "Merstach", "LV", "Vanyak3kk", "", 85)]:
         if norm(a1) in seen or norm(a2) in seen: continue
-        duos.insert(60, [[a1, c1, r, 0], [a2, c2, r - 1, 0]])
-        FN_ORGS[(norm(a1), norm(a2))] = org
+        duos.insert(30, [[a1, c1, r, info.get(norm(a1), ("", 0, ""))[1]], [a2, c2, r - 1, info.get(norm(a2), ("", 0, ""))[1]]])
+        if org: FN_ORGS[(norm(a1), norm(a2))] = org
         seen.update((norm(a1), norm(a2)))
     # duos qualifiés au Global Championship 2026 par le Last Chance Qualifier (Hotspawn)
     LCQ = [("Momsy", "Seyyto"), ("Huty", "F1shyx"), ("Izzi", "Nociff"), ("Hcube", "Encrypted"), ("slepzi", "Wagers"), ("Ark", "Khanada"),
@@ -167,7 +170,16 @@ if os.path.exists(eef):
         org = next((o for k, o in FN_ORGS.items() if tuple(sorted(k)) == key), None)
         return [org, ps] if org else ps
     duos = [with_org(x) for x in duos]
-    solos["fn"] = duos[:110]   # 20 en tier 1, 60 en tier 2, 30 en tier 3 (le reste de la scène est amateur)
+    for x in duos:
+        for p in (x[1] if isinstance(x[0], str) else x):
+            if norm(p[0]) in CC_FIX: p[1] = CC_FIX[norm(p[0])]
+    # on garde tous les duos d'organisation et ceux du Global Championship, puis les meilleurs autres duos jusqu'à 120
+    KEEP = {norm(h) for pair in LCQ for h in pair} | {"merstach", "akiira", "kurama"}
+    must = [x for x in duos if isinstance(x[0], str) or any(norm(p[0]) in KEEP for p in x)]
+    rest = [x for x in duos if not (isinstance(x[0], str) or any(norm(p[0]) in KEEP for p in x))]
+    keep = must + rest[:max(0, 120 - len(must))]
+    order = {id(x): i for i, x in enumerate(duos)}
+    solos["fn"] = sorted(keep, key=lambda x: order[id(x)])   # 20 en tier 1, 60 en tier 2, 30 en tier 3 (le reste de la scène est amateur)
 
 # âges réels (Wikidata) pour tous les joueurs déjà présents dans data.js
 age_fix = {}
