@@ -170,7 +170,7 @@ function fillerClub(game, tier) {
 // ---------- création du monde ----------
 function newWorld(opts) {
   S = {
-    version: 2, ceo: opts.ceo, mode: opts.mode, season: 2026, week: 1, over: false,
+    version: 2, dataVersion: dataVersion(), ceo: opts.ceo, mode: opts.mode, season: 2026, week: 1, over: false,
     clubs: {}, players: {}, leagues: {}, inbox: [], finance: [], titles: [],
     userId: null, board: { confidence: 60, objective: null }, lastWeek: null,
   };
@@ -1201,5 +1201,14 @@ function news(text) { mail("📰 " + text, text, "news"); }
 // ---------- sauvegarde ----------
 function save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); } catch (e) { /* stockage indisponible */ } }
 function load() { try { const s = localStorage.getItem(SAVE_KEY); if (s) { S = JSON.parse(s); return true; } } catch (e) { } return false; }
+// empreinte de la base de données : une partie créée avant une mise à jour des effectifs garde l'ancien monde
+function dataVersion() {
+  const txt = JSON.stringify([ORGS, ROSTERS, SOLOS, typeof EXTRA_DIVS !== "undefined" ? EXTRA_DIVS : 0]);
+  let h = 0; for (let i = 0; i < txt.length; i++) h = (h * 31 + txt.charCodeAt(i)) | 0;
+  return h;
+}
+function saveIsOutdated() {
+  try { const s = localStorage.getItem(SAVE_KEY); return !!s && JSON.parse(s).dataVersion !== dataVersion(); } catch (e) { return false; }
+}
 function hasSave() { try { return !!localStorage.getItem(SAVE_KEY); } catch (e) { return false; } }
 function wipeSave() { try { localStorage.removeItem(SAVE_KEY); } catch (e) { } }
