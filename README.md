@@ -31,7 +31,7 @@ Trois formats de compétition :
 ## Ce que vous gérez
 
 - **Effectifs** : titulaires / remplaçants, prolongations, ventes, libérations, ouverture et fermeture de divisions.
-- **Mercato** : 662 joueurs pros réels rangés dans leurs équipes, des pros indépendants (FGC, StarCraft, Fortnite…) et des milliers d'agents libres générés. Les stars refusent les clubs trop modestes.
+- **Mercato** : 700+ joueurs pros réels rangés dans leurs équipes, des pros indépendants (FGC, StarCraft, Fortnite…) et des milliers d'agents libres générés. Les stars refusent les clubs trop modestes.
 - **Joueurs** : note, potentiel, âge, forme, moral, salaire, contrat. Les jeunes progressent, les vétérans déclinent.
 - **Finances** : sponsors, merch/stream, cashprizes, salaires, frais de fonctionnement selon le tier.
 - **Infrastructures** : Gaming House, staff de coaching, cellule d'analyse, studio de contenu, académie.

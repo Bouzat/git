@@ -74,9 +74,9 @@ function salaryDemand(p, club) {
 function makePlayer(handle, nat, rating, age, game, roleIdx, club) {
   const g = GAMES[game];
   const p = {
-    id: uid("p"), handle, nat, game, rating, age,
+    id: uid("p"), handle, nat, game, rating, age: age || randi(17, 23),
     role: g.roles[roleIdx % g.roles.length],
-    pot: clamp(rating + (age <= 20 ? randi(3, 10) : age <= 23 ? randi(1, 6) : age <= 26 ? randi(0, 2) : 0), rating, 99),
+    pot: clamp(rating + ((age || 21) <= 20 ? randi(3, 10) : age <= 23 ? randi(1, 6) : (age || 21) <= 26 ? randi(0, 2) : 0), rating, 99),
     form: randi(55, 80), morale: randi(60, 85), club: club || null,
     salary: 0, years: randi(1, 3), starter: false, stats: { w: 0, l: 0, mvp: 0 },
   };
@@ -161,12 +161,15 @@ function newWorld(opts) {
   for (const game of Object.keys(GAMES)) {
     const entries = [];
     for (const [orgId, roster] of (ROSTERS[game] || [])) entries.push({ orgId, roster, avg: roster.reduce((s, p) => s + p[2], 0) / roster.length });
-    const solos = (SOLOS[game] || []).map(x => Array.isArray(x[0]) ? x : [x]).map(roster => ({ roster, avg: roster.reduce((s, p) => s + p[2], 0) / roster.length }));
+    // entrée SOLOS : un joueur, un duo, ou [org, duo] pour un duo signé dans une organisation
+    const solos = (SOLOS[game] || []).map(x => typeof x[0] === "string" && Array.isArray(x[1]) && Array.isArray(x[1][0]) ? { orgId: x[0], roster: x[1] } : { roster: Array.isArray(x[0]) ? x : [x] })
+      .map(e => ({ ...e, avg: e.roster.reduce((s, p) => s + p[2], 0) / e.roster.length }));
     solos.sort((a, b) => b.avg - a.avg);
     const all = entries.concat(solos); // les orgs sont déjà classées
     const byTier = [[], [], []];
+    const sizes = GAMES[game].tierSizes || [LEAGUE_SIZE, LEAGUE_SIZE];
     all.forEach((e, i) => {
-      const tier = Math.min(3, Math.floor(i / LEAGUE_SIZE) + 1);
+      const tier = i < sizes[0] ? 1 : i < sizes[0] + sizes[1] ? 2 : 3;
       const c = e.orgId ? orgClub(e.orgId) : null;
       if (c) addDivision(c, game, tier, e.roster);
       const club = c || soloClub(game, tier, e.roster);

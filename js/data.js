@@ -26,7 +26,7 @@ const GAMES = {
           tiers: ["Call of Duty League (CDL)", "CoD Challengers", "Amateur Cups"] },
   mlbb: { name: "Mobile Legends",    short: "MLBB", icon: "📱", fmt: "team", size: 5, roles: ["EXP", "Jungle", "Mid", "Gold", "Roam"], prize: 800000, mult: 0.6, color: "#2b6cff",
           tiers: ["MPL · M-Series World Championship", "MDL (Development League)", "Open Cups"] },
-  fn:   { name: "Fortnite",          short: "FN",   icon: "🏗️", fmt: "br", size: 2, lobby: 50, gamesPerWeek: 4, roles: ["Fragger", "IGL"], prize: 1500000, mult: 0.6, color: "#9d4dbb", unit: "duo",
+  fn:   { name: "Fortnite",          short: "FN",   icon: "🏗️", fmt: "br", size: 2, lobby: 50, gamesPerWeek: 4, tierSizes: [16, 50], roles: ["Fragger", "IGL"], prize: 1500000, mult: 0.6, color: "#9d4dbb", unit: "duo",
           tiers: ["FNCS Grand Finals (duos)", "FNCS Divisional Cups", "Cash Cups"] },
   apex: { name: "Apex Legends",      short: "APEX", icon: "🪂", fmt: "br", size: 3, lobby: 20, gamesPerWeek: 4, roles: ["IGL", "Fragger", "Support"], prize: 700000, mult: 0.5, color: "#da292a", unit: "trio",
           tiers: ["ALGS Pro League", "ALGS Challenger Circuit", "Online Tournaments"] },
@@ -221,6 +221,12 @@ const ROSTERS = {
   ],
 };
 
+// Duo Fortnite : D(note, [pseudo, pays], [pseudo, pays], org optionnelle)
+function D(r, a, b, org) {
+  const duo = [[a[0], a[1], r, 0], [b[0], b[1], Math.max(60, r - 1), 0]];
+  return org ? [org, duo] : duo;
+}
+
 // Joueurs indépendants (sans organisation) : ils jouent sous leur propre nom.
 // Pour Fortnite, chaque entrée est un duo.
 const SOLOS = {
@@ -235,11 +241,36 @@ const SOLOS = {
         ["MaxPax","DK",89,21],["Oliveira","CN",87,25],["Classic","KR",87,31],["Cure","KR",87,30],["ByuN","KR",85,31],["Solar","KR",86,30],
         ["SHIN","KR",85,25],["Rogue","KR",85,30],["Zoun","KR",85,26],["Astrea","US",82,26],["Lambo","DE",82,24],["Elazer","PL",82,28],
         ["ShoWTimE","DE",83,29],["Spirit","PL",81,27],["MaNa","PL",80,30],["Harstem","NL",80,30],["Gerald","SE",80,26],["Trigger","CA",79,24]],
-  fn: [[["Peterbot","US",93,18],["Pollo","US",90,17]], [["Queasy","SI",88,20],["Malibuca","HR",87,19]], [["Veno","GB",87,19],["Mongraal","GB",83,21]],
-       [["Bugha","US",86,23],["Clix","US",85,21]], [["MrSavage","NO",86,21],["Vico","FR",84,19]], [["Rezon","FR",84,22],["Kami","PL",84,20]],
-       [["Setty","DE",83,20],["Chapix","US",84,18]], [["Khanada","US",83,21],["Acorn","US",83,20]], [["Cooper","US",84,18],["Eomzo","US",83,19]],
-       [["Th0masHD","DE",83,21],["Werex","FR",82,19]], [["Swizzy","GB",82,20],["Wolfiez","GB",82,20]], [["Mero","US",83,20],["Reet","US",82,20]],
-       [["Tayson","SI",84,22],["Shxrk","SE",82,20]], [["Kurama","FR",80,24],["Pixie","FR",80,22]]],
+  // Fortnite : duos réels des FNCS 2026 (Majors 1 & 2, Global Championship d'Anvers),
+  // classés d'après leurs résultats. Pays inconnu = "" ; âge 0 = tiré au hasard.
+  fn: [
+    // ---- Europe ----
+    D(94, ["SwizzY",""], ["Pixie",""]), D(93, ["Shxrk",""], ["t3eny",""]), D(92, ["Sky",""], ["Scroll",""]),
+    D(92, ["vic0","FR"], ["Malibuca",""], "big"), D(89, ["Tjino",""], ["PabloWingu",""]), D(88, ["Charyy",""], ["Kami","PL"]),
+    D(88, ["FoCuS",""], ["Th0masHD","DE"]), D(87, ["Cr1nge",""], ["Twi",""]), D(86, ["IDrop",""], ["Ghonzo",""]),
+    D(86, ["Darm",""], ["Demus",""]), D(85, ["Velo",""], ["Zynox",""]), D(85, ["Chap",""], ["Flickzy",""]),
+    D(85, ["SShur4",""], ["Repairs",""]), D(85, ["Syaaz",""], ["Scaryy",""]), D(85, ["Japko",""], ["Panzer",""]),
+    D(84, ["Rax",""], ["JannisZ",""]), D(83, ["Tidi",""], ["Julle",""]), D(83, ["Fant",""], ["Hlechis",""]),
+    D(83, ["Nebs",""], ["Nxthan",""]), D(83, ["Pixx",""], ["Firen",""]),
+    // ---- NA Central ----
+    D(91, ["Peterbot","US"], ["Pollo","US"]), D(90, ["Clix","US"], ["Rapid",""]), D(89, ["Acorn","US"], ["Boltz",""], "tm"),
+    D(89, ["Ritual",""], ["Cold",""]), D(89, ["Ajerss",""], ["Veno","GB"]), D(88, ["Higgs",""], ["Curve",""]),
+    D(86, ["Muz",""], ["Rise",""]), D(86, ["VicterV",""], ["Queasy",""]), D(85, ["Kingaling",""], ["Kraez",""]),
+    D(85, ["josh",""], ["Eomzo","US"]), D(84, ["Golden",""], ["Ozone",""]), D(83, ["Shadow",""], ["Vergo",""]),
+    D(83, ["Bugha","US"], ["Braydz",""]), D(82, ["Moneymaker",""], ["Fnajen",""]), D(82, ["Reet","US"], ["Cooper","US"]),
+    D(81, ["Xavi",""], ["Aminished",""]), D(81, ["Visxals",""], ["Threats",""]), D(80, ["Dash",""], ["Noxy",""]),
+    D(80, ["angel",""], ["BatmanJoe",""]), D(80, ["Sails",""], ["verT",""]),
+    // ---- NA West ----
+    D(84, ["EpikWhale",""], ["PXMP",""]), D(82, ["phoenix",""], ["Retro",""]), D(81, ["Inact",""], ["ZLink",""]), D(79, ["Compton",""], ["Snevy",""]),
+    // ---- Brésil ----
+    D(85, ["916Gon","BR"], ["Night","BR"], "furia"), D(84, ["Mack","BR"], ["Diguera","BR"]), D(83, ["Nuti","BR"], ["Gabzera","BR"]), D(82, ["Lewa","BR"], ["Romero","BR"]),
+    // ---- Asie ----
+    D(83, ["Yuma","JP"], ["Koyota","JP"]), D(82, ["Minipiyo","JP"], ["FuuKun","JP"]), D(80, ["Raeyache",""], ["Noel",""]), D(78, ["MxGuR0",""], ["Ritsu",""]),
+    // ---- Moyen-Orient ----
+    D(82, ["FKS",""], ["Hero",""]), D(80, ["7man1x",""], ["Controller",""]),
+    // ---- Océanie ----
+    D(81, ["Resignz","AU"], ["Tinka","AU"]), D(80, ["Solvey","AU"], ["Sazers","AU"]), D(77, ["Spookz","AU"], ["Deymo","AU"]),
+  ],
 };
 
 // Clubs fictifs pour compléter les circuits (surtout les petites scènes)

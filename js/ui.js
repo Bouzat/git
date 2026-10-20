@@ -30,7 +30,7 @@ function closeModal() { document.getElementById("modal").classList.add("hidden")
 // =====================================================================
 function realPlayerCount() {
   return Object.values(ROSTERS).reduce((s, l) => s + l.reduce((a, [, r]) => a + r.length, 0), 0)
-    + Object.values(SOLOS).reduce((s, l) => s + l.reduce((a, x) => a + (Array.isArray(x[0]) ? x.length : 1), 0), 0);
+    + Object.values(SOLOS).reduce((s, l) => s + l.reduce((a, x) => a + (typeof x[0] === "string" && Array.isArray(x[1]) ? x[1].length : Array.isArray(x[0]) ? x.length : 1), 0), 0);
 }
 // orgs reprenables, avec le tier de départ de chaque division
 function takeoverList() {
