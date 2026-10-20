@@ -40,7 +40,8 @@ def age_of(g, h):
 
 # correspondance nom d'équipe -> org existante
 ALIASES = {"fnatic": "fnatic", "kiwoomdrx": "drx", "leviatan": "lev", "fluxow7m": "w7m", "nongshimredforce": "ns", "gentlemates": "m8",
-           "kruesports": "kru", "allgamers": "al", "dplusesports": "dk", "teamheretics": "heretics", "g2esports": "g2", "geng": "geng"}
+           "kruesports": "kru", "allgamers": "al", "dplusesports": "dk", "dplus": "dk", "teamheretics": "heretics", "g2esports": "g2", "geng": "geng",
+           "gengesports": "geng"}
 by_name = {norm(v[0]): k for k, v in ORGS.items()}
 by_name.update({norm(v[1]): k for k, v in ORGS.items() if len(v[1]) > 2})
 def org_for(name):
@@ -103,27 +104,36 @@ if os.path.isdir(VDIR) and "val" in rosters:
            "Russia": "RU", "Ukraine": "UA", "Uzbekistan": "UZ", "Autriche": "AT", "Belgique": "BE", "Bulgarie": "BG", "Tchéquie": "CZ", "Danemark": "DK",
            "Estonia": "EE", "Finlande": "FI", "France": "FR", "Allemagne": "DE", "Islande": "IS", "Irlande": "IE", "Italie": "IT", "Lettonie": "LV",
            "Lituanie": "LT", "Moldova": "MD", "Pays-Bas": "NL", "Norvège": "NO", "Pologne": "PL", "Portugal": "PT", "Roumanie": "RO", "Écosse": "GB",
-           "Serbie": "RS", "Slovaquie": "SK", "Slovenia": "SI", "Espagne": "ES", "Suède": "SE", "Suisse": "CH", "Turquie": "TR"}
+           "Serbie": "RS", "Slovaquie": "SK", "Slovenia": "SI", "Espagne": "ES", "Suède": "SE", "Suisse": "CH", "Turquie": "TR",
+           "Bangladesh": "BD", "Brunei": "BN", "Cambodia": "KH", "China": "CN", "Hong Kong": "HK", "India": "IN", "Indonesia": "ID", "Japan": "JP",
+           "Laos": "LA", "Macau": "MO", "Malaysia": "MY", "Mongolia": "MN", "Nepal": "NP", "Pakistan": "PK", "Philippines": "PH", "Singapore": "SG",
+           "South Korea": "KR", "Sri Lanka": "LK", "Taiwan": "TW", "Thailand": "TH", "Vietnam": "VN", "Australia": "AU", "New Zealand": "NZ"}
     GC_TEAMS = {norm(t) for t in """KRÜ Blaze|Shopify Rebellion Gold|SEN Otters|FlyQuest RED|G2 Gozen|Twisted Orchid|No Sweat Blossom|Six Karma Femenil|
         NOVO Nightingale|FOKUS Sakura|Bitfix Zero|Bitfix Puppies|SK Nebula|DVM Miss|Melilla Titans Aura|RIZON Sugar|TOG Inari|PCS Aphrodite|
-        WLG Female Stars|ALTERNATE aTTaX Ruby|Akave Esports Black""".split("|")}
-    is_gc = lambda t: norm(t) in GC_TEAMS or bool(re.search(r"\bGC$", t.strip()))
+        WLG Female Stars|ALTERNATE aTTaX Ruby|Akave Esports Black|Velocity Gaming X|Falcons Vega|Stallions Lyra|BIGG Siren|LILAX|LILITH|
+        Nerve Esports Quartz|Team Liquid Brazil|FULL SENSE SISU|Ninetails|CNE Changers|DXE Game Changers""".split("|")}
+    is_gc = lambda t: norm(t) in GC_TEAMS or bool(re.search(r"\b(GC|gc|Female|Women|Game Changers)$", t.strip()))
     COLLEGE = re.compile(r"universit|college|rutgers|northwood|cumberland|maryville|winthrop|osu varsity|virginia tech|tu dublin|ucam", re.I)
     # entrées : (pseudo, pays, équipe, source)
     entries = []
     # portail Amériques : bloc par pays
-    cc = None
-    for r in csv.reader(open(os.path.join(VDIR, "players_americas.csv"), encoding="utf-8")):
-        r = (r + [""] * 4)[:4]
-        if r[0] in ISO and not r[1]: cc = ISO[r[0]]; continue
-        if r[0] in ("Players", "ID", "Staff & Talents") or r[0].startswith("Player Portal") or not r[0] or not cc: continue
-        entries.append((r[0].strip(), cc, r[2].strip(), "portal"))
+    files = sorted(os.listdir(VDIR))
+    first_line = lambda f: open(os.path.join(VDIR, f), encoding="utf-8").readline()
+    for f in files:
+        if not first_line(f).startswith("Player Portal"): continue
+        cc = None
+        for r in csv.reader(open(os.path.join(VDIR, f), encoding="utf-8")):
+            r = (r + [""] * 4)[:4]
+            if r[0] in ISO and not r[1]: cc = ISO[r[0]]; continue
+            if r[0] in ("Players", "ID", "Staff & Talents") or r[0].startswith("Player Portal") or not r[0] or not cc: continue
+            entries.append((r[0].strip(), cc, r[2].strip(), "portal"))
     # portails CIS et Europe : « Nom réel Équipe » dans la même colonne -> équipe reconnue par suffixe
     known_teams = set()
-    for fn_ in ("rosters_europe.csv", "rosters_north_america.csv"):
-        for r in csv.reader(open(os.path.join(VDIR, fn_), encoding="utf-8")):
-            t = r[1] if fn_.endswith("america.csv") else r[0]
-            if t and t not in ("Équipe", "Région", "ID"): known_teams.add(t.strip())
+    roster_files = [f for f in files if f.startswith("rosters_")]
+    for fn_ in roster_files:
+        for r in csv.DictReader(open(os.path.join(VDIR, fn_), encoding="utf-8")):
+            t = (r.get("Équipe") or "").strip()
+            if t: known_teams.add(t)
     known_teams |= {e[2] for e in entries if e[2]} | {v[0] for v in {**ORGS, **live_orgs}.values()}
     known_teams |= set("""AlQadsiah Esports|Colors Esport|S8UL Esports|FORWARD|All Gamers|team hz|VOLT|Weibo Gaming|Stallions Esports|Young Talents|
         Gamax Esports|BAO eSPORTS|Oxuji|MANIA Esports|RAFHA eSPORTS|KeepBest Gaming|Skulls Esports|B8 Esports|Playing Ducks|BAAM Esports|Elite Klan|
@@ -155,8 +165,11 @@ if os.path.isdir(VDIR) and "val" in rosters:
         if r[0] == "ID": continue
         if r[0] and not r[1] and not r[2]: block = r[0].strip(); continue
         if block and r[0]: roster_rows.append((r[0].strip(), block, "Challengers", r[2]))
-    for r in csv.DictReader(open(os.path.join(VDIR, "rosters_north_america.csv"), encoding="utf-8")):
-        if r["ID"]: roster_rows.append((r["ID"].strip(), r["Équipe"].strip(), "NA", r["Rôle"]))
+    for fn_ in roster_files:
+        if fn_ == "rosters_europe.csv": continue
+        for r in csv.DictReader(open(os.path.join(VDIR, fn_), encoding="utf-8")):
+            if (r.get("ID") or "").strip() and (r.get("Équipe") or "").strip():
+                roster_rows.append((r["ID"].strip(), r["Équipe"].strip(), r.get("Catégorie") or ("NA" if "america" in fn_ else "Challengers"), r.get("Rôle") or ""))
     # pays connus par pseudo (+ équipe pour départager les homonymes)
     cc_of = {}
     for h, c, t, _ in entries:

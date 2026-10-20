@@ -10,7 +10,7 @@ Aucune installation : ouvrez `index.html` dans un navigateur (double-clic), ou s
 python3 -m http.server 8000   # puis http://localhost:8000
 ```
 
-La partie est sauvegardée automatiquement dans le navigateur (localStorage) à chaque semaine.
+La partie est sauvegardée automatiquement dans le navigateur (localStorage) à chaque semaine, compressée (environ 12 fois plus petite) pour tenir sous la limite de 5 Mo des navigateurs.
 
 ## Deux modes de jeu
 
@@ -77,7 +77,7 @@ L'onglet **Calendrier** montre la saison semaine par semaine : tous vos matchs d
 
 En plus des ligues, chaque jeu a son calendrier de grands tournois (onglet **Tournois**) : First Stand, MSI et Worlds en LoL ; IEM, BLAST, les deux Majors et l'EWC en CS2 ; Masters et Champions en Valorant ; The International, DreamLeague et l'EWC en Dota 2 ; FNCS Majors et Global Championship en Fortnite ; Capcom Cup et EVO en SF6… plus des cash cups pour les petites scènes. Les tournois sur invitation prennent les meilleures équipes du tier 1, les opens accueillent tous les clubs des tiers admis. Le club garde 50 % des gains.
 
-**Valorant** compte 185 équipes. Il y a les 48 de VLR (octobre 2026), puis 137 équipes Challengers, académies, universités et équipes turques, CIS et sud-américaines, tirées de la Google Sheet de l'utilisateur (portails joueurs Liquipedia Amériques, Europe et CIS, effectifs Europe et Amérique du Nord, dans `tools/sources/valorant/`). Plus de 700 vrais joueurs sans équipe sont agents libres. Le tier 1 réunit 16 équipes et le tier 2 en réunit 32. Le circuit féminin (Game Changers) n'est pas simulé.
+**Valorant** compte 262 équipes. Il y a les 48 de VLR (octobre 2026), puis 214 équipes Challengers, académies, universités et équipes régionales (Europe, Turquie, CIS, Amériques, Brésil, Japon, Corée, Asie du Sud-Est, Chine, Inde, Océanie…), tirées de la Google Sheet de l'utilisateur (portails joueurs et effectifs Liquipedia, dans `tools/sources/valorant/`). Plus de 1 500 vrais joueurs sans équipe sont agents libres. Le tier 1 réunit 16 équipes et le tier 2 en réunit 32. Le circuit féminin (Game Changers) n'est pas simulé.
 
 **Valorant** utilise le vrai calendrier (fichier `tools/sources/valorant/tournois.csv`, tiré d'une Google Sheet d'après Liquipedia). On y trouve les Kickoffs, Stages 1 et 2 de chaque ligue VCT, les Masters (Santiago, Londres), l'EWC, Champions, les Ascensions et Threshold, la China Evolution Series, l'EMEA Clash, Project Blender, Red Bull Home Ground, SOOP League, Saudi eLeague, etc. C'est la dernière édition de chaque compétition, avec ses dotations et son nombre d'équipes. Les compétitions régionales sont réservées aux équipes de la région (Europe/Moyen-Orient, Amériques, Pacifique, Chine). Le palmarès réel 2021-2025 (127 titres) est attribué aux clubs dès le début de la partie.
 

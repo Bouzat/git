@@ -1299,6 +1299,8 @@ function endSeason() {
   }
   if (leaving.length) mail("Fins de contrat", `Ont quitté le club (contrat expiré) : <b>${leaving.join(", ")}</b>.`, "transfer");
 
+  // agents libres trop âgés ou trop faibles pour être recrutés un jour : retirés (la sauvegarde reste légère)
+  for (const p of Object.values(S.players)) if (!p.club && (p.age >= 33 || (p.age >= 27 && p.rating < 58) || p.rating < 50)) delete S.players[p.id];
   // nouveaux talents
   for (const gm of Object.keys(GAMES)) {
     for (let i = 0; i < GAMES[gm].size * 3; i++) { const p = genPlayer(gm, 52, 72, 16, 19); p.years = 0; p.pot = clamp(p.rating + randi(5, 18), 0, 96); addPlayer(p); }
@@ -1462,8 +1464,53 @@ function mail(title, body, type = "info") {
 function news(text) { mail("📰 " + text, text, "news"); }
 
 // ---------- sauvegarde ----------
-function save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); } catch (e) { /* stockage indisponible */ } }
-function load() { try { const s = localStorage.getItem(SAVE_KEY); if (s) { S = JSON.parse(s); applySeasonFormats(); return true; } } catch (e) { } return false; }
+// ---------- sauvegarde compressée ----------
+// Le navigateur limite le stockage à ~5 Mo : la partie (plusieurs Mo de JSON) est compressée en LZW
+// (octets UTF-8 -> codes jusqu'à 55 000, un code par caractère UTF-16, hors zone des surrogates).
+const LZW_MAX = 0xD7FF - 0x20;
+function packSave(str) {
+  const bytes = new TextEncoder().encode(str), dict = new Map(), out = [];
+  let next = 256, w = -1;
+  for (const b of bytes) {
+    if (w < 0) { w = b; continue; }
+    const k = w * 256 + b, c = dict.get(k);
+    if (c !== undefined) { w = c; continue; }
+    out.push(w);
+    if (next < LZW_MAX) dict.set(k, next++);
+    else { out.push(LZW_MAX); dict.clear(); next = 256; }   // dictionnaire plein : on repart de zéro
+    w = b;
+  }
+  if (w >= 0) out.push(w);
+  let s = "";
+  for (let i = 0; i < out.length; i += 8192) s += String.fromCharCode(...out.slice(i, i + 8192).map(c => c + 0x20));
+  return "Z1:" + s;
+}
+function unpackSave(s) {
+  if (!s.startsWith("Z1:")) return s;   // ancienne sauvegarde en JSON brut
+  const fresh = () => Array.from({ length: 256 }, (_, i) => Uint8Array.of(i));
+  let dict = fresh(), prev = null;
+  const chunks = [];
+  let size = 0;
+  for (let i = 3; i < s.length; i++) {
+    const code = s.charCodeAt(i) - 0x20;
+    if (code === LZW_MAX) { dict = fresh(); prev = null; continue; }
+    let entry;
+    if (code < dict.length) entry = dict[code];
+    else { entry = new Uint8Array(prev.length + 1); entry.set(prev); entry[prev.length] = prev[0]; }
+    chunks.push(entry); size += entry.length;
+    if (prev && dict.length < LZW_MAX) { const e = new Uint8Array(prev.length + 1); e.set(prev); e[prev.length] = entry[0]; dict.push(e); }
+    prev = entry;
+  }
+  const all = new Uint8Array(size);
+  let o = 0; for (const c of chunks) { all.set(c, o); o += c.length; }
+  return new TextDecoder().decode(all);
+}
+function readSave() { const s = localStorage.getItem(SAVE_KEY); return s ? unpackSave(s) : null; }
+function save() {
+  try { localStorage.setItem(SAVE_KEY, packSave(JSON.stringify(S))); S.saveError = false; }
+  catch (e) { if (!S.saveError) { S.saveError = true; if (typeof toast === "function") toast("⚠️ Sauvegarde impossible : stockage du navigateur plein ou bloqué."); } }
+}
+function load() { try { const s = readSave(); if (s) { S = JSON.parse(s); applySeasonFormats(); return true; } } catch (e) { } return false; }
 // empreinte de la base de données : une partie créée avant une mise à jour des effectifs garde l'ancien monde
 function dataVersion() {
   const txt = JSON.stringify([ORGS, ROSTERS, SOLOS, typeof EXTRA_DIVS !== "undefined" ? EXTRA_DIVS : 0]);
@@ -1471,7 +1518,7 @@ function dataVersion() {
   return h;
 }
 function saveIsOutdated() {
-  try { const s = localStorage.getItem(SAVE_KEY); return !!s && JSON.parse(s).dataVersion !== dataVersion(); } catch (e) { return false; }
+  try { const s = readSave(); return !!s && JSON.parse(s).dataVersion !== dataVersion(); } catch (e) { return false; }
 }
 function hasSave() { try { return !!localStorage.getItem(SAVE_KEY); } catch (e) { return false; } }
 function wipeSave() { try { localStorage.removeItem(SAVE_KEY); } catch (e) { } }
