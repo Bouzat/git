@@ -350,7 +350,8 @@ const ACTIONS = {
     UI.view = "dash"; render();
   },
   "continue": () => { if (load()) { UI.view = "dash"; render(); } },
-  "wipe": () => { if (confirm("Effacer définitivement la sauvegarde ?")) { wipeSave(); renderHome(); } },
+  "wipe": () => modal(`<h2>Effacer la sauvegarde ?</h2><p>La partie en cours sera définitivement perdue.</p><div class="actions"><button data-act="close-modal">Annuler</button><button class="danger" data-act="do-wipe">Effacer</button></div>`),
+  "do-wipe": () => { wipeSave(); closeModal(); renderHome(); },
   "quit": () => { save(); S = null; UI.screen = "home"; renderHome(); },
   "view": v => { UI.view = v; render(); window.scrollTo(0, 0); },
   "next": () => playWeek(),
