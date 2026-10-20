@@ -2,8 +2,11 @@
 //  ESPORTS MANAGER — Interface
 // =====================================================================
 
+// filtres du mercato (valeurs par défaut, aussi utilisées par « Réinitialiser »)
+const MARKET_DEFAULT = { game: "all", q: "", status: "all", min: 0, sort: "rating", dir: 1, region: "all", page: 0, per: 50,
+  nat: "all", role: "all", ageMin: 0, ageMax: 99, potMin: 0, tier: "all", maxPrice: 0, budgetOnly: false, keenOnly: false };
 const UI = { screen: "home", view: "dash", rosterGame: null, compGame: null, compTier: null,
-  market: { game: "all", q: "", status: "all", min: 0, sort: "rating", region: "all", page: 0, per: 50 }, pickClub: null, mailOpen: null };
+  market: { ...MARKET_DEFAULT }, pickClub: null, mailOpen: null };
 const $app = document.getElementById("app");
 
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -297,8 +300,25 @@ function viewMarket() {
   if (m.q) { const q = m.q.toLowerCase(); ps = ps.filter(p => p.handle.toLowerCase().includes(q) || (p.club && S.clubs[p.club] && S.clubs[p.club].name.toLowerCase().includes(q))); }
   if (m.min) ps = ps.filter(p => p.rating >= m.min);
   if (m.region && m.region !== "all") ps = ps.filter(p => playRegion(p) === m.region);
-  const sorters = { rating: (a, b) => b.rating - a.rating, age: (a, b) => a.age - b.age, value: (a, b) => playerValue(a) - playerValue(b), pot: (a, b) => b.pot - a.pot, salary: (a, b) => salaryDemand(a, u) - salaryDemand(b, u) };
-  ps.sort(sorters[m.sort]);
+  // liste des nationalités / rôles disponibles avant les filtres qui les concernent
+  const natCount = {}; ps.forEach(p => { natCount[p.nat] = (natCount[p.nat] || 0) + 1; });
+  const roleSet = [...new Set(m.game !== "all" ? GAMES[m.game].roles : ps.map(p => p.role))].sort();
+  if (m.nat !== "all") ps = ps.filter(p => p.nat === m.nat);
+  if (m.role !== "all") ps = ps.filter(p => p.role === m.role);
+  if (m.ageMin) ps = ps.filter(p => p.age >= m.ageMin);
+  if (m.ageMax < 99) ps = ps.filter(p => p.age <= m.ageMax);
+  if (m.potMin) ps = ps.filter(p => p.pot >= m.potMin);
+  if (m.tier !== "all") ps = ps.filter(p => { const c = S.clubs[p.club]; return m.tier === "0" ? !c : c && !c.solo && c.divisions[p.game] && c.divisions[p.game].tier === +m.tier; });
+  const cost = p => askingPrice(p) + (p.club ? 0 : salaryDemand(p, u) * 4);   // indemnité ou prime de signature
+  if (m.maxPrice) ps = ps.filter(p => cost(p) <= m.maxPrice);
+  if (m.budgetOnly) ps = ps.filter(p => cost(p) <= u.budget);
+  if (m.keenOnly) ps = ps.filter(p => !p.club || interestCheck(p));
+  const where = p => { const c = S.clubs[p.club]; return !c ? "" : c.solo ? "~" : c.name.toLowerCase(); };
+  const sorters = { rating: (a, b) => b.rating - a.rating, age: (a, b) => a.age - b.age, value: (a, b) => playerValue(a) - playerValue(b), pot: (a, b) => b.pot - a.pot, salary: (a, b) => salaryDemand(a, u) - salaryDemand(b, u),
+    name: (a, b) => a.handle.localeCompare(b.handle), game: (a, b) => a.game.localeCompare(b.game) || b.rating - a.rating, role: (a, b) => a.role.localeCompare(b.role) || b.rating - a.rating,
+    club: (a, b) => where(a).localeCompare(where(b)) || b.rating - a.rating, nat: (a, b) => (COUNTRIES[a.nat] || a.nat).localeCompare(COUNTRIES[b.nat] || b.nat) || b.rating - a.rating, price: (a, b) => cost(a) - cost(b) };
+  const sorter = sorters[m.sort] || sorters.rating;
+  ps.sort((a, b) => sorter(a, b) * (m.dir || 1));
   // pagination : tous les joueurs sont accessibles, page par page
   const total = ps.length, per = m.per || 50, pages = Math.max(1, Math.ceil(total / per));
   m.page = clamp(m.page || 0, 0, pages - 1);
@@ -317,22 +337,40 @@ function viewMarket() {
     const btn = !c ? `<button class="small primary" data-act="sign" data-v="${p.id}">Signer</button>`
       : `<button class="small" data-act="offer" data-v="${p.id}" ${keen ? "" : "disabled title='Votre club n&#39;est pas assez connu pour ce joueur'"}>${keen ? (c.solo ? "Recruter" : "Offre") + " (~" + money(askingPrice(p)) + ")" : "🔒 Hors de portée"}</button>`;
     return `<tr><td>${flag(p.nat)} <b>${esc(p.handle)}</b></td><td>${gchip(p.game)}</td><td>${p.role}</td><td>${ageTxt(p)}</td><td>${R(p.rating)}</td><td>${potTxt(p)}</td>
-      <td>${where}</td><td>${money(playerValue(p))}</td><td>${money(salaryDemand(p, u))}/sem</td><td>${btn}</td></tr>`;
+      <td>${where}</td><td>${money(playerValue(p))}</td><td>${money(salaryDemand(p, u))}/sem</td><td class="${cost(p) > u.budget ? "bad" : ""}">${money(cost(p))}</td><td>${btn}</td></tr>`;
   }).join("");
+  const head = [["name", "Joueur"], ["game", "Jeu"], ["role", "Rôle"], ["age", "Âge"], ["rating", "Note"], ["pot", "Potentiel"], ["club", "Statut"], ["value", "Valeur"], ["salary", "Salaire demandé"], ["price", "Coût"]]
+    .map(([k, l]) => `<th class="sortable" data-act="m-sort-col" data-v="${k}" title="Trier (cliquer à nouveau pour inverser)">${l}${m.sort === k ? (m.dir === 1 ? " ▼" : " ▲") : ""}</th>`).join("") + "<th></th>";
+  const opt = (cur, list) => list.map(([k, l]) => `<option value="${k}" ${String(cur) === String(k) ? "selected" : ""}>${l}</option>`).join("");
+  const natOpts = Object.keys(natCount).sort((a, b) => (COUNTRIES[a] || a).localeCompare(COUNTRIES[b] || b)).map(cc => [cc, `${flag(cc)} ${COUNTRIES[cc] || cc} (${natCount[cc]})`]);
+  const ages = [0, 16, 18, 20, 22, 24, 26, 28, 30, 99];
+  const active = Object.keys(MARKET_DEFAULT).some(k => !["page", "per", "sort", "dir"].includes(k) && m[k] !== MARKET_DEFAULT[k]);
   return `<h2>Mercato</h2>
     <div class="toolbar">
       <select id="m-game" data-change="m-game" aria-label="Jeu">${gameOpts}</select>
       <input id="m-q" data-change="m-q" placeholder="Rechercher joueur ou club…" value="${esc(m.q)}" aria-label="Recherche">
       <select id="m-status" data-change="m-status" aria-label="Statut">${[["all", "Tous les statuts"], ["free", "Agents libres"], ["solo", "Pros indépendants"], ["club", "Sous contrat en club"]].map(([k, l]) => `<option value="${k}" ${m.status === k ? "selected" : ""}>${l}</option>`).join("")}</select>
       <select id="m-min" data-change="m-min" aria-label="Note minimale">${[0, 60, 70, 75, 80, 85, 90].map(v => `<option value="${v}" ${m.min == v ? "selected" : ""}>${v ? "Note ≥ " + v : "Toutes notes"}</option>`).join("")}</select>
-      <select id="m-sort" data-change="m-sort" aria-label="Tri">${[["rating", "Tri : note"], ["pot", "Tri : potentiel"], ["age", "Tri : âge"], ["value", "Tri : prix"], ["salary", "Tri : salaire"]].map(([k, l]) => `<option value="${k}" ${m.sort === k ? "selected" : ""}>${l}</option>`).join("")}</select>
+      <select id="m-sort" data-change="m-sort" aria-label="Tri">${[["rating", "Tri : note"], ["pot", "Tri : potentiel"], ["age", "Tri : âge"], ["value", "Tri : valeur"], ["price", "Tri : coût"], ["salary", "Tri : salaire"], ["name", "Tri : nom"], ["nat", "Tri : nationalité"], ["role", "Tri : rôle"], ["club", "Tri : club"]].map(([k, l]) => `<option value="${k}" ${m.sort === k ? "selected" : ""}>${l}</option>`).join("")}</select>
       <select id="m-region" data-change="m-region" aria-label="Région">${[["all", "Toutes les régions"], ...Object.entries(REGIONS)].map(([k, l]) => `<option value="${k}" ${m.region === k ? "selected" : ""}>${l}</option>`).join("")}</select>
       <select id="m-per" data-change="m-per" aria-label="Joueurs par page">${[25, 50, 100, 200].map(v => `<option value="${v}" ${(m.per || 50) === v ? "selected" : ""}>${v} par page</option>`).join("")}</select>
+    </div>
+    <div class="toolbar">
+      <select id="m-nat" data-change="m-nat" aria-label="Nationalité">${opt(m.nat, [["all", "Toutes nationalités"], ...natOpts])}</select>
+      <select id="m-role" data-change="m-role" aria-label="Rôle">${opt(m.role, [["all", "Tous les rôles"], ...roleSet.map(r => [r, r])])}</select>
+      <select id="m-agemin" data-change="m-agemin" aria-label="Âge minimum">${opt(m.ageMin, ages.slice(0, -1).map(a => [a, a ? "Âge ≥ " + a : "Âge min."]))}</select>
+      <select id="m-agemax" data-change="m-agemax" aria-label="Âge maximum">${opt(m.ageMax, ages.slice(1).map(a => [a, a < 99 ? "Âge ≤ " + a : "Âge max."]))}</select>
+      <select id="m-potmin" data-change="m-potmin" aria-label="Potentiel minimum">${opt(m.potMin, [0, 70, 75, 80, 85, 90].map(v => [v, v ? "Potentiel ≥ " + v : "Tout potentiel"]))}</select>
+      <select id="m-tier" data-change="m-tier" aria-label="Niveau du club actuel">${opt(m.tier, [["all", "Tous niveaux de club"], ["0", "Sans club"], ["1", "Club " + TIER_LABEL[0]], ["2", "Club " + TIER_LABEL[1]], ["3", "Club " + TIER_LABEL[2]]])}</select>
+      <select id="m-maxprice" data-change="m-maxprice" aria-label="Coût maximum">${opt(m.maxPrice, [0, 50000, 100000, 250000, 500000, 1e6, 2.5e6, 5e6].map(v => [v, v ? "Coût ≤ " + money(v) : "Tout coût"]))}</select>
+      <label class="muted"><input type="checkbox" data-change="m-budget" ${m.budgetOnly ? "checked" : ""}> Dans mon budget</label>
+      <label class="muted"><input type="checkbox" data-change="m-keen" ${m.keenOnly ? "checked" : ""}> Intéressés par mon club</label>
+      ${active ? `<button class="small" data-act="m-reset">✕ Réinitialiser les filtres</button>` : ""}
       <span class="muted">${total} joueur(s)${total ? ` · ${first + 1}–${Math.min(total, first + per)} · page ${m.page + 1}/${pages}` : ""}</span>
     </div>
     ${pager}
     <p class="muted" style="font-size:12px;margin-top:-4px">Agent libre : sans contrat, signature directe. Indépendant : pro sans organisation, il demande une prime. Sous contrat : il faut payer une indemnité de transfert à son club.</p>
-    <div class="card table-wrap"><table><tr><th>Joueur</th><th>Jeu</th><th>Rôle</th><th>Âge</th><th>Note</th><th>Potentiel</th><th>Statut</th><th>Valeur</th><th>Salaire demandé</th><th></th></tr>${rows || `<tr><td colspan="10" class="muted">Aucun joueur ne correspond à ces filtres.</td></tr>`}</table></div>${pager}`;
+    <div class="card table-wrap"><table><tr>${head}</tr>${rows || `<tr><td colspan="11" class="muted">Aucun joueur ne correspond à ces filtres.</td></tr>`}</table></div>${pager}`;
 }
 
 // ---------- compétitions ----------
@@ -604,6 +642,8 @@ const ACTIONS = {
   "confirm-close-academy": () => { closeAcademy(UI.rosterGame); closeModal(); save(); render(); },
   "confirm-close": () => { closeDivision(UI.rosterGame); UI.rosterGame = null; closeModal(); render(); },
   "starter": v => { const e = toggleStarter(v); if (e) toast(e); render(); },
+  "m-sort-col": v => { const m = UI.market; m.dir = m.sort === v ? -m.dir : 1; m.sort = v; m.page = 0; render(); },
+  "m-reset": () => { UI.market = { ...MARKET_DEFAULT, game: UI.market.game, per: UI.market.per, sort: UI.market.sort, dir: UI.market.dir }; render(); },
   "m-page": v => { UI.market.page = +v; render(); window.scrollTo(0, 0); },
   "auto-lineup": () => { autoStarters(S.userId, UI.rosterGame); render(); },
   "renew": v => openNego(startNegotiation(v, "renew")),
@@ -777,9 +817,18 @@ document.addEventListener("click", e => {
 document.addEventListener("change", e => {
   const k = e.target.dataset.change; if (!k) return;
   const m = UI.market;
-  if (k === "m-game") m.game = e.target.value;
+  if (k === "m-game") { m.game = e.target.value; m.role = "all"; }
   if (k === "m-min") m.min = +e.target.value;
-  if (k === "m-sort") m.sort = e.target.value;
+  if (k === "m-sort") { m.sort = e.target.value; m.dir = 1; }
+  if (k === "m-nat") m.nat = e.target.value;
+  if (k === "m-role") m.role = e.target.value;
+  if (k === "m-agemin") m.ageMin = +e.target.value;
+  if (k === "m-agemax") m.ageMax = +e.target.value;
+  if (k === "m-potmin") m.potMin = +e.target.value;
+  if (k === "m-tier") m.tier = e.target.value;
+  if (k === "m-maxprice") m.maxPrice = +e.target.value;
+  if (k === "m-budget") m.budgetOnly = e.target.checked;
+  if (k === "m-keen") m.keenOnly = e.target.checked;
   if (k === "m-status") m.status = e.target.value;
   if (k === "m-q") m.q = e.target.value;
   if (k === "m-region") m.region = e.target.value;

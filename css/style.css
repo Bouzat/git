@@ -133,3 +133,5 @@ tr:hover td { background: #ffffff06; }
 .cal-game { color: var(--muted); white-space: nowrap; }
 .cal-what { min-width: 0; }
 .cal-res { white-space: nowrap; text-align: right; }
+th.sortable { cursor: pointer; user-select: none; }
+th.sortable:hover { color: var(--text); }
