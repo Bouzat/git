@@ -77,6 +77,8 @@ L'onglet **Calendrier** montre la saison semaine par semaine : tous vos matchs d
 
 En plus des ligues, chaque jeu a son calendrier de grands tournois (onglet **Tournois**) : First Stand, MSI et Worlds en LoL ; IEM, BLAST, les deux Majors et l'EWC en CS2 ; Masters et Champions en Valorant ; The International, DreamLeague et l'EWC en Dota 2 ; FNCS Majors et Global Championship en Fortnite ; Capcom Cup et EVO en SF6… plus des cash cups pour les petites scènes. Les tournois sur invitation prennent les meilleures équipes du tier 1, les opens accueillent tous les clubs des tiers admis. Le club garde 50 % des gains.
 
+**Valorant** utilise le vrai calendrier (fichier `tools/sources/valorant_tournois.csv`, tiré d'une Google Sheet d'après Liquipedia). On y trouve les Kickoffs, Stages 1 et 2 de chaque ligue VCT, les Masters (Santiago, Londres), l'EWC, Champions, les Ascensions et Threshold, la China Evolution Series, l'EMEA Clash, Project Blender, Red Bull Home Ground, SOOP League, Saudi eLeague, etc. C'est la dernière édition de chaque compétition, avec ses dotations et son nombre d'équipes. Les compétitions régionales sont réservées aux équipes de la région (Europe/Moyen-Orient, Amériques, Pacifique, Chine). Le palmarès réel 2021-2025 (127 titres) est attribué aux clubs dès le début de la partie.
+
 ## Contrats et négociation (façon FM)
 
 Chaque signature, transfert ou prolongation se négocie avec le joueur et son agent :

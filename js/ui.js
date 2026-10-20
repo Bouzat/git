@@ -413,12 +413,12 @@ function viewCalendar() {
     const items = [];
     for (const L of userLeagues()) items.push({ kind: "league", ...leagueEntry(L, w) });
     const games = UI.calMode === "all" ? Object.keys(GAMES) : myGames;
-    for (const g of games) for (const [name, week, prize, tiers, size] of allTournaments(g)) {
+    for (const g of games) for (const [name, week, prize, tiers, size, region] of allTournaments(g)) {
       if (week !== w) continue;
       const d = u.divisions[g];
-      const eligible = d && tiers.includes(String(d.tier));
+      const eligible = d && tiers.includes(String(d.tier)) && inRegion(S.userId, g, region);
       const r = tourStatus(g, name, week);
-      const playing = r ? !!r.mine : eligible && (tiers !== "1" || tournamentField(g, tiers, size).includes(S.userId));
+      const playing = r ? !!r.mine : eligible && (!invitational(tiers) || tournamentField(g, tiers, size, region).includes(S.userId));
       if (UI.calMode === "mine" && !playing) continue;
       items.push({ kind: name.startsWith("EWC") ? "ewc" : "tour", name: `${GAMES[g].icon} ${GAMES[g].short}`, what: `<b>${esc(name)}</b> · ${money(prize)}`,
         res: r ? (r.mine ? (r.mine === 1 ? "<b class='win'>🏆 Vainqueur</b>" : `<b>${r.mine}e</b> / ${r.n}`) : `🏆 ${displayName(r.top[0], g)}`) : playing ? "<span class='ok'>inscrit</span>" : "" });
@@ -436,24 +436,25 @@ function viewCalendar() {
 }
 
 // ---------- tournois ----------
-const accessLabel = t => ({ "1": "Invitation (tier 1)", "12": "Tiers 1 et 2", "2": "Tier 2", "23": "Open (tiers 2-3)", "3": "Open (tier 3)" }[t] || t);
+const accessLabel = t => ({ "1": "Invitation (tier 1)", "12": "Tiers 1 et 2", "2": "Tier 2", "23": "Open (tiers 2-3)", "3": "Open (tier 3)", "123": "Meilleurs de la région" }[t] || t);
 function tourStatus(game, name, week) {
   const r = (S.tourResults || []).find(x => x.season === S.season && x.game === game && x.name === name && x.week === week);
   if (!r) return null;
   return r;
 }
-function myEligibility(game, tiers, size) {
+function myEligibility(game, tiers, size, region) {
   const d = user().divisions[game];
   if (!d) return "<span class='muted'>—</span>";
+  if (!inRegion(S.userId, game, region)) return `<span class='muted' title='Tournoi réservé à : ${REGION_LABEL(region)}'>Autre région</span>`;
   if (!tiers.includes(String(d.tier))) return "<span class='muted'>Non éligible</span>";
-  if (tiers !== "1") return "<span class='ok'>Qualifié</span>";
-  return tournamentField(game, tiers, size).includes(S.userId) ? "<span class='ok'>Invité</span>" : "<span class='warn'>Hors invitations</span>";
+  if (!invitational(tiers)) return "<span class='ok'>Qualifié</span>";
+  return tournamentField(game, tiers, size, region).includes(S.userId) ? "<span class='ok'>Invité</span>" : "<span class='warn'>Hors invitations</span>";
 }
 function upcomingTours(limit) {
   const u = user(), rows = [];
-  for (const g of Object.keys(u.divisions)) for (const [name, week, prize, tiers, size] of allTournaments(g))
-    if (week >= S.week && tiers.includes(String(u.divisions[g].tier))) rows.push({ g, name, week, prize, tiers, size });
-  return rows.sort((a, b) => a.week - b.week).slice(0, limit).map(t => `<div class="match-br">S${t.week} · ${GAMES[t.g].icon} <b>${esc(t.name)}</b> · ${money(t.prize)} · ${myEligibility(t.g, t.tiers, t.size)}</div>`).join("");
+  for (const g of Object.keys(u.divisions)) for (const [name, week, prize, tiers, size, region] of allTournaments(g))
+    if (week >= S.week && tiers.includes(String(u.divisions[g].tier)) && inRegion(S.userId, g, region)) rows.push({ g, name, week, prize, tiers, size, region });
+  return rows.sort((a, b) => a.week - b.week).slice(0, limit).map(t => `<div class="match-br">S${t.week} · ${GAMES[t.g].icon} <b>${esc(t.name)}</b> · ${money(t.prize)} · ${myEligibility(t.g, t.tiers, t.size, t.region)}</div>`).join("");
 }
 function ewcCard() {
   const u = user(), done = S.ewcResult && S.ewcResult.season === S.season;
@@ -475,10 +476,10 @@ function viewTours() {
   const games = UI.tourGame === "mine" ? (Object.keys(u.divisions).length ? Object.keys(u.divisions) : Object.keys(GAMES)) : UI.tourGame === "all" ? Object.keys(GAMES) : [UI.tourGame];
   const tabs = [["mine", "Mes jeux"], ["all", "Tous"]].concat(Object.keys(GAMES).map(k => [k, GAMES[k].icon + " " + GAMES[k].short]))
     .map(([k, l]) => `<button class="tab small ${UI.tourGame === k ? "active" : ""}" data-act="tour-game" data-v="${k}">${l}</button>`).join("");
-  const rows = games.flatMap(g => allTournaments(g).map(t => [g, ...t])).filter(t => UI.tourSize === "all" || (UI.tourSize === "big") === !(S.smallTours || []).some(x => x[5] === t[0] && x[0] === t[1] && x[1] === t[2])).sort((a, b) => a[2] - b[2] || b[3] - a[3]).map(([g, name, week, prize, tiers, size]) => {
+  const rows = games.flatMap(g => allTournaments(g).map(t => [g, ...t])).filter(t => UI.tourSize === "all" || (UI.tourSize === "big") === !(S.smallTours || []).some(x => x[5] === t[0] && x[0] === t[1] && x[1] === t[2])).sort((a, b) => a[2] - b[2] || b[3] - a[3]).map(([g, name, week, prize, tiers, size, region]) => {
     const r = tourStatus(g, name, week);
     const status = r ? `🏆 ${displayName(r.top[0], g)}${r.mine ? ` · <b>vous : ${r.mine}e</b>` : ""}` : week < S.week ? "<span class='muted'>Annulé</span>" : week === S.week ? "<b class='warn'>Cette semaine</b>" : "À venir";
-    return `<tr class="${r && r.mine === 1 ? "me" : ""}"><td>S${week}</td><td>${gchip(g)}</td><td><b>${esc(name)}</b></td><td>${money(prize)}</td><td>${accessLabel(tiers)}</td><td>${r ? r.n : tournamentField(g, tiers, size).length}${GAMES[g].fmt === "br" ? " " + GAMES[g].unit + "s" : ""}</td><td>${myEligibility(g, tiers, size)}</td><td>${status}</td></tr>`;
+    return `<tr class="${r && r.mine === 1 ? "me" : ""}"><td>S${week}</td><td>${gchip(g)}</td><td><b>${esc(name)}</b>${typeof region === "string" && region ? ` <small class="muted">${REGION_LABEL(region)}</small>` : ""}</td><td>${prize ? money(prize) : "<span class='muted' title='Pas de cashprize : qualification et prestige'>—</span>"}</td><td>${accessLabel(tiers)}</td><td>${r ? r.n : tournamentField(g, tiers, size, typeof region === "string" ? region : "").length}${GAMES[g].fmt === "br" ? " " + GAMES[g].unit + "s" : ""}</td><td>${myEligibility(g, tiers, size, typeof region === "string" ? region : "")}</td><td>${status}</td></tr>`;
   }).join("");
   if (!UI.tourSize) UI.tourSize = "all";
   const stabs = [["all", "Tous les tournois"], ["big", "Grands tournois"], ["small", "Petits tournois & cash cups"]].map(([k, l]) => `<button class="tab small ${UI.tourSize === k ? "active" : ""}" data-act="tour-size" data-v="${k}">${l}</button>`).join("");

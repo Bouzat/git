@@ -262,6 +262,87 @@ for g, lst in cur["SOLOS"].items():
             if a and a != p[3]: age_fix[g + "|" + p[0]] = a
 print("ages corrigés :", len(age_fix), file=sys.stderr)
 
+# ---------- tournois Valorant (Google Sheet de l'utilisateur, onglet « Tournois », d'après Liquipedia) ----------
+# Calendrier d'une saison : l'édition la plus récente (2025 ou 2026) de chaque compétition. Historique : vainqueurs 2021-2025.
+import csv, datetime, re as _re
+live_tours, live_history = {}, {}
+val_csv = os.path.join(ROOT, "tools/sources/valorant_tournois.csv")
+if os.path.exists(val_csv):
+    MONTHS = {m: i + 1 for i, m in enumerate("Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split())}
+    def mid_doy(txt, year):
+        # « Sep 24 – Oct 18, 2026 », « Jul 02–12, 2026 » -> jour de l'année au milieu du tournoi
+        parts = _re.findall(r"([A-Z][a-z]{2}) (\d{1,2})(?:\s*[–-]\s*(\d{1,2}))?", txt)
+        if not parts: return None
+        m1, d1, d1b = parts[0]
+        start = datetime.date(year, MONTHS[m1], int(d1))
+        if len(parts) > 1: end = datetime.date(year, MONTHS[parts[1][0]], int(parts[1][1]))
+        else: end = datetime.date(year, MONTHS[m1], int(d1b or d1))
+        if end < start: end = start
+        mid = start + (end - start) / 2
+        return mid.timetuple().tm_yday
+    rows, tier, year = [], None, None
+    for r in csv.reader(open(val_csv, encoding="utf-8")):
+        r = (r + [""] * 8)[:8]
+        if r[0].endswith("Tier Tournaments"): tier = r[0][0]; continue
+        if _re.fullmatch(r"20\d\d", r[0].strip()): year = int(r[0]); continue
+        if not r[1] or r[0] == "Tournament": continue
+        prize = float(r[3].replace("$", "").replace(",", "")) if r[3].strip() else 0
+        rows.append({"tier": tier, "year": year, "name": r[1].strip(), "date": r[2], "usd": prize, "loc": r[4].strip(),
+                     "n": int(r[5]) if r[5].strip().isdigit() else 8, "win": r[6].split("\n")[0].strip(), "ru": r[7].split("\n")[0].strip()})
+    def series(name):
+        s = _re.sub(r"\b20\d\d\b:?", "", name)
+        s = _re.sub(r"#\d+", "", s)
+        return _re.sub(r"\s+", " ", s).replace(" :", ":").strip()
+    def region(name):
+        n = name.lower()
+        if "game changers" in n: return None
+        if "china" in n: return "CN"
+        if "asian champions" in n: return "ASIA"
+        if "pacific" in n or "korea" in n or "japan" in n or "asia" in n or "soop" in n or "ten valorant" in n: return "PAC"
+        if "americas" in n: return "NA|SA"
+        if "brazil" in n: return "SA"
+        if "north america" in n: return "NA"
+        if "emea" in n or "blender" in n: return "EU|MENA"
+        if "saudi" in n or "mena" in n: return "MENA"
+        return ""
+    def tiers_of(row):
+        n = row["name"].lower()
+        # le tier 1 du jeu est une ligue mondiale : les compétitions régionales invitent aussi le tier 2
+        if "ascension" in n or "threshold" in n or "emea clash" in n or "challengers" in n: return "23"
+        # compétition régionale : les meilleures équipes de la région, tous tiers confondus
+        if region(row["name"]): return "123"
+        return "1"
+    # famille d'une compétition : les Masters changent de ville chaque année, Threshold China remplace Ascension China, etc.
+    def family(k):
+        if "Masters" in k: return "Masters"
+        if "Ascension China" in k or "Threshold China" in k: return "China T2"
+        return _re.sub(r" x ACL$", "", k)
+    fam_year = {}
+    for row in rows:
+        if row["year"] in (2025, 2026) and "game changers" not in row["name"].lower():
+            f_ = family(series(row["name"])); fam_year[f_] = max(fam_year.get(f_, 0), row["year"])
+    latest = {}
+    for row in rows:
+        if row["year"] not in (2025, 2026) or "game changers" in row["name"].lower(): continue
+        k = series(row["name"])
+        if row["year"] == fam_year[family(k)]: latest[k] = row
+    cal = []
+    for k, row in latest.items():
+        doy = mid_doy(row["date"], row["year"])
+        if doy is None: continue
+        week = max(1, min(13, 1 + (doy - 15) // 25))
+        name = "EWC — VALORANT" if k.startswith("Esports World Cup") else k
+        eur = round(row["usd"] * 0.92 / 1000) * 1000
+        t = [name, week, eur, tiers_of(row), max(4, min(16, row["n"]))]
+        rg = region(row["name"])
+        if rg: t.append(rg)
+        cal.append(t)
+    cal.sort(key=lambda t: (t[1], -t[2]))
+    live_tours["val"] = cal
+    live_history["val"] = [[row["year"], row["name"], row["win"], row["ru"], round(row["usd"] * 0.92), row["tier"]]
+                           for row in rows if row["year"] <= 2025 and row["win"] and row["win"] not in ("TBD", "Cancelled")]
+    print("Valorant : %d tournois au calendrier, %d résultats historiques" % (len(cal), len(live_history["val"])), file=sys.stderr)
+
 with open(OUT, "w", encoding="utf-8") as f:
     f.write("// Généré par tools/build_live.py — effectifs récupérés sur les sites de données (VLR…).\n")
     # numéro de version attendu par data.js (LIVE_EXPECTED) : l'interface prévient si le navigateur sert un fichier périmé
@@ -272,7 +353,11 @@ with open(OUT, "w", encoding="utf-8") as f:
     f.write("const LIVE_SOLOS = " + json.dumps(solos, ensure_ascii=False) + ";\n")
     f.write("// âges réels (Wikidata, au 20 octobre 2026) : jeu|pseudo -> âge\n")
     f.write("const LIVE_AGES = " + json.dumps(age_fix, ensure_ascii=False) + ";\n")
-    f.write("""Object.assign(ORGS, LIVE_ORGS);
+    f.write("// calendrier réel des tournois [nom, semaine, dotation €, tiers admis, places, régions] et palmarès réel [année, tournoi, vainqueur, finaliste, dotation €, tier S/A]\n")
+    f.write("const LIVE_TOURNAMENTS = " + json.dumps(live_tours, ensure_ascii=False) + ";\n")
+    f.write("const LIVE_HISTORY = " + json.dumps(live_history, ensure_ascii=False) + ";\n")
+    f.write("""Object.assign(TOURNAMENTS, LIVE_TOURNAMENTS);
+Object.assign(ORGS, LIVE_ORGS);
 for (const [g, l] of Object.entries(LIVE_ROSTERS)) ROSTERS[g] = l;
 for (const [g, l] of Object.entries(LIVE_SOLOS)) SOLOS[g] = l;
 // applique les âges réels à tous les effectifs

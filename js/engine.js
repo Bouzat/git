@@ -106,6 +106,28 @@ const allUserPlayers = () => Object.keys(user().divisions).flatMap(g => clubPlay
 function soloName(club, game) { return clubPlayers(club.id, game).map(p => p.handle).join(" & ") || club.name; }
 
 // ---------- clubs ----------
+// ---------- palmarès réel ----------
+// rapproche un nom d'équipe des sources (« Gen.G Esports », « Leviatán ») d'une organisation du jeu
+const normTeam = s => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase()
+  .replace(/\b(team|esports?|gaming|club|e-sports)\b/g, "").replace(/[^a-z0-9]/g, "");
+function findOrgId(name) {
+  if (!findOrgId.idx) {
+    findOrgId.idx = {};
+    for (const [id, o] of Object.entries(ORGS)) { findOrgId.idx[normTeam(o[0])] = findOrgId.idx[normTeam(o[0])] || id; findOrgId.idx[normTeam(o[1])] = findOrgId.idx[normTeam(o[1])] || id; }
+  }
+  return findOrgId.idx[normTeam(name)] || null;
+}
+// titres réels (avant 2026) : palmarès des clubs et historique de « Clubs & palmarès »
+function seedRealHistory() {
+  if (typeof LIVE_HISTORY === "undefined") return;
+  for (const [game, list] of Object.entries(LIVE_HISTORY)) {
+    for (const [year, name, winner] of list.slice().sort((a, b) => a[0] - b[0])) {
+      const id = findOrgId(winner), c = id && S.clubs[id];
+      if (c) c.titles.push(name);
+      S.titles.push({ season: year, game, name, club: c ? c.name : winner, clubId: c ? id : null, real: true });
+    }
+  }
+}
 // ---------- académies ----------
 // une académie est une seconde équipe du club du joueur dans un jeu par équipes, deux tiers sous l'équipe première au mieux un tier sous elle
 const academyId = game => `${S.userId}~aca~${game}`;
@@ -304,6 +326,7 @@ function newWorld(opts) {
       p.years = 0; addPlayer(p);
     }
   }
+  seedRealHistory();
   // club du joueur
   if (opts.mode === "create") {
     const c = baseClub("user", opts.name, opts.tag, opts.country, opts.color, 5, false);
@@ -1083,28 +1106,39 @@ function awardEwcClubChampionship(report) {
 const CLUB_SHARE = 0.5;
 const PLACE_SHARE = [0.35, 0.18, 0.09, 0.09, 0.045, 0.045, 0.045, 0.045, 0.0125, 0.0125, 0.0125, 0.0125, 0.0125, 0.0125, 0.0125, 0.0125];
 const ROUND_NAME = { 2: "Finale", 4: "Demi-finale", 8: "Quart de finale", 16: "Huitième de finale" };
-function tournamentPool(game, tiers) {
+// tournoi sur invitation : « 1 » (tier 1 mondial) ou « 123 » (les meilleurs de la région, tous tiers confondus)
+const invitational = tiers => tiers === "1" || tiers === "123";
+// tournoi régional (ex. « EU|MENA ») : seules les équipes inscrites dans ces régions y participent
+// CN = équipes chinoises, PAC = Asie-Pacifique hors Chine (les ligues VCT les séparent)
+function inRegion(clubId, game, region) {
+  if (!region) return true;
+  const c = S.clubs[clubId], r = clubRegion(c, game), cn = r === "ASIA" && c.country === "CN";
+  return region.split("|").some(x => x === "CN" ? cn : x === "PAC" ? r === "ASIA" && !cn : x === r);
+}
+const REGION_LABEL = r => r ? r.split("|").map(x => ({ CN: "Chine", PAC: "Pacifique" })[x] || REGIONS[x]).join(" / ") : "Monde";
+function tournamentPool(game, tiers, region) {
   const ids = GAMES[game].open ? S.leagues[lkey(game, 1)].teams : [...tiers].flatMap(t => S.leagues[lkey(game, +t)].teams);
-  return ids.filter(id => S.clubs[id] && divOf(id, game) && tiers.includes(String(S.clubs[id].divisions[game].tier)));
+  return ids.filter(id => S.clubs[id] && divOf(id, game) && tiers.includes(String(S.clubs[id].divisions[game].tier)) && inRegion(id, game, region));
 }
 // le club du joueur participe-t-il ? (open : dès qu'il est dans un tier admis ; invitation : s'il fait partie des mieux classés)
-function tournamentField(game, tiers, size) {
+function tournamentField(game, tiers, size, region) {
   const g = GAMES[game], u = user();
   // invitations : les mieux classés ; opens avec le tier 3 : inscriptions libres, donc un plateau tiré au hasard
-  const ranked = tournamentPool(game, tiers).map(id => ({ id, s: teamStrength(id, game).str + S.clubs[id].fame * 0.05 })).sort((a, b) => b.s - a.s).map(x => x.id);
-  const pool = tiers.includes("3") ? shuffle(ranked) : ranked;
+  const ranked = tournamentPool(game, tiers, region).map(id => ({ id, s: teamStrength(id, game).str + S.clubs[id].fame * 0.05 })).sort((a, b) => b.s - a.s).map(x => x.id);
+  // open (tiers 2-3 ou 3) : inscriptions libres, plateau tiré au hasard ; sinon les mieux classés
+  const pool = tiers.includes("3") && !tiers.includes("1") ? shuffle(ranked) : ranked;
   let n = Math.min(size, pool.length);
   if (g.fmt !== "br") n = n >= 2 ? 2 ** Math.floor(Math.log2(n)) : 0;
   const field = pool.slice(0, n);
-  if (tiers !== "1" && n > 1 && pool.includes(u.id) && !field.includes(u.id)) field[n - 1] = u.id;
+  if (!invitational(tiers) && n > 1 && pool.includes(u.id) && !field.includes(u.id)) field[n - 1] = u.id;
   return field;
 }
 function runTournaments(w, report, pay) {
   const u = user();
   S.tourResults = S.tourResults || [];
-  for (const game of Object.keys(GAMES)) for (const [name, week, prize, tiers, size] of allTournaments(game)) {
+  for (const game of Object.keys(GAMES)) for (const [name, week, prize, tiers, size, region] of allTournaments(game)) {
     if (week !== w) continue;
-    const g = GAMES[game], field = tournamentField(game, tiers, size);
+    const g = GAMES[game], field = tournamentField(game, tiers, size, region);
     if (field.length < 2) continue;
     let order;
     if (g.fmt === "br") {
