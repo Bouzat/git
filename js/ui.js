@@ -3,7 +3,7 @@
 // =====================================================================
 
 const UI = { screen: "home", view: "dash", rosterGame: null, compGame: null, compTier: null,
-  market: { game: "all", q: "", status: "all", min: 0, sort: "rating" }, pickClub: null, mailOpen: null };
+  market: { game: "all", q: "", status: "all", min: 0, sort: "rating", region: "all", page: 0, per: 50 }, pickClub: null, mailOpen: null };
 const $app = document.getElementById("app");
 
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -267,9 +267,19 @@ function viewMarket() {
   if (m.status === "club") ps = ps.filter(p => p.club && S.clubs[p.club] && !S.clubs[p.club].solo);
   if (m.q) { const q = m.q.toLowerCase(); ps = ps.filter(p => p.handle.toLowerCase().includes(q) || (p.club && S.clubs[p.club] && S.clubs[p.club].name.toLowerCase().includes(q))); }
   if (m.min) ps = ps.filter(p => p.rating >= m.min);
+  if (m.region && m.region !== "all") ps = ps.filter(p => playRegion(p) === m.region);
   const sorters = { rating: (a, b) => b.rating - a.rating, age: (a, b) => a.age - b.age, value: (a, b) => playerValue(a) - playerValue(b), pot: (a, b) => b.pot - a.pot, salary: (a, b) => salaryDemand(a, u) - salaryDemand(b, u) };
   ps.sort(sorters[m.sort]);
-  const total = ps.length; ps = ps.slice(0, 150);
+  // pagination : tous les joueurs sont accessibles, page par page
+  const total = ps.length, per = m.per || 50, pages = Math.max(1, Math.ceil(total / per));
+  m.page = clamp(m.page || 0, 0, pages - 1);
+  const first = m.page * per;
+  ps = ps.slice(first, first + per);
+  const pageBtn = (pg, label, dis) => `<button class="small" data-act="m-page" data-v="${pg}" ${dis ? "disabled" : ""}>${label}</button>`;
+  const near = [...new Set([0, m.page - 2, m.page - 1, m.page, m.page + 1, m.page + 2, pages - 1])].filter(x => x >= 0 && x < pages).sort((a, b) => a - b);
+  const pager = pages <= 1 ? "" : `<div class="toolbar" style="justify-content:center;gap:6px;margin:10px 0">${pageBtn(0, "«", m.page === 0)}${pageBtn(m.page - 1, "‹ Précédente", m.page === 0)}
+    ${near.map((x, i) => (i && x - near[i - 1] > 1 ? "<span class='muted'>…</span>" : "") + `<button class="small ${x === m.page ? "primary" : ""}" data-act="m-page" data-v="${x}">${x + 1}</button>`).join("")}
+    ${pageBtn(m.page + 1, "Suivante ›", m.page >= pages - 1)}${pageBtn(pages - 1, "»", m.page >= pages - 1)}</div>`;
   const gameOpts = `<option value="all">Tous les jeux</option>` + Object.entries(GAMES).map(([k, g]) => `<option value="${k}" ${m.game === k ? "selected" : ""}>${g.icon} ${g.name}</option>`).join("");
   const rows = ps.map(p => {
     const c = p.club ? S.clubs[p.club] : null, d = c && c.divisions[p.game];
@@ -287,10 +297,13 @@ function viewMarket() {
       <select id="m-status" data-change="m-status" aria-label="Statut">${[["all", "Tous les statuts"], ["free", "Agents libres"], ["solo", "Pros indépendants"], ["club", "Sous contrat en club"]].map(([k, l]) => `<option value="${k}" ${m.status === k ? "selected" : ""}>${l}</option>`).join("")}</select>
       <select id="m-min" data-change="m-min" aria-label="Note minimale">${[0, 60, 70, 75, 80, 85, 90].map(v => `<option value="${v}" ${m.min == v ? "selected" : ""}>${v ? "Note ≥ " + v : "Toutes notes"}</option>`).join("")}</select>
       <select id="m-sort" data-change="m-sort" aria-label="Tri">${[["rating", "Tri : note"], ["pot", "Tri : potentiel"], ["age", "Tri : âge"], ["value", "Tri : prix"], ["salary", "Tri : salaire"]].map(([k, l]) => `<option value="${k}" ${m.sort === k ? "selected" : ""}>${l}</option>`).join("")}</select>
-      <span class="muted">${total} joueur(s)${total > 150 ? " (150 affichés)" : ""}</span>
+      <select id="m-region" data-change="m-region" aria-label="Région">${[["all", "Toutes les régions"], ...Object.entries(REGIONS)].map(([k, l]) => `<option value="${k}" ${m.region === k ? "selected" : ""}>${l}</option>`).join("")}</select>
+      <select id="m-per" data-change="m-per" aria-label="Joueurs par page">${[25, 50, 100, 200].map(v => `<option value="${v}" ${(m.per || 50) === v ? "selected" : ""}>${v} par page</option>`).join("")}</select>
+      <span class="muted">${total} joueur(s)${total ? ` · ${first + 1}–${Math.min(total, first + per)} · page ${m.page + 1}/${pages}` : ""}</span>
     </div>
+    ${pager}
     <p class="muted" style="font-size:12px;margin-top:-4px">Agent libre : sans contrat, signature directe. Indépendant : pro sans organisation, il demande une prime. Sous contrat : il faut payer une indemnité de transfert à son club.</p>
-    <div class="card table-wrap"><table><tr><th>Joueur</th><th>Jeu</th><th>Rôle</th><th>Âge</th><th>Note</th><th>Potentiel</th><th>Statut</th><th>Valeur</th><th>Salaire demandé</th><th></th></tr>${rows}</table></div>`;
+    <div class="card table-wrap"><table><tr><th>Joueur</th><th>Jeu</th><th>Rôle</th><th>Âge</th><th>Note</th><th>Potentiel</th><th>Statut</th><th>Valeur</th><th>Salaire demandé</th><th></th></tr>${rows || `<tr><td colspan="10" class="muted">Aucun joueur ne correspond à ces filtres.</td></tr>`}</table></div>${pager}`;
 }
 
 // ---------- compétitions ----------
@@ -546,7 +559,7 @@ const ACTIONS = {
   "tour-game": v => { UI.tourGame = v; render(); },
   "tour-size": v => { UI.tourSize = v; render(); },
   "cal-mode": v => { UI.calMode = v; render(); },
-  "goto-market": v => { UI.market.game = v; UI.view = "market"; render(); },
+  "goto-market": v => { UI.market.game = v; UI.market.page = 0; UI.view = "market"; render(); },
   "open-div": v => {
     const [game, t] = v.split("|"), tier = +t, g = GAMES[game];
     modal(`<h2>${g.icon} ${g.name} · ${tierLabel(game, tier)}</h2><p>Entrée dans le <b>${g.open ? g.circuit : tierName(game, tier)}</b> : <b>${money(tierEntry(game, tier))}</b>.<br>
@@ -557,6 +570,7 @@ const ACTIONS = {
   "close-div": () => modal(`<h2>Fermer la division ${GAMES[UI.rosterGame].name} ?</h2><p>Tous les joueurs seront libérés (indemnités de rupture) et le club perdra en notoriété.</p><div class="actions"><button data-act="close-modal">Annuler</button><button class="danger" data-act="confirm-close">Fermer la division</button></div>`),
   "confirm-close": () => { closeDivision(UI.rosterGame); UI.rosterGame = null; closeModal(); render(); },
   "starter": v => { const e = toggleStarter(v); if (e) toast(e); render(); },
+  "m-page": v => { UI.market.page = +v; render(); window.scrollTo(0, 0); },
   "auto-lineup": () => { autoStarters(S.userId, UI.rosterGame); render(); },
   "renew": v => openNego(startNegotiation(v, "renew")),
   "contract": v => contractModal(v),
@@ -734,10 +748,14 @@ document.addEventListener("change", e => {
   if (k === "m-sort") m.sort = e.target.value;
   if (k === "m-status") m.status = e.target.value;
   if (k === "m-q") m.q = e.target.value;
+  if (k === "m-region") m.region = e.target.value;
+  if (k === "m-per") m.per = +e.target.value;
+  if (k.startsWith("m-")) m.page = 0;   // nouveau filtre : retour à la première page
   render();
 });
 document.addEventListener("keydown", e => {
-  if (e.key === "Enter" && e.target.dataset && e.target.dataset.change === "m-q") { UI.market.q = e.target.value; render(); }
+  // Entrée valide la recherche : on quitte le champ, ce qui déclenche « change » (un seul rafraîchissement)
+  if (e.key === "Enter" && e.target.dataset && e.target.dataset.change === "m-q") { e.preventDefault(); e.target.blur(); }
 });
 
 renderHome();
