@@ -19,7 +19,7 @@ const TIER_PRIZE = [1, 0.08, 0.012];        // part du cashprize du jeu
 const TIER_FAME_REQ = [65, 30, 0];          // notoriété requise pour acheter une place
 const TIER_OP = [1500, 400, 80];            // frais hebdo par joueur
 const TIER_SPONSOR = [15000, 3000, 500];    // revenus sponsors liés à la division
-const TIER_RATING = [[80, 88], [70, 80], [56, 70]]; // niveau des joueurs générés
+const TIER_RATING = [[80, 88], [70, 80], [61, 74]]; // niveau des joueurs générés
 const TIER_FAME_TARGET = [75, 40, 15];
 
 let S = null; // état global
@@ -140,7 +140,7 @@ function soloClub(game, tier, roster) {
 function fillerClub(game, tier) {
   const g = GAMES[game];
   const [lo, hi] = TIER_RATING[tier - 1];
-  if (g.fmt === "duel" || (g.fmt === "br" && game === "fn")) {
+  if (g.fmt === "duel" || (g.fmt === "br" && g.size <= 2)) {
     const roster = Array.from({ length: g.size }, () => [genHandle(), pick(Object.keys(COUNTRIES)), randi(lo, hi), randi(16, 27)]);
     const c = soloClub(game, tier, roster); c.filler = true; return c;
   }
@@ -253,6 +253,8 @@ function newSeasonSetup(first) {
   }
   S.regularWeeks = REGULAR_WEEKS;
   S.week = 1;
+  S.smallTours = genSmallEvents();
+  S.ewc = {};
   S.board.objective = pickObjective(first);
   if (!first) mail(`Saison ${S.season} : objectif du conseil`, `Le conseil d'administration fixe l'objectif : <b>${objectiveText()}</b>.`, "board");
 }
@@ -751,6 +753,7 @@ function advanceWeek() {
   }
 
   runTournaments(w, report, pay);
+  if (w === EWC_LAST_WEEK) awardEwcClubChampionship(report);
 
   // primes de victoire prévues dans les contrats
   let winBonuses = 0;
@@ -818,6 +821,59 @@ function crown(L, winner, runnerUp, detail) {
   if (winner === S.userId) mail(`🏆 CHAMPIONS ! ${label}`, `${user().name} remporte le <b>${label}</b> (${TIER_LABEL[L.tier - 1]}) face à ${S.clubs[runnerUp] ? S.clubs[runnerUp].name : "?"} — ${detail}.`, "trophy");
 }
 // ---------- tournois à cashprize ----------
+const EWC_LAST_WEEK = 10;
+// grands tournois fixes + petits tournois générés pour la saison
+function allTournaments(game) {
+  return (TOURNAMENTS[game] || []).concat((S.smallTours || []).filter(t => t[5] === game).map(t => t.slice(0, 5)));
+}
+function genSmallEvents() {
+  const out = [];
+  for (const [game, E] of Object.entries(SMALL_EVENTS)) {
+    const g = GAMES[game]; if (!g) continue;
+    const br = g.fmt === "br";
+    const used = {};
+    const name = list => { const n = list[(randi(0, list.length - 1))]; used[n] = (used[n] || 0) + 1; return used[n] > 1 ? `${n} #${used[n]}` : n; };
+    const prize = ([a, b]) => Math.round(randi(a, b) / 100) * 100;
+    for (let w = 1; w <= REGULAR_WEEKS; w += (E.every3 || 2)) out.push([name(E.t3), w, prize(E.p3), g.fmt === "team" ? "23" : "3", br ? g.lobby : 16, game]);
+    for (let w = 2; w <= REGULAR_WEEKS; w += (E.every2 || 4)) out.push([name(E.t2), w, prize(E.p2), "2", br ? g.lobby : 8, game]);
+  }
+  return out;
+}
+// Club Championship : points des clubs (pas des joueurs indépendants) classés dans le top 8 d'un tournoi EWC
+function ewcPoints(order, game) {
+  S.ewc = S.ewc || {};
+  order.slice(0, 8).forEach((id, i) => {
+    const c = S.clubs[id]; if (!c || c.solo) return;
+    const e = S.ewc[id] || (S.ewc[id] = { pts: 0, top8: 0, wins: 0, games: [] });
+    e.pts += EWC_POINTS[i]; e.top8++; if (i === 0) e.wins++; e.games.push(game);
+  });
+}
+function ewcStandings() {
+  return Object.entries(S.ewc || {}).map(([id, e]) => ({ id, ...e, ok: e.top8 >= 2 })).filter(x => S.clubs[x.id]).sort((a, b) => b.ok - a.ok || b.pts - a.pts);
+}
+function awardEwcClubChampionship(report) {
+  const u = user();
+  let ranking = ewcStandings().filter(x => x.ok);
+  // le champion doit avoir gagné au moins un tournoi
+  const ci = ranking.findIndex(x => x.wins > 0);
+  if (ci > 0) ranking.unshift(ranking.splice(ci, 1)[0]);
+  ranking = ranking.slice(0, EWC_CLUB_PRIZES.length);
+  ranking.forEach((x, i) => {
+    const prize = EWC_CLUB_PRIZES[i];
+    S.clubs[x.id].budget += prize; x.prize = prize;
+    if (x.id === u.id) report.income.ewc = prize;
+  });
+  if (ranking[0]) {
+    const champ = S.clubs[ranking[0].id];
+    champ.fame = clamp(champ.fame + 6, 0, 100); champ.titles.push(`EWC Club Championship ${S.season}`);
+    S.titles.push({ season: S.season, game: "ewc", tier: 0, name: "EWC Club Championship", club: champ.name, clubId: champ.id });
+  }
+  S.ewcResult = { season: S.season, ranking };
+  const me = ranking.findIndex(x => x.id === u.id) + 1;
+  mail(`🌍 EWC Club Championship ${S.season}`, `Vainqueur : <b>${ranking[0] ? S.clubs[ranking[0].id].name : "?"}</b>.<br>` +
+    (me ? `${u.name} termine <b>${me}e</b> et touche ${money(EWC_CLUB_PRIZES[me - 1])}.` : `${u.name} n'est pas classé (il faut un top 8 dans au moins 2 tournois EWC).`), me === 1 ? "trophy" : "info");
+}
+
 const CLUB_SHARE = 0.5;
 const PLACE_SHARE = [0.35, 0.18, 0.09, 0.09, 0.045, 0.045, 0.045, 0.045, 0.0125, 0.0125, 0.0125, 0.0125, 0.0125, 0.0125, 0.0125, 0.0125];
 const ROUND_NAME = { 2: "Finale", 4: "Demi-finale", 8: "Quart de finale", 16: "Huitième de finale" };
@@ -827,7 +883,9 @@ function tournamentPool(game, tiers) {
 // le club du joueur participe-t-il ? (open : dès qu'il est dans un tier admis ; invitation : s'il fait partie des mieux classés)
 function tournamentField(game, tiers, size) {
   const g = GAMES[game], u = user();
-  const pool = tournamentPool(game, tiers).map(id => ({ id, s: teamStrength(id, game).str + S.clubs[id].fame * 0.05 })).sort((a, b) => b.s - a.s).map(x => x.id);
+  // invitations : les mieux classés ; opens avec le tier 3 : inscriptions libres, donc un plateau tiré au hasard
+  const ranked = tournamentPool(game, tiers).map(id => ({ id, s: teamStrength(id, game).str + S.clubs[id].fame * 0.05 })).sort((a, b) => b.s - a.s).map(x => x.id);
+  const pool = tiers.includes("3") ? shuffle(ranked) : ranked;
   let n = Math.min(size, pool.length);
   if (g.fmt !== "br") n = n >= 2 ? 2 ** Math.floor(Math.log2(n)) : 0;
   const field = pool.slice(0, n);
@@ -837,7 +895,7 @@ function tournamentField(game, tiers, size) {
 function runTournaments(w, report, pay) {
   const u = user();
   S.tourResults = S.tourResults || [];
-  for (const [game, list] of Object.entries(TOURNAMENTS)) for (const [name, week, prize, tiers, size] of list) {
+  for (const game of Object.keys(GAMES)) for (const [name, week, prize, tiers, size] of allTournaments(game)) {
     if (week !== w) continue;
     const g = GAMES[game], field = tournamentField(game, tiers, size);
     if (field.length < 2) continue;
@@ -870,6 +928,7 @@ function runTournaments(w, report, pay) {
     champ.fans = Math.round(champ.fans * (prize >= 1e6 ? 1.05 : 1.01));
     champ.titles.push(`${name} ${S.season}`);
     S.titles.push({ season: S.season, game, tier: 0, name, club: champ.solo ? soloName(champ, game) : champ.name, clubId: champ.id });
+    if (name.startsWith("EWC")) ewcPoints(order, game);
     const mine = order.indexOf(u.id) + 1;
     S.tourResults.push({ season: S.season, week: w, game, name, prize, n: field.length, top: order.slice(0, 4), mine: mine || null });
     if (mine) {

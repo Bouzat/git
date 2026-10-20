@@ -17,9 +17,11 @@ La partie est sauvegardée automatiquement dans le navigateur (localStorage) à 
 - **🚀 Créer un club** : partez de zéro avec 250 k€ sur une **petite scène (tier 3)** du jeu de votre choix. Recrutez des amateurs, montez de division en division.
 - **👔 Reprendre un club** : prenez les commandes d'une organisation réelle (T1, G2, Karmine Corp, Vitality, Fnatic, NAVI, Team Liquid, Falcons, FURIA…) avec ses effectifs, son budget et des attentes élevées.
 
-## 15 jeux, 3 tiers, 45 circuits
+## 25 jeux (les 24 titres de l'EWC 2026 + StarCraft II), 3 tiers, 75 circuits
 
-League of Legends · Counter-Strike 2 · Valorant · Dota 2 · Rocket League · Overwatch 2 · Rainbow Six Siege · Call of Duty · Mobile Legends · Fortnite · Apex Legends · PUBG · EA Sports FC · Street Fighter 6 · StarCraft II
+League of Legends · Counter-Strike 2 · Valorant · Dota 2 · Rocket League · Overwatch 2 · Rainbow Six Siege · Call of Duty: Black Ops 7 · Call of Duty: Warzone · Mobile Legends · Honor of Kings · Crossfire · Fortnite · Apex Legends · PUBG · PUBG Mobile · Free Fire · Teamfight Tactics · Trackmania · EA Sports FC · Street Fighter 6 · Tekken 8 · Fatal Fury · Échecs · StarCraft II
+
+Pour les jeux ajoutés, seuls les échecs (Carlsen, Nakamura, Firouzja, Gukesh…) et Tekken 8 (Arslan Ash, Knee…) ont de vrais joueurs ; les autres scènes sont peuplées de clubs et joueurs inventés.
 
 Chaque jeu a 3 tiers (ex. CS2 : Majors/BLAST/IEM → ESL Challenger/CCT → ESEA/FACEIT). Les 2 premiers de chaque tier montent, les 2 derniers descendent. On peut aussi acheter une place plus haut quand le club est assez connu.
 
@@ -58,6 +60,11 @@ Chaque signature, transfert ou prolongation se négocie avec le joueur et son ag
 - **Part du cashprize** reversée au joueur : le club ne garde que le reste des gains de ligue et de tournoi.
 - **Clause libératoire** : les stars et les ambitieux en exigent une ; un club plus prestigieux peut alors racheter le joueur à ce prix. Vous pouvez aussi payer la clause d'un joueur adverse, son club ne peut pas refuser.
 - **Personnalité** (Calme, Loyal, Ambitieux, Mercenaire, Exigeant, Jeune talent) : elle change les demandes et la **patience**. Une offre insultante fait fondre la patience ; à zéro, le joueur claque la porte et refuse de vous parler pendant 4 semaines.
+
+## Esports World Cup et petits tournois
+
+- **EWC** (semaines 7 à 10) : un tournoi par jeu avec les dotations 2026, et le **Club Championship** : chaque top 8 rapporte des points au club, il faut un top 8 dans au moins 2 jeux pour être classé, et 24 clubs se partagent 30 M€ (7 M€ pour le champion).
+- **Petits tournois générés chaque saison** pour tous les jeux : cash cups et LAN ouvertes (FACEIT, ESEA, DreamHack Open, Gamers Assembly… en CS2, chaque semaine) et circuits tier 2 (CCT, NODWIN Clutch Series, European Pro League, Skyesports…). De quoi faire grandir un nouveau club.
 
 ## Sponsors
 

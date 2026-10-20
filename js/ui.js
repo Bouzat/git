@@ -13,9 +13,15 @@ const bar = (v, c) => `<span class="bar"><i style="width:${v}%;background:${c ||
 const badge = c => `<div class="badge" style="background:${c.color}">${esc(c.tag)}</div>`;
 const gchip = g => `<span class="chip" style="border-color:${GAMES[g].color}">${GAMES[g].icon} ${GAMES[g].short}</span>`;
 const tchip = t => `<span class="chip tier t${t}">${TIER_LABEL[t - 1]}</span>`;
-function displayName(id, game) { const c = S.clubs[id]; if (!c) return "?"; return esc(c.solo ? soloName(c, game) : c.name); }
+function displayName(id, game) {
+  const c = S.clubs[id]; if (!c) return "?";
+  if (c.solo) return esc(soloName(c, game));
+  // jeux en solo ou en duo : on affiche le joueur, avec son club
+  if (game && GAMES[game] && GAMES[game].size <= 2 && c.divisions[game]) return `${esc(soloName(c, game))} <small class="muted">(${esc(c.tag)})</small>`;
+  return esc(c.name);
+}
 const FMT_LABEL = { team: "Équipes", br: "Battle royale", duel: "1 contre 1" };
-function lobbyText(g) { const G = GAMES[g]; return `${G.lobby} ${G.unit}s · ${G.lobby * G.size} joueurs`; }
+function lobbyText(g) { const G = GAMES[g]; return G.size > 1 ? `${G.lobby} ${G.unit}s · ${G.lobby * G.size} joueurs` : `${G.lobby} ${G.unit}s`; }
 
 function toast(msg) {
   const t = document.getElementById("toast");
@@ -184,7 +190,7 @@ function matchRow(r) {
 function lobbyRow(l) {
   const g = GAMES[l.game], m = l.mine;
   const places = m.places.map(p => p === 1 ? "<b class='win'>👑 1er</b>" : p <= 10 ? `<b>${p}e</b>` : `${p}e`).join(" · ");
-  return `<div class="lobby"><div><b>${g.icon} ${g.short} T${l.tier}</b> — ${l.stage} · lobby de ${l.lobby} ${g.unit}s (${l.lobby * g.size} joueurs)</div>
+  return `<div class="lobby"><div><b>${g.icon} ${g.short} T${l.tier}</b> — ${l.stage} · lobby de ${l.lobby} ${g.unit}s${g.size > 1 ? ` (${l.lobby * g.size} joueurs)` : ""}</div>
     <div>Placements : ${places}</div>
     <div><b>${m.pts} pts</b> · ${m.kills} éliminations · <b>${l.rank}e</b> du circuit cette semaine${l.mvp ? " · meilleur joueur : " + esc(l.mvp) : ""}</div></div>`;
 }
@@ -328,9 +334,18 @@ function myEligibility(game, tiers, size) {
 }
 function upcomingTours(limit) {
   const u = user(), rows = [];
-  for (const g of Object.keys(u.divisions)) for (const [name, week, prize, tiers, size] of TOURNAMENTS[g] || [])
+  for (const g of Object.keys(u.divisions)) for (const [name, week, prize, tiers, size] of allTournaments(g))
     if (week >= S.week && tiers.includes(String(u.divisions[g].tier))) rows.push({ g, name, week, prize, tiers, size });
   return rows.sort((a, b) => a.week - b.week).slice(0, limit).map(t => `<div class="match-br">S${t.week} · ${GAMES[t.g].icon} <b>${esc(t.name)}</b> · ${money(t.prize)} · ${myEligibility(t.g, t.tiers, t.size)}</div>`).join("");
+}
+function ewcCard() {
+  const u = user(), done = S.ewcResult && S.ewcResult.season === S.season;
+  const list = done ? S.ewcResult.ranking : ewcStandings();
+  const rows = list.slice(0, 12).map((x, i) => `<tr class="${x.id === u.id ? "me" : ""}"><td>${i + 1}</td><td>${displayName(x.id)}</td><td>${x.pts}</td><td>${x.top8}</td><td>${x.wins}</td><td>${done ? money(x.prize || 0) : x.ok ? "<span class='ok'>Éligible</span>" : "<span class='muted'>1 top 8</span>"}</td></tr>`).join("");
+  const me = list.findIndex(x => x.id === u.id);
+  return `<div class="card" style="margin-bottom:16px"><h3>🌍 EWC Club Championship ${S.season} ${done ? "— terminé" : `— semaines 7 à ${EWC_LAST_WEEK}`}</h3>
+    <p class="muted" style="margin-top:-6px;font-size:13px">L'Esports World Cup regroupe un tournoi par jeu. Chaque top 8 rapporte des points au club (1 000 pour un titre). Pour être classé, il faut un top 8 dans au moins 2 jeux ; 24 clubs se partagent 30 M€ (7 M€ pour le champion).</p>
+    ${rows ? `<div class="table-wrap"><table><tr><th>#</th><th>Club</th><th>Pts</th><th>Top 8</th><th>Titres</th><th>${done ? "Dotation" : "Statut"}</th></tr>${rows}</table></div>${me >= 12 ? `<p>Vous : ${me + 1}e (${list[me].pts} pts)</p>` : ""}` : "<p class='muted'>Aucun point attribué pour l'instant.</p>"}</div>`;
 }
 function tourRow(t) {
   const g = GAMES[t.game];
@@ -343,14 +358,16 @@ function viewTours() {
   const games = UI.tourGame === "mine" ? (Object.keys(u.divisions).length ? Object.keys(u.divisions) : Object.keys(GAMES)) : UI.tourGame === "all" ? Object.keys(GAMES) : [UI.tourGame];
   const tabs = [["mine", "Mes jeux"], ["all", "Tous"]].concat(Object.keys(GAMES).map(k => [k, GAMES[k].icon + " " + GAMES[k].short]))
     .map(([k, l]) => `<button class="tab small ${UI.tourGame === k ? "active" : ""}" data-act="tour-game" data-v="${k}">${l}</button>`).join("");
-  const rows = games.flatMap(g => (TOURNAMENTS[g] || []).map(t => [g, ...t])).sort((a, b) => a[2] - b[2] || b[3] - a[3]).map(([g, name, week, prize, tiers, size]) => {
+  const rows = games.flatMap(g => allTournaments(g).map(t => [g, ...t])).filter(t => UI.tourSize === "all" || (UI.tourSize === "big") === !(S.smallTours || []).some(x => x[5] === t[0] && x[0] === t[1] && x[1] === t[2])).sort((a, b) => a[2] - b[2] || b[3] - a[3]).map(([g, name, week, prize, tiers, size]) => {
     const r = tourStatus(g, name, week);
     const status = r ? `🏆 ${displayName(r.top[0], g)}${r.mine ? ` · <b>vous : ${r.mine}e</b>` : ""}` : week < S.week ? "<span class='muted'>Annulé</span>" : week === S.week ? "<b class='warn'>Cette semaine</b>" : "À venir";
     return `<tr class="${r && r.mine === 1 ? "me" : ""}"><td>S${week}</td><td>${gchip(g)}</td><td><b>${esc(name)}</b></td><td>${money(prize)}</td><td>${accessLabel(tiers)}</td><td>${r ? r.n : tournamentField(g, tiers, size).length}${GAMES[g].fmt === "br" ? " " + GAMES[g].unit + "s" : ""}</td><td>${myEligibility(g, tiers, size)}</td><td>${status}</td></tr>`;
   }).join("");
-  return `<h2>📅 Tournois de la saison ${S.season}</h2>
+  if (!UI.tourSize) UI.tourSize = "all";
+  const stabs = [["all", "Tous les tournois"], ["big", "Grands tournois"], ["small", "Petits tournois & cash cups"]].map(([k, l]) => `<button class="tab small ${UI.tourSize === k ? "active" : ""}" data-act="tour-size" data-v="${k}">${l}</button>`).join("");
+  return `<h2>📅 Tournois de la saison ${S.season}</h2>${ewcCard()}
     <p class="muted" style="margin-top:-6px">En plus des ligues, les grands tournois à cashprize. Les tournois sur invitation prennent les meilleures équipes du tier 1 ; les opens accueillent tous les clubs des tiers admis. Dotations approximatives ; le club touche 50 % des gains, le reste revient aux joueurs.</p>
-    <div class="tabs">${tabs}</div>
+    <div class="tabs">${tabs}</div><div class="tabs">${stabs}</div>
     <div class="card table-wrap"><table><tr><th>Sem.</th><th>Jeu</th><th>Tournoi</th><th>Dotation</th><th>Accès</th><th>Places</th><th>Vous</th><th>Résultat</th></tr>${rows}</table></div>`;
 }
 
@@ -358,8 +375,8 @@ function viewTours() {
 function viewFinance() {
   const u = user(), last = S.lastWeek;
   const lines = (o, labels) => Object.entries(o || {}).map(([k, v]) => `<tr><td>${labels[k] || k}</td><td style="text-align:right">${money(v)}</td></tr>`).join("");
-  const incL = { sponsors: "Sponsors", merch: "Merch & streaming", prize: "Cashprize" };
-  const expL = { salaries: "Salaires", operations: "Frais de divisions", facilities: "Entretien des infrastructures" };
+  const incL = { sponsors: "Sponsors", merch: "Merch & streaming", prize: "Cashprize (part du club)", ewc: "EWC Club Championship" };
+  const expL = { salaries: "Salaires", operations: "Frais de divisions", facilities: "Entretien des infrastructures", bonuses: "Primes de victoire" };
   const F = S.finance.slice(-30);
   let chart = "<p class='muted'>Jouez quelques semaines pour voir l'évolution.</p>";
   if (F.length > 1) {
@@ -412,7 +429,7 @@ function viewWorld() {
   const divs = c => Object.entries(c.divisions).map(([g, d]) => `<span class="chip" style="border-color:${GAMES[g].color}">${GAMES[g].icon} ${GAMES[g].short} <small class="muted">T${d.tier}</small></span>`).join(" ");
   const rows = clubs.map((c, i) => `<tr class="${c.id === S.userId ? "me" : ""}"><td>${i + 1}</td><td><span style="color:${c.color}">■</span> <b data-act="club-info" data-v="${c.id}" style="cursor:pointer">${esc(c.name)}</b></td><td>${flag(c.country)}</td>
     <td>${c.fame.toFixed(1)}</td><td>${c.fans.toLocaleString("fr-FR")}</td><td>${divs(c)}</td><td>${c.titles.length ? "🏆 × " + c.titles.length : ""}</td></tr>`).join("");
-  const hist = S.titles.slice().reverse().slice(0, 80).map(t => `<tr><td>${t.season}</td><td>${gchip(t.game)}</td><td>${t.tier ? tchip(t.tier) + " Ligue" : `<span class="chip">🏆 ${esc(t.name)}</span>`}</td><td class="${t.clubId === S.userId ? "ok" : ""}"><b>${esc(t.club)}</b></td></tr>`).join("");
+  const hist = S.titles.slice().reverse().slice(0, 80).map(t => `<tr><td>${t.season}</td><td>${GAMES[t.game] ? gchip(t.game) : "<span class='chip'>🌍 EWC</span>"}</td><td>${t.tier ? tchip(t.tier) + " Ligue" : `<span class="chip">🏆 ${esc(t.name)}</span>`}</td><td class="${t.clubId === S.userId ? "ok" : ""}"><b>${esc(t.club)}</b></td></tr>`).join("");
   return `<h2>Clubs & palmarès</h2><div class="grid g2">
     <div class="card table-wrap"><h3>Classement mondial des clubs (notoriété)</h3><table><tr><th>#</th><th>Club</th><th></th><th>Notoriété</th><th>Fans</th><th>Divisions</th><th>Titres</th></tr>${rows}</table></div>
     <div class="card table-wrap"><h3>Palmarès</h3>${hist ? `<table><tr><th>Saison</th><th>Jeu</th><th>Compétition</th><th>Champion</th></tr>${hist}</table>` : "<p class='muted'>Aucun titre décerné pour l'instant.</p>"}</div></div>`;
@@ -450,6 +467,7 @@ const ACTIONS = {
   "comp-game": v => { UI.compGame = v; const d = user().divisions[v]; UI.compTier = d ? d.tier : 1; render(); },
   "comp-tier": v => { UI.compTier = +v; render(); },
   "tour-game": v => { UI.tourGame = v; render(); },
+  "tour-size": v => { UI.tourSize = v; render(); },
   "goto-market": v => { UI.market.game = v; UI.view = "market"; render(); },
   "open-div": v => {
     const [game, t] = v.split("|"), tier = +t, g = GAMES[game];
