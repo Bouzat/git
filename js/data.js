@@ -27,7 +27,10 @@ const GAMES = {
   mlbb: { name: "Mobile Legends",    short: "MLBB", icon: "📱", fmt: "team", size: 5, roles: ["EXP", "Jungle", "Mid", "Gold", "Roam"], prize: 800000, mult: 0.6, color: "#2b6cff",
           tiers: ["MPL · M-Series World Championship", "MDL (Development League)", "Open Cups"] },
   fn:   { name: "Fortnite",          short: "FN",   icon: "🏗️", fmt: "br", size: 2, lobby: 50, gamesPerWeek: 4, tierSizes: [20, 60], roles: ["Fragger", "IGL"], prize: 1500000, mult: 0.6, color: "#9d4dbb", unit: "duo",
-          tiers: ["FNCS Grand Finals (duos)", "FNCS Divisional Cups", "Cash Cups"] },
+          // circuit ouvert : une seule compétition (FNCS) pour tous les duos ; le « tier » d'un club n'est plus qu'un statut
+          // (Élite = top 20, Pro = top 80, Open = le reste) recalculé chaque saison d'après son classement
+          open: true, circuit: "FNCS — circuit ouvert", statuses: ["Élite", "Pro", "Open"],
+          tiers: ["FNCS — statut Élite", "FNCS — statut Pro", "FNCS — statut Open"] },
   apex: { name: "Apex Legends",      short: "APEX", icon: "🪂", fmt: "br", size: 3, lobby: 20, gamesPerWeek: 4, roles: ["IGL", "Fragger", "Support"], prize: 700000, mult: 0.5, color: "#da292a", unit: "trio",
           tiers: ["ALGS Pro League", "ALGS Challenger Circuit", "Online Tournaments"] },
   pubg: { name: "PUBG",              short: "PUBG", icon: "🍳", fmt: "br", size: 4, lobby: 16, gamesPerWeek: 4, roles: ["IGL", "Fragger", "Scout", "Support"], prize: 600000, mult: 0.45, color: "#f2a900", unit: "squad",

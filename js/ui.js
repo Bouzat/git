@@ -12,16 +12,20 @@ const R = r => `<span class="rating" style="background:${ratingColor(r)}">${r}</
 const bar = (v, c) => `<span class="bar"><i style="width:${v}%;background:${c || (v > 70 ? "var(--ok)" : v > 45 ? "var(--warn)" : "var(--bad)")}"></i></span>`;
 const badge = c => `<div class="badge" style="background:${c.color}">${esc(c.tag)}</div>`;
 const gchip = g => `<span class="chip" style="border-color:${GAMES[g].color}">${GAMES[g].icon} ${GAMES[g].short}</span>`;
-const tchip = t => `<span class="chip tier t${t}">${TIER_LABEL[t - 1]}</span>`;
+const tchip = (t, g) => `<span class="chip tier t${t}">${g ? tierLabel(g, t) : TIER_LABEL[t - 1]}</span>`;
+// abrégé : « T2 », ou le statut dans un circuit ouvert (« Pro »)
+const tshort = (g, t) => GAMES[g] && GAMES[g].open ? tierLabel(g, t) : "T" + t;
+// puce d'une ligue : son tier, ou « Circuit ouvert »
+const lchip = L => GAMES[L.game].open ? `<span class="chip tier t1">Circuit ouvert</span>` : tchip(L.tier);
 function displayName(id, game) {
   const c = S.clubs[id]; if (!c) return "?";
   if (c.solo) return esc(soloName(c, game));
   // jeux en solo ou en duo : on affiche le joueur, avec son club
-  if (game && GAMES[game] && GAMES[game].size <= 2 && c.divisions[game]) return `${esc(soloName(c, game))} <small class="muted">(${esc(c.tag)})</small>`;
+  if (game && GAMES[game] && GAMES[game].size <= 2 && c.divisions[game]) return `${esc(c.name)} <small class="muted">(${esc(soloName(c, game))})</small>`;
   return esc(c.name);
 }
 const FMT_LABEL = { team: "Équipes", br: "Battle royale", duel: "1 contre 1" };
-function lobbyText(g) { const G = GAMES[g]; return G.size > 1 ? `${G.lobby} ${G.unit}s · ${G.lobby * G.size} joueurs` : `${G.lobby} ${G.unit}s`; }
+function lobbyText(g) { const G = GAMES[g]; if (G.open && S && S.leagues[lkey(g, 1)]) { const n = S.leagues[lkey(g, 1)].teams.length; return `tout le circuit · ${n} ${G.unit}s, ${n * G.size} joueurs`; } return G.size > 1 ? `${G.lobby} ${G.unit}s · ${G.lobby * G.size} joueurs` : `${G.lobby} ${G.unit}s`; }
 
 function toast(msg) {
   const t = document.getElementById("toast");
@@ -95,7 +99,7 @@ function renderHome() {
       <div class="club-pick ${UI.pickClub === c.id ? "sel" : ""}" style="--c:${c.color}" data-act="pick-club" data-v="${c.id}">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:6px"><b>${esc(c.name)}</b><span>${flag(c.cc)}</span></div>
         <div class="muted" style="font-size:12px;margin:4px 0">Notoriété ${c.fame} · Budget ${money(c.fame * 45000)}</div>
-        <div style="display:flex;flex-wrap:wrap;gap:4px">${c.divs.map(([g, t, gen]) => `<span class="chip" style="border-color:${GAMES[g].color}${gen ? ";border-style:dashed" : ""}" title="${gen ? "Division réelle, joueurs inventés" : "Effectif réel"}">${GAMES[g].icon} ${GAMES[g].short}${gen ? "*" : ""} <small class="muted">${gen ? "" : "T" + t}</small></span>`).join("")}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px">${c.divs.map(([g, t, gen]) => `<span class="chip" style="border-color:${GAMES[g].color}${gen ? ";border-style:dashed" : ""}" title="${gen ? "Division réelle, joueurs inventés" : "Effectif réel"}">${GAMES[g].icon} ${GAMES[g].short}${gen ? "*" : ""} <small class="muted">${gen ? "" : tshort(g, t)}</small></span>`).join("")}</div>
       </div>`).join("");
     body = `<div class="card" style="width:100%;max-width:1000px">
       <h2>👔 Reprendre un club</h2>
@@ -169,7 +173,7 @@ function viewDash() {
     const n = clubPlayers(u.id, L.game).length;
     const rec = g.fmt === "br" ? `${row.pts || 0} pts · ${row.top1 || 0} Top 1` : `${row.w || 0}V - ${row.l || 0}D`;
     return `<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><h3 style="margin:0">${g.icon} ${g.name}</h3>${R(Math.round(teamStrength(u.id, L.game).str))}</div>
-      <div style="margin:6px 0;display:flex;gap:6px;align-items:center;flex-wrap:wrap">${tchip(L.tier)}<span class="muted">${tierName(L.game, L.tier)}</span></div>
+      <div style="margin:6px 0;display:flex;gap:6px;align-items:center;flex-wrap:wrap">${lchip(L)}<span class="muted">${leagueName(L)}</span></div>
       <div>Classement : <b>${pos ? pos + "e" : "-"}</b> / ${st.length} · <b>${rec}</b></div>
       <div>Prochain : ${nextMatch(L)}</div>
       ${n < g.size ? `<div class="bad" style="margin-top:6px">⚠️ Effectif incomplet (${n}/${g.size}) — recrutez au Mercato !</div>` : ""}
@@ -200,7 +204,7 @@ function matchRow(r) {
 function lobbyRow(l) {
   const g = GAMES[l.game], m = l.mine;
   const places = m.places.map(p => p === 1 ? "<b class='win'>👑 1er</b>" : p <= 10 ? `<b>${p}e</b>` : `${p}e`).join(" · ");
-  return `<div class="lobby"><div><b>${g.icon} ${g.short} T${l.tier}</b> — ${l.stage} · lobby de ${l.lobby} ${g.unit}s${g.size > 1 ? ` (${l.lobby * g.size} joueurs)` : ""}</div>
+  return `<div class="lobby"><div><b>${g.icon} ${g.short}${g.open ? "" : " T" + l.tier}</b> — ${l.stage} · lobby de ${l.lobby} ${g.unit}s${g.size > 1 ? ` (${l.lobby * g.size} joueurs)` : ""}</div>
     <div>Placements : ${places}</div>
     <div><b>${m.pts} pts</b> · ${m.kills} éliminations · <b>${l.rank}e</b> du circuit cette semaine${l.mvp ? " · meilleur joueur : " + esc(l.mvp) : ""}</div></div>`;
 }
@@ -209,13 +213,13 @@ function lobbyRow(l) {
 function viewRoster() {
   const u = user(), divs = Object.keys(u.divisions);
   if (!UI.rosterGame || !u.divisions[UI.rosterGame]) UI.rosterGame = divs[0] || null;
-  const tabs = divs.map(g => `<button class="tab ${UI.rosterGame === g ? "active" : ""}" data-act="roster-game" data-v="${g}">${GAMES[g].icon} ${GAMES[g].short} · T${u.divisions[g].tier}</button>`).join("");
+  const tabs = divs.map(g => `<button class="tab ${UI.rosterGame === g ? "active" : ""}" data-act="roster-game" data-v="${g}">${GAMES[g].icon} ${GAMES[g].short} · ${tshort(g, u.divisions[g].tier)}</button>`).join("");
   const others = Object.keys(GAMES).filter(g => !u.divisions[g]);
   const open = `<div class="card" style="margin-top:20px"><h3>➕ Ouvrir une nouvelle division</h3>
     <p class="muted" style="margin-top:-6px">Le tier 3 est ouvert à tous. Acheter une place plus haut demande de la notoriété : ${TIER_FAME_REQ[1]} pour le tier 2, ${TIER_FAME_REQ[0]} pour le tier 1 (vous êtes à ${u.fame.toFixed(0)}).</p>
     <div class="grid g3">${others.map(g => `
     <div class="open-div"><div><b>${GAMES[g].icon} ${GAMES[g].name}</b><div class="muted" style="font-size:12px">${FMT_LABEL[GAMES[g].fmt]} · ${GAMES[g].size} joueur(s)${GAMES[g].fmt === "br" ? " · lobbies de " + lobbyText(g) : ""}</div></div>
-      <div style="display:flex;gap:4px;flex-wrap:wrap">${[3, 2, 1].map(t => `<button class="small" data-act="open-div" data-v="${g}|${t}" ${canJoin(g, t) ? "disabled" : ""} title="${esc(canJoin(g, t) || tierName(g, t))}">T${t} · ${money(tierEntry(g, t))}</button>`).join("")}</div></div>`).join("")}</div></div>`;
+      <div style="display:flex;gap:4px;flex-wrap:wrap">${(GAMES[g].open ? [3] : [3, 2, 1]).map(t => `<button class="small" data-act="open-div" data-v="${g}|${t}" ${canJoin(g, t) ? "disabled" : ""} title="${esc(canJoin(g, t) || (GAMES[g].open ? GAMES[g].circuit : tierName(g, t)))}">${GAMES[g].open ? "Circuit ouvert" : "T" + t} · ${money(tierEntry(g, t))}</button>`).join("")}</div></div>`).join("")}</div></div>`;
   if (!UI.rosterGame) return `<h2>Effectifs</h2><p class="muted">Votre club n'a encore aucune division.</p>${open}`;
   const g = GAMES[UI.rosterGame], d = u.divisions[UI.rosterGame];
   const ps = clubPlayers(u.id, UI.rosterGame).sort((a, b) => (b.starter - a.starter) || b.rating - a.rating);
@@ -233,7 +237,7 @@ function viewRoster() {
       <button class="small danger" data-act="release" data-v="${p.id}">Libérer</button></td></tr>`).join("");
   return `<h2>Effectifs</h2><div class="tabs">${tabs}</div>
     <div class="card"><div class="toolbar"><div style="flex:1;min-width:0"><h3 style="margin:0">${g.icon} ${g.name} — Titulaires ${nSt}/${g.size} · Force ${R(Math.round(teamStrength(u.id, UI.rosterGame).str))}</h3>
-      <div style="margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">${tchip(d.tier)}<span class="muted">${tierName(UI.rosterGame, d.tier)}</span></div></div>
+      <div style="margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">${tchip(d.tier, UI.rosterGame)}<span class="muted">${GAMES[UI.rosterGame].open ? GAMES[UI.rosterGame].circuit : tierName(UI.rosterGame, d.tier)}</span></div></div>
       <button class="small" data-act="auto-lineup">⚡ Composition auto</button>
       <button class="small" data-act="goto-market" data-v="${UI.rosterGame}">🔎 Recruter</button>
       <button class="small danger" data-act="close-div">Fermer la division</button></div>
@@ -268,7 +272,7 @@ function viewMarket() {
   const gameOpts = `<option value="all">Tous les jeux</option>` + Object.entries(GAMES).map(([k, g]) => `<option value="${k}" ${m.game === k ? "selected" : ""}>${g.icon} ${g.name}</option>`).join("");
   const rows = ps.map(p => {
     const c = p.club ? S.clubs[p.club] : null, d = c && c.divisions[p.game];
-    const where = !c ? "<span class='ok'>Agent libre</span>" : c.solo ? `<span class="warn">Indépendant</span> <small class="muted">T${d.tier}</small>` : `${esc(c.name)} <small class="muted">T${d.tier}</small>`;
+    const where = !c ? "<span class='ok'>Agent libre</span>" : c.solo ? `<span class="warn">Indépendant</span> <small class="muted">${tshort(p.game, d.tier)}</small>` : `${esc(c.name)} <small class="muted">${tshort(p.game, d.tier)}</small>`;
     const keen = interestCheck(p);
     const btn = !c ? `<button class="small primary" data-act="sign" data-v="${p.id}">Signer</button>`
       : `<button class="small" data-act="offer" data-v="${p.id}" ${keen ? "" : "disabled title='Votre club n&#39;est pas assez connu pour ce joueur'"}>${keen ? (c.solo ? "Recruter" : "Offre") + " (~" + money(askingPrice(p)) + ")" : "🔒 Hors de portée"}</button>`;
@@ -296,9 +300,11 @@ function viewComp() {
   if (!UI.compTier) UI.compTier = ud ? ud.tier : 1;
   const g = GAMES[UI.compGame], L = S.leagues[lkey(UI.compGame, UI.compTier)], br = g.fmt === "br";
   const tabs = Object.keys(GAMES).map(k => `<button class="tab small ${UI.compGame === k ? "active" : ""}" data-act="comp-game" data-v="${k}">${GAMES[k].icon} ${GAMES[k].short}${u.divisions[k] ? " ★" : ""}</button>`).join("");
-  const ttabs = [1, 2, 3].map(t => `<button class="tab small ${UI.compTier === t ? "active" : ""}" data-act="comp-tier" data-v="${t}">${TIER_LABEL[t - 1]}${ud && ud.tier === t ? " ★" : ""}</button>`).join("");
+  if (g.open) UI.compTier = 1;
+  const ttabs = g.open ? "" : [1, 2, 3].map(t => `<button class="tab small ${UI.compTier === t ? "active" : ""}" data-act="comp-tier" data-v="${t}">${TIER_LABEL[t - 1]}${ud && ud.tier === t ? " ★" : ""}</button>`).join("");
   const st = standings(L.key), n = st.length;
-  const zone = i => i < 2 && UI.compTier > 1 ? "<span class='ok' title='Montée'>▲</span>" : i >= n - 2 && UI.compTier < 3 ? "<span class='bad' title='Relégation'>▼</span>" : (br ? i < 8 : i < 4) ? "<span class='ok'>●</span>" : "";
+  const cut = g.open ? g.tierSizes : null;
+  const zone = i => cut ? (i < 8 ? "<span class='ok' title='Grande finale'>●</span>" : i === cut[0] - 1 ? "<span class='ok' title='Dernière place Élite'>▲</span>" : i === cut[0] + cut[1] - 1 ? "<span class='warn' title='Dernière place Pro'>▲</span>" : "") : i < 2 && UI.compTier > 1 ? "<span class='ok' title='Montée'>▲</span>" : i >= n - 2 && UI.compTier < 3 ? "<span class='bad' title='Relégation'>▼</span>" : (br ? i < 8 : i < 4) ? "<span class='ok'>●</span>" : "";
   const name = id => `<span style="color:${S.clubs[id].color}">■</span> <b data-act="club-info" data-v="${id}" style="cursor:pointer">${displayName(id, UI.compGame)}</b>`;
   const table = br
     ? `<tr><th>#</th><th>${g.unit === "duo" ? "Duo" : "Équipe"}</th><th>Pts</th><th>Top 1</th><th>Élims</th><th>Place moy.</th><th>Force</th></tr>` + st.map((r, i) => `<tr class="${r.id === u.id ? "me" : ""}"><td>${i + 1} ${zone(i)}</td><td>${name(r.id)}</td><td><b>${r.pts}</b></td><td>${r.top1}</td><td>${r.kills}</td><td>${r.games ? (r.place / r.games).toFixed(1) : "-"}</td><td>${R(Math.round(teamStrength(r.id, UI.compGame).str))}</td></tr>`).join("")
@@ -317,10 +323,10 @@ function viewComp() {
     const fixtures = S.week <= L.schedule.length ? L.schedule[S.week - 1].map(([a, b]) => `<div class="match"><div class="r">${displayName(a, UI.compGame)}</div><div class="score muted">vs</div><div>${displayName(b, UI.compGame)}</div></div>`).join("") : `<p class="muted">Saison régulière terminée.</p>`;
     side = `<h3>Semaine ${S.week} — Affiches</h3>${fixtures}<h3 style="margin-top:16px">Derniers résultats</h3>${L.results.slice(-6).reverse().map(matchRow).join("") || "<p class='muted'>Aucun résultat.</p>"}`;
   }
-  return `<h2>${g.icon} ${tierName(UI.compGame, UI.compTier)}</h2><div class="tabs">${tabs}</div><div class="tabs">${ttabs}</div>
+  return `<h2>${g.icon} ${g.open ? g.circuit : tierName(UI.compGame, UI.compTier)}</h2><div class="tabs">${tabs}</div><div class="tabs">${ttabs}</div>
     <div class="grid g2">
       <div class="card"><h3>Classement · ${FMT_LABEL[g.fmt]}</h3><div class="table-wrap"><table>${table}</table></div>
-        <p class="muted" style="font-size:12px">${UI.compTier > 1 ? "▲ montée · " : ""}${UI.compTier < 3 ? "▼ relégation · " : ""}cashprize ${money(tierPrize(UI.compGame, UI.compTier))} (40 % au champion)</p></div>
+        <p class="muted" style="font-size:12px">${cut ? `circuit ouvert : le top ${cut[0]} obtient le statut Élite et le top ${cut[0] + cut[1]} le statut Pro pour la saison suivante (invitations, sponsors) · ` : ""}${!cut && UI.compTier > 1 ? "▲ montée · " : ""}${!cut && UI.compTier < 3 ? "▼ relégation · " : ""}cashprize ${money(tierPrize(UI.compGame, UI.compTier))} (40 % au champion)</p></div>
       <div>
         <div class="card"><h3>${br ? "Grande finale" : "Playoffs"}</h3>${po}</div>
         <div class="card" style="margin-top:16px">${br ? "<h3>Dernières journées</h3>" : ""}${side}</div>
@@ -332,7 +338,7 @@ function viewComp() {
 // ce que le club joue (ou a joué) dans une ligue la semaine w
 function leagueEntry(L, w) {
   const u = user(), g = GAMES[L.game], R = REGULAR_WEEKS;
-  const name = `${g.icon} ${g.short} T${L.tier}`;
+  const name = `${g.icon} ${g.short} ${g.open ? "circuit" : "T" + L.tier}`;
   if (g.fmt === "br") {
     if (w <= R) { const r = L.results.find(x => x.week === w); return { name, what: `Journée ${w} — lobby de ${lobbyText(L.game)}`, res: r ? (r.top.includes(u.id) ? `${["🥇", "🥈", "🥉"][r.top.indexOf(u.id)]} du lobby` : "joué") : "" }; }
     return { name, what: `Grande finale (top 8) — jour ${w - R}`, res: L.playoffs && L.playoffs.finalists && !L.playoffs.finalists.includes(u.id) ? "non qualifié" : "" };
@@ -496,17 +502,17 @@ function viewInbox() {
 // ---------- monde ----------
 function viewWorld() {
   const clubs = Object.values(S.clubs).filter(c => ((!c.filler && !c.solo) || c.titles.length || c.id === S.userId) && !c.sister).sort((a, b) => b.fame - a.fame).slice(0, 100);
-  const divs = c => Object.entries(c.divisions).map(([g, d]) => `<span class="chip" style="border-color:${GAMES[g].color}">${GAMES[g].icon} ${GAMES[g].short} <small class="muted">T${d.tier}</small></span>`).join(" ");
+  const divs = c => Object.entries(c.divisions).map(([g, d]) => `<span class="chip" style="border-color:${GAMES[g].color}">${GAMES[g].icon} ${GAMES[g].short} <small class="muted">${tshort(g, d.tier)}</small></span>`).join(" ");
   const rows = clubs.map((c, i) => `<tr class="${c.id === S.userId ? "me" : ""}"><td>${i + 1}</td><td><span style="color:${c.color}">■</span> <b data-act="club-info" data-v="${c.id}" style="cursor:pointer">${esc(c.name)}</b></td><td>${flag(c.country)}</td>
     <td>${c.fame.toFixed(1)}</td><td>${c.fans.toLocaleString("fr-FR")}</td><td>${divs(c)}</td><td>${c.titles.length ? "🏆 × " + c.titles.length : ""}</td></tr>`).join("");
-  const hist = S.titles.slice().reverse().slice(0, 80).map(t => `<tr><td>${t.season}</td><td>${GAMES[t.game] ? gchip(t.game) : "<span class='chip'>🌍 EWC</span>"}</td><td>${t.tier ? tchip(t.tier) + " Ligue" : `<span class="chip">🏆 ${esc(t.name)}</span>`}</td><td class="${t.clubId === S.userId ? "ok" : ""}"><b>${esc(t.club)}</b></td></tr>`).join("");
+  const hist = S.titles.slice().reverse().slice(0, 80).map(t => `<tr><td>${t.season}</td><td>${GAMES[t.game] ? gchip(t.game) : "<span class='chip'>🌍 EWC</span>"}</td><td>${t.tier ? (GAMES[t.game] && GAMES[t.game].open ? "<span class='chip'>Circuit</span>" : tchip(t.tier) + " Ligue") : `<span class="chip">🏆 ${esc(t.name)}</span>`}</td><td class="${t.clubId === S.userId ? "ok" : ""}"><b>${esc(t.club)}</b></td></tr>`).join("");
   return `<h2>Clubs & palmarès</h2><div class="grid g2">
     <div class="card table-wrap"><h3>Classement mondial des clubs (notoriété)</h3><table><tr><th>#</th><th>Club</th><th></th><th>Notoriété</th><th>Fans</th><th>Divisions</th><th>Titres</th></tr>${rows}</table></div>
     <div class="card table-wrap"><h3>Palmarès</h3>${hist ? `<table><tr><th>Saison</th><th>Jeu</th><th>Compétition</th><th>Champion</th></tr>${hist}</table>` : "<p class='muted'>Aucun titre décerné pour l'instant.</p>"}</div></div>`;
 }
 function clubInfo(id) {
   const c = S.clubs[id];
-  const divs = Object.entries(c.divisions).map(([g, d]) => `<h3 style="margin-top:12px">${GAMES[g].icon} ${GAMES[g].name} · ${TIER_LABEL[d.tier - 1]} ${d.generated ? "<span class='warn' title='Le club a bien une équipe dans ce jeu, mais son effectif réel est introuvable'>* joueurs inventés</span>" : d.verified ? "<span class='ok' title='Effectif recoupé dans des sources 2026'>✓ 2026</span>" : c.filler ? "" : "<span class='muted' title='Effectif établi de mémoire, peut être dépassé'>≈ non vérifié</span>"}</h3><div class="table-wrap"><table>${clubPlayers(id, g).sort((a, b) => b.starter - a.starter || b.rating - a.rating).map(p => `<tr><td>${p.starter ? "⭐" : ""}</td><td>${flag(p.nat)} ${esc(p.handle)}</td><td class="muted">${p.role}</td><td>${ageTxt(p)} ans</td><td>${R(p.rating)}</td><td>${potTxt(p)}</td></tr>`).join("")}</table></div>`).join("");
+  const divs = Object.entries(c.divisions).map(([g, d]) => `<h3 style="margin-top:12px">${GAMES[g].icon} ${GAMES[g].name} · ${GAMES[g].open ? "statut " : ""}${tierLabel(g, d.tier)} ${d.generated ? "<span class='warn' title='Le club a bien une équipe dans ce jeu, mais son effectif réel est introuvable'>* joueurs inventés</span>" : d.verified ? "<span class='ok' title='Effectif recoupé dans des sources 2026'>✓ 2026</span>" : c.filler ? "" : "<span class='muted' title='Effectif établi de mémoire, peut être dépassé'>≈ non vérifié</span>"}</h3><div class="table-wrap"><table>${clubPlayers(id, g).sort((a, b) => b.starter - a.starter || b.rating - a.rating).map(p => `<tr><td>${p.starter ? "⭐" : ""}</td><td>${flag(p.nat)} ${esc(p.handle)}</td><td class="muted">${p.role}</td><td>${ageTxt(p)} ans</td><td>${R(p.rating)}</td><td>${potTxt(p)}</td></tr>`).join("")}</table></div>`).join("");
   modal(`<div style="display:flex;gap:12px;align-items:center">${badge(c)}<div><h2 style="margin:0">${esc(c.name)} ${flag(c.country)}</h2><span class="muted">${c.solo ? "Pro indépendant · " : ""}Notoriété ${c.fame.toFixed(1)} · ${c.fans.toLocaleString("fr-FR")} fans${c.titles.length ? " · 🏆 " + c.titles.map(esc).join(", ") : ""}</span></div></div>${divs}<div class="actions"><button data-act="close-modal">Fermer</button></div>`);
 }
 
@@ -542,7 +548,7 @@ const ACTIONS = {
   "goto-market": v => { UI.market.game = v; UI.view = "market"; render(); },
   "open-div": v => {
     const [game, t] = v.split("|"), tier = +t, g = GAMES[game];
-    modal(`<h2>${g.icon} ${g.name} · ${TIER_LABEL[tier - 1]}</h2><p>Entrée dans le <b>${tierName(game, tier)}</b> : <b>${money(tierEntry(game, tier))}</b>.<br>
+    modal(`<h2>${g.icon} ${g.name} · ${tierLabel(game, tier)}</h2><p>Entrée dans le <b>${g.open ? g.circuit : tierName(game, tier)}</b> : <b>${money(tierEntry(game, tier))}</b>.<br>
       Il vous faudra ${g.size} joueur(s) titulaire(s). Frais de fonctionnement : ${money(TIER_OP[tier - 1] * g.size * g.mult)}/sem. Cashprize du circuit : ${money(tierPrize(game, tier))}.</p>
       <div class="actions"><button data-act="close-modal">Annuler</button><button class="primary" data-act="confirm-open" data-v="${v}">Confirmer</button></div>`);
   },

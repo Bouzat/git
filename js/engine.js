@@ -31,7 +31,9 @@ const pick = arr => arr[Math.floor(Math.random() * arr.length)];
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const shuffle = arr => { const a = arr.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 const uid = (() => { let n = 0; return p => p + "_" + Date.now().toString(36) + "_" + (n++).toString(36); })();
-const lkey = (game, tier) => game + ":" + tier;
+// une seule ligue pour les jeux en circuit ouvert (Fortnite), quel que soit le statut du club
+const lkey = (game, tier) => game + ":" + (GAMES[game] && GAMES[game].open ? 1 : tier);
+const tierLabel = (game, t) => (GAMES[game] && GAMES[game].statuses ? GAMES[game].statuses : TIER_LABEL)[t - 1];
 
 function flag(cc) {
   if (!cc || cc.length !== 2) return "🏳️";
@@ -56,6 +58,7 @@ function genHandle() {
 function tierPrize(game, tier) { return Math.round(GAMES[game].prize * TIER_PRIZE[tier - 1]); }
 function tierEntry(game, tier) { return Math.round(GAMES[game].prize * [0.3, 0.04, 0.004][tier - 1] / 1000) * 1000; }
 function tierName(game, tier) { return GAMES[game].tiers[tier - 1]; }
+function leagueName(L) { return GAMES[L.game].open ? GAMES[L.game].circuit : tierName(L.game, L.tier); }
 
 // ---------- joueurs ----------
 function playerValue(p) {
@@ -207,7 +210,8 @@ function newWorld(opts) {
       byTier[tier - 1].push(c.id);
     }
     for (let t = 1; t <= 3; t++) {
-      const L = S.leagues[lkey(game, t)] = { key: lkey(game, t), game, tier: t, teams: byTier[t - 1], schedule: [], table: {}, results: [], playoffs: null, champion: null };
+      if (GAMES[game].open && t > 1) break;
+      const L = S.leagues[lkey(game, t)] = { key: lkey(game, t), game, tier: t, teams: GAMES[game].open ? byTier.flat() : byTier[t - 1], schedule: [], table: {}, results: [], playoffs: null, champion: null };
       while (L.teams.length < LEAGUE_SIZE) L.teams.push(fillerClub(game, t).id);
     }
   }
@@ -242,7 +246,7 @@ function newWorld(opts) {
   const u = user();
   mail("Bienvenue, " + S.ceo + " !",
     opts.mode === "create"
-      ? `Vous venez de fonder <b>${u.name}</b> avec ${money(u.budget)} en poche. Votre club démarre en <b>${TIER_LABEL[2]}</b> du ${GAMES[opts.firstGame].name} (${tierName(opts.firstGame, 3)}).<br>
+      ? `Vous venez de fonder <b>${u.name}</b> avec ${money(u.budget)} en poche. Votre club démarre en <b>${tierLabel(opts.firstGame, 3)}</b> du ${GAMES[opts.firstGame].name} (${GAMES[opts.firstGame].open ? GAMES[opts.firstGame].circuit : tierName(opts.firstGame, 3)}).<br>
          Recrutez au <b>Mercato</b> (filtre « agents libres »), terminez dans les 2 premiers pour monter en tier 2, puis visez le tier 1.`
       : `Vous êtes le nouveau CEO de <b>${u.name}</b>. Objectif du conseil : <b>${objectiveText()}</b>.<br>Les supporters vous attendent au tournant !`, "info");
   save();
@@ -290,10 +294,16 @@ function pickObjective(first) {
   if (t === 2) return { type: u.fame >= 50 ? "final" : "top4", tier: 2 };
   return { type: "top4", tier: 3 };
 }
+// rang à atteindre dans un circuit ouvert pour obtenir le statut t (1 = Élite : top 20, 2 = Pro : top 80)
+function statusCut(game, t) { const [a, b] = GAMES[game].tierSizes; return t === 1 ? a : a + b; }
 function objectiveText(o = S.board.objective) {
   if (!o) return "";
-  const where = `d'un circuit ${TIER_LABEL[o.tier - 1]}${o.tier > 1 ? " ou mieux" : ""}`;
-  return { title: `remporter le titre ${where}`, final: `atteindre la finale ${where}`, top4: `se qualifier pour les playoffs ${where}`,
+  const u = S.userId && user(), onlyOpen = u && Object.keys(u.divisions).length && Object.keys(u.divisions).every(g => GAMES[g].open);
+  const where = onlyOpen ? `d'un circuit avec le statut ${tierLabel(Object.keys(u.divisions)[0], o.tier)}${o.tier > 1 ? " ou mieux" : ""}`
+    : `d'un circuit ${TIER_LABEL[o.tier - 1]}${o.tier > 1 ? " ou mieux" : ""}`;
+  const open = u ? Object.entries(u.divisions).filter(([g, d]) => GAMES[g].open && d.tier > 1 && d.tier <= o.tier) : [];
+  const extra = (o.type === "top4" || o.type === "final") && open.length ? ` (${open.map(([g, d]) => `${GAMES[g].name} : finir dans le top ${statusCut(g, d.tier - 1)} du circuit pour le statut ${tierLabel(g, d.tier - 1)}`).join(", ")})` : "";
+  return { title: `remporter le titre ${where}`, final: `atteindre la finale ${where}${extra}`, top4: `se qualifier pour les playoffs ${where}${extra}`,
     budget: "terminer la saison avec un budget positif et une équipe complète" }[o.type];
 }
 function standings(key) {
@@ -309,6 +319,7 @@ function userLeagues() { const u = user(); return Object.entries(u.divisions).ma
 function canJoin(game, tier) {
   const u = user();
   if (u.divisions[game]) return "Division déjà ouverte.";
+  if (GAMES[game].open && tier < 3) return `${GAMES[game].name} est un circuit ouvert : tout le monde y entre en statut ${tierLabel(game, 3)}, le statut ${tierLabel(game, tier)} se gagne au classement.`;
   if (u.fame < TIER_FAME_REQ[tier - 1]) return `Notoriété ${TIER_FAME_REQ[tier - 1]} requise pour acheter une place en ${TIER_LABEL[tier - 1]}.`;
   if (u.budget < tierEntry(game, tier)) return "Budget insuffisant.";
   return null;
@@ -318,7 +329,7 @@ function openDivision(game, tier) {
   const fee = tierEntry(game, tier);
   user().budget -= fee;
   const late = joinLeague(game, tier);
-  mail(`Nouvelle division : ${GAMES[game].name}`, `Votre club rejoint le <b>${tierName(game, tier)}</b> (${TIER_LABEL[tier - 1]}) pour ${money(fee)}. Il vous faut ${GAMES[game].size} joueur(s) titulaire(s).${late ? "<br>Le calendrier étant déjà fixé, vos matchs commenceront la saison prochaine." : ""}`, "info");
+  mail(`Nouvelle division : ${GAMES[game].name}`, `Votre club rejoint le <b>${GAMES[game].open ? GAMES[game].circuit : tierName(game, tier)}</b> (${tierLabel(game, tier)}) pour ${money(fee)}. Il vous faut ${GAMES[game].size} joueur(s) titulaire(s).${late ? "<br>Le calendrier étant déjà fixé, vos matchs commenceront la saison prochaine." : ""}`, "info");
   return null;
 }
 // place le club du joueur dans un circuit, en prenant si possible la place d'un club fictif
@@ -841,11 +852,11 @@ function advanceWeek() {
   return report;
 }
 function crown(L, winner, runnerUp, detail) {
-  const champ = S.clubs[winner], label = `${tierName(L.game, L.tier)} ${S.season}`;
+  const champ = S.clubs[winner], label = `${leagueName(L)} ${S.season}`;
   champ.fame = clamp(champ.fame + [5, 2.5, 1][L.tier - 1], 0, 100); champ.fans = Math.round(champ.fans * [1.08, 1.05, 1.03][L.tier - 1]);
   champ.titles.push(label);
   S.titles.push({ season: S.season, game: L.game, tier: L.tier, club: champ.solo ? soloName(champ, L.game) : champ.name, clubId: champ.id });
-  if (winner === S.userId) mail(`🏆 CHAMPIONS ! ${label}`, `${user().name} remporte le <b>${label}</b> (${TIER_LABEL[L.tier - 1]}) face à ${S.clubs[runnerUp] ? S.clubs[runnerUp].name : "?"} — ${detail}.`, "trophy");
+  if (winner === S.userId) mail(`🏆 CHAMPIONS ! ${label}`, `${user().name} remporte le <b>${label}</b> (${tierLabel(L.game, L.tier)}) face à ${S.clubs[runnerUp] ? S.clubs[runnerUp].name : "?"} — ${detail}.`, "trophy");
 }
 // ---------- tournois à cashprize ----------
 const EWC_LAST_WEEK = 10;
@@ -905,7 +916,8 @@ const CLUB_SHARE = 0.5;
 const PLACE_SHARE = [0.35, 0.18, 0.09, 0.09, 0.045, 0.045, 0.045, 0.045, 0.0125, 0.0125, 0.0125, 0.0125, 0.0125, 0.0125, 0.0125, 0.0125];
 const ROUND_NAME = { 2: "Finale", 4: "Demi-finale", 8: "Quart de finale", 16: "Huitième de finale" };
 function tournamentPool(game, tiers) {
-  return [...tiers].flatMap(t => S.leagues[lkey(game, +t)].teams).filter(id => S.clubs[id] && divOf(id, game));
+  const ids = GAMES[game].open ? S.leagues[lkey(game, 1)].teams : [...tiers].flatMap(t => S.leagues[lkey(game, +t)].teams);
+  return ids.filter(id => S.clubs[id] && divOf(id, game) && tiers.includes(String(S.clubs[id].divisions[game].tier)));
 }
 // le club du joueur participe-t-il ? (open : dès qu'il est dans un tier admis ; invitation : s'il fait partie des mieux classés)
 function tournamentField(game, tiers, size) {
@@ -987,11 +999,15 @@ function endSeason() {
     const top4 = pos > 0 && pos <= (br ? 8 : 4);
     if (champ) titles++;
     if (top4) playoffs = true;
-    lines.push(`${GAMES[L.game].icon} ${GAMES[L.game].short} ${TIER_LABEL[L.tier - 1]} : <b>${pos ? pos + "e" : "-"}</b>${champ ? " 🏆" : ""}`);
-    if (L.tier <= o.tier) {
+    // circuit ouvert : c'est le statut du club (Élite, Pro, Open) qui compte, et l'objectif est de gagner le statut supérieur
+    const open = GAMES[L.game].open, lt = open ? u.divisions[L.game].tier : L.tier;
+    lines.push(`${GAMES[L.game].icon} ${GAMES[L.game].short} ${open ? "circuit (statut " + tierLabel(L.game, lt) + ")" : TIER_LABEL[L.tier - 1]} : <b>${pos ? pos + "e" : "-"}</b>${champ ? " 🏆" : ""}`);
+    if (lt <= o.tier) {
       if (o.type === "title" && champ) ok = true;
-      if (o.type === "final" && final) ok = true;
-      if (o.type === "top4" && top4) ok = true;
+      // en statut Pro ou Open, « playoffs » et « finale » veulent dire : gagner le statut supérieur
+      const upgrade = open && lt > 1 && pos > 0 && pos <= statusCut(L.game, lt - 1);
+      if (o.type === "final" && (open && lt > 1 ? upgrade : final)) ok = true;
+      if (o.type === "top4" && (open && lt > 1 ? upgrade : top4)) ok = true;
     }
   }
   if (o.type === "budget") ok = u.budget > 0 && userLeagues().some(L => clubPlayers(u.id, L.game).length >= GAMES[L.game].size);
@@ -1000,6 +1016,17 @@ function endSeason() {
   // montées et descentes : 2 clubs par tier
   const moves = [];
   for (const game of Object.keys(GAMES)) {
+    if (GAMES[game].open) {
+      // circuit ouvert : le statut de chaque club suit son classement de la saison
+      const [a, b] = GAMES[game].tierSizes;
+      finalOrder(S.leagues[lkey(game, 1)]).forEach((id, i) => {
+        const d = S.clubs[id] && S.clubs[id].divisions[game]; if (!d) return;
+        const nt = i < a ? 1 : i < a + b ? 2 : 3;
+        if (id === u.id && nt !== d.tier) moves.push(`${nt < d.tier ? "⬆️" : "⬇️"} ${GAMES[game].short} : ${i + 1}e du circuit, statut ${tierLabel(game, nt)}${nt < d.tier ? " !" : ""}`);
+        d.tier = nt;
+      });
+      continue;
+    }
     for (let t = 1; t <= 2; t++) {
       const up = S.leagues[lkey(game, t)], low = S.leagues[lkey(game, t + 1)];
       const down = finalOrder(up).slice(-2), promo = finalOrder(low).slice(0, 2);
