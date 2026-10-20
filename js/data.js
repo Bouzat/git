@@ -242,33 +242,31 @@ const ROSTERS = {
 // (signalés « joueurs inventés » dans la fiche du club). Sources : pages Wikipedia/Liquipedia des organisations,
 // classement du Club Championship EWC 2026.
 const EXTRA_DIVS = {
-  falcons:  ["apex", "fc", "mlbb", "ow", "pubg", "r6", "val", "ff", "cf", "fn", "chess", "hok", "pubgm", "wz"],
+  falcons:  ["apex", "fc", "mlbb", "ow", "pubg", "r6", "ff", "cf", "chess", "hok", "pubgm", "wz"],
   vitality: ["mlbb", "hok", "ff", "pubgm"],
   liquid:   ["cs2", "r6", "apex", "rl"],
   kc:       ["tft", "trackmania"],
-  g2:       ["rl", "fn"],
+  g2:       ["rl"],
   navi:     ["val", "pubg", "r6"],
   aurora:   ["mlbb", "pubgm"],
   vp:       ["dota", "pubg", "cs2"],
   tm:       ["rl", "val", "pubgm", "ff"],
   wbg:      ["lol", "ow", "val"],
   al:       ["hok", "val"],
-  furia:    ["r6", "val", "fn"],
+  furia: ["r6", "val"],
   loud:     ["ff", "lol"],
-  m8:       ["rl", "lol", "fn"],
+  m8: ["rl", "lol"],
   bds:      ["rl", "r6"],
-  nrg:      ["apex", "fn"],
+  nrg: ["apex"],
   geng:     ["pubg", "pubgm"],
-  t1:       ["fn", "ow", "tk8"],
+  t1:       ["ow", "tk8"],
   spirit:   ["mlbb"],
   parivision: ["pubgm"],
   zeta:     ["val", "ow", "sf6"],
-  heretics: ["fn", "r6"],
-  fnatic:   ["r6", "fn"],
-  mouz:     ["fn"],
-  faze:     ["fn", "pubgm"],
-  "100t":   ["fn"],
-  sentinels:["apex", "fn"],
+  heretics: ["r6"],
+  fnatic: ["r6"],
+  faze: ["pubgm"],
+  sentinels: ["apex"],
 };
 
 // Duo Fortnite : D(note, [pseudo, pays, âge?], [pseudo, pays, âge?], org optionnelle)
@@ -307,7 +305,7 @@ const SOLOS = {
   // classés d'après leurs résultats. Pays inconnu = "" ; âge 0 = tiré au hasard.
   fn: [
     // ---- Europe ----
-    D(94, ["SwizzY",""], ["Pixie",""]), D(93, ["Shxrk","RO",15], ["t3eny",""]), D(92, ["Sky",""], ["Scroll",""]),
+    D(94, ["SwizzY",""], ["Pixie",""], "vitality"), D(93, ["Shxrk","RO",15], ["t3eny",""], "aurora"), D(92, ["Sky",""], ["Scroll",""]),
     D(92, ["vic0","FR"], ["Malibuca","RU"], "big"), D(89, ["Tjino",""], ["PabloWingu",""]), D(88, ["Charyy",""], ["Kami","PL",21]),
     D(88, ["FoCuS",""], ["Th0masHD","DK",24]), D(87, ["Cr1nge",""], ["Twi",""]), D(86, ["IDrop",""], ["Ghonzo",""]),
     D(86, ["Darm",""], ["Demus",""]), D(85, ["Velo",""], ["Zynox",""]), D(85, ["Chap",""], ["Flickzy",""]),
