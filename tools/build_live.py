@@ -91,6 +91,134 @@ if os.path.exists(vlr):
     keep = sorted(keep[:max(48, sum(1 for t in teams if t[3]))], key=lambda x: -x[0])
     rosters["val"] = [[org, ps, 1] for _, org, ps, _ in keep]
 
+# ---------- Valorant : Google Sheet de l'utilisateur (portails joueurs et effectifs Liquipedia) ----------
+# Pays des joueurs, nouvelles équipes (Challengers, académies, universités) et vrais joueurs sans équipe (agents libres).
+# Les 48 équipes VLR (octobre 2026) gardent leur effectif. Le circuit féminin (Game Changers) n'existe pas dans le jeu : ignoré.
+free_agents = {}
+VDIR = os.path.join(ROOT, "tools/sources/valorant")
+if os.path.isdir(VDIR) and "val" in rosters:
+    ISO = {"Argentina": "AR", "Canada": "CA", "Chile": "CL", "Colombia": "CO", "Costa Rica": "CR", "Cuba": "CU", "Dominican Republic": "DO",
+           "Ecuador": "EC", "El Salvador": "SV", "Guatemala": "GT", "Honduras": "HN", "Mexico": "MX", "Panama": "PA", "Paraguay": "PY", "Peru": "PE",
+           "Puerto Rico": "PR", "United States": "US", "Uruguay": "UY", "Venezuela": "VE", "Belarus": "BY", "Kazakhstan": "KZ", "Kyrgyzstan": "KG",
+           "Russia": "RU", "Ukraine": "UA", "Uzbekistan": "UZ", "Autriche": "AT", "Belgique": "BE", "Bulgarie": "BG", "Tchéquie": "CZ", "Danemark": "DK",
+           "Estonia": "EE", "Finlande": "FI", "France": "FR", "Allemagne": "DE", "Islande": "IS", "Irlande": "IE", "Italie": "IT", "Lettonie": "LV",
+           "Lituanie": "LT", "Moldova": "MD", "Pays-Bas": "NL", "Norvège": "NO", "Pologne": "PL", "Portugal": "PT", "Roumanie": "RO", "Écosse": "GB",
+           "Serbie": "RS", "Slovaquie": "SK", "Slovenia": "SI", "Espagne": "ES", "Suède": "SE", "Suisse": "CH", "Turquie": "TR"}
+    GC_TEAMS = {norm(t) for t in """KRÜ Blaze|Shopify Rebellion Gold|SEN Otters|FlyQuest RED|G2 Gozen|Twisted Orchid|No Sweat Blossom|Six Karma Femenil|
+        NOVO Nightingale|FOKUS Sakura|Bitfix Zero|Bitfix Puppies|SK Nebula|DVM Miss|Melilla Titans Aura|RIZON Sugar|TOG Inari|PCS Aphrodite|
+        WLG Female Stars|ALTERNATE aTTaX Ruby|Akave Esports Black""".split("|")}
+    is_gc = lambda t: norm(t) in GC_TEAMS or bool(re.search(r"\bGC$", t.strip()))
+    COLLEGE = re.compile(r"universit|college|rutgers|northwood|cumberland|maryville|winthrop|osu varsity|virginia tech|tu dublin|ucam", re.I)
+    # entrées : (pseudo, pays, équipe, source)
+    entries = []
+    # portail Amériques : bloc par pays
+    cc = None
+    for r in csv.reader(open(os.path.join(VDIR, "players_americas.csv"), encoding="utf-8")):
+        r = (r + [""] * 4)[:4]
+        if r[0] in ISO and not r[1]: cc = ISO[r[0]]; continue
+        if r[0] in ("Players", "ID", "Staff & Talents") or r[0].startswith("Player Portal") or not r[0] or not cc: continue
+        entries.append((r[0].strip(), cc, r[2].strip(), "portal"))
+    # portails CIS et Europe : « Nom réel Équipe » dans la même colonne -> équipe reconnue par suffixe
+    known_teams = set()
+    for fn_ in ("rosters_europe.csv", "rosters_north_america.csv"):
+        for r in csv.reader(open(os.path.join(VDIR, fn_), encoding="utf-8")):
+            t = r[1] if fn_.endswith("america.csv") else r[0]
+            if t and t not in ("Équipe", "Région", "ID"): known_teams.add(t.strip())
+    known_teams |= {e[2] for e in entries if e[2]} | {v[0] for v in {**ORGS, **live_orgs}.values()}
+    known_teams |= set("""AlQadsiah Esports|Colors Esport|S8UL Esports|FORWARD|All Gamers|team hz|VOLT|Weibo Gaming|Stallions Esports|Young Talents|
+        Gamax Esports|BAO eSPORTS|Oxuji|MANIA Esports|RAFHA eSPORTS|KeepBest Gaming|Skulls Esports|B8 Esports|Playing Ducks|BAAM Esports|Elite Klan|
+        eSuba|WATEr|AaB Esport Denmark|HAVU|SAVU|HL Tauri Esports|Esprit Shōnen|ToDoBew|Metro Esports|Valkyriant|Exalty|Caldya Esport|Ghools Esports|
+        WIP Esports|Vestige|Erah Esport|EvozA Esport|Luminary Esport|PULSAR OLDSTARS|DNSTY|Nuxeria Esport|Pingou Esport|Poyo Esports|Al Ahli Esports|
+        ALTERNATE aTTaX|Aspire Esports|Big Blue Charizard|eSports Cologne|MOLO|5HEAD|Glacial Guardians|TRUMPS|GamerZ Esports|AKA HERO|TeamOrangeGaming|
+        Veni eSports|Ovation eSports|AIGHT|GnG Amazigh|Parma Esports|Ingenious Esports|Elevate|NEON BLADE|Kahoot|FRG|BLX UTD|Royal Legion|Brødreskift|
+        Incognito GC|Fordon Boars|Chosen Clique Gaming|Dead Rabbits|ACE eSports|Diamant Esports|Fractious Esports|ZETA Gaming|DimoniX Esports|
+        PAWN GAMING|VexOficial|Thunder Gaming|Otakar Esports|Newstar|PURE Esports|Royal Legion Academy|VosFacto Esports|Trigon Titans|
+        Team Demiral Esports|İstanbul Wildcats|TOA Esports|Beşiktaş Esports|Galatasaray Esports|Misa Esports|JFT Esports|Fire Flux Esports|
+        Nova Esports|Paper Rex|Rex Regum Qeon|XLG Esports|Dragon Ranger Gaming|Formulation Gaming|Lost Puppies GC|ZennIT Orange GC""".replace("\n", "").split("|"))
+    known_teams = sorted({t.strip() for t in known_teams if t.strip()}, key=len, reverse=True)
+    for fn_ in ("players_cis.csv", "players_europe.csv"):
+        for r in csv.DictReader(open(os.path.join(VDIR, fn_), encoding="utf-8")):
+            if r["Game Changers"].startswith("Oui"): continue
+            txt = r["Nom Réel & Équipe"].strip()
+            team = next((t for t in known_teams if txt == t or txt.endswith(" " + t)), "")
+            entries.append((r["ID"].strip(), ISO.get(r["Pays"], ""), team, "portal"))
+    # effectifs par équipe : Europe (catégorie VCT / Challengers / GC, puis blocs turcs) et Amérique du Nord
+    # les blocs « Équipe / ID,Real name,Role » n'existent qu'après la ligne vide (équipes turques)
+    roster_rows, block, blocks = [], None, False
+    for r in csv.reader(open(os.path.join(VDIR, "rosters_europe.csv"), encoding="utf-8")):
+        r = (r + [""] * 5)[:5]
+        if r[0] == "Équipe": continue
+        if not any(x.strip() for x in r): blocks = True; continue
+        if not blocks:
+            if r[0] and r[1]: roster_rows.append((r[1].strip(), r[0].strip(), r[4], r[3]))
+            continue
+        if r[0] == "ID": continue
+        if r[0] and not r[1] and not r[2]: block = r[0].strip(); continue
+        if block and r[0]: roster_rows.append((r[0].strip(), block, "Challengers", r[2]))
+    for r in csv.DictReader(open(os.path.join(VDIR, "rosters_north_america.csv"), encoding="utf-8")):
+        if r["ID"]: roster_rows.append((r["ID"].strip(), r["Équipe"].strip(), "NA", r["Rôle"]))
+    # pays connus par pseudo (+ équipe pour départager les homonymes)
+    cc_of = {}
+    for h, c, t, _ in entries:
+        if c: cc_of.setdefault(norm(h), []).append((c, norm(t)))
+    def country(h, team=""):
+        l = cc_of.get(norm(h), [])
+        if not l: return ""
+        m = [c for c, t in l if t and t == norm(team)]
+        return m[0] if m else (l[0][0] if len(l) == 1 else "")
+    # 1) pays des joueurs des équipes VLR quand il manque
+    used, fixed = set(), 0
+    for org, ps, *_ in rosters["val"]:
+        oname = ({**ORGS, **live_orgs}.get(org) or [org])[0]
+        for p in ps:
+            used.add(norm(p[0]))
+            if not p[1]:
+                c = country(p[0], oname)
+                if c: p[1] = c; fixed += 1
+    vlr_org_names = {norm(({**ORGS, **live_orgs}.get(org) or [org])[0]) for org, *_ in rosters["val"]}
+    # 2) nouvelles équipes : effectifs détaillés d'abord, puis équipes citées dans les portails ; les universités en dernier
+    teams_ = {}
+    for h, t, cat, role in roster_rows:
+        if t and not is_gc(t) and "Game Changers" not in cat: teams_.setdefault(t, {"src": cat, "ps": []})["ps"].append(h)
+    for h, c, t, _ in entries:
+        if t and not is_gc(t): teams_.setdefault(t, {"src": "portal", "ps": []})["ps"].append(h)
+    order = sorted(teams_, key=lambda t: (bool(COLLEGE.search(t)), teams_[t]["src"] == "portal"))
+    new_teams, skipped = [], 0
+    for t in order:
+        if norm(t) in vlr_org_names or org_for(t) in {o for o, *_ in rosters["val"]}: continue   # équipe déjà connue (VLR)
+        hs = []
+        for h in teams_[t]["ps"]:
+            if norm(h) not in used and norm(h) not in {norm(x) for x in hs}: hs.append(h)
+        if len(hs) < 2: continue
+        nt = norm(t)
+        base = 80 if nt in VAL_CHAMPIONS or nt in VAL_PARTNERS or nt in {"natusvincere", "kruesports"} else \
+               63 if COLLEGE.search(t) else 68 if re.search(r"academy|junior|spark", t, re.I) else 71 if teams_[t]["src"] != "portal" else 67
+        ps = []
+        for h in hs[:7]:
+            used.add(norm(h))
+            r = known_rating.get(("val", norm(h))) or base + (zlib.crc32(h.encode()) % 7) - 3
+            ps.append([h, country(h, t), r, age_of("val", h)])
+        org = org_for(t)
+        if not org:
+            org = "v_" + norm(t)[:20]
+            ccs = [p[1] for p in ps if p[1]]
+            occ = max(set(ccs), key=ccs.count) if ccs else ("US" if teams_[t]["src"] == "NA" else "FR")
+            live_orgs.setdefault(org, [t, make_tag(t), occ, hcolor(t), int(max(8, min(40, (base - 58) * 2.5)))])
+        new_teams.append([org, ps, 1])
+    rosters["val"] += new_teams
+    # le jeu répartit les équipes en tiers dans l'ordre de la liste : on trie par niveau du cinq de départ
+    rosters["val"].sort(key=lambda t: -sum(sorted((p[2] for p in t[1]), reverse=True)[:5]) / max(1, min(5, len(t[1]))))
+    # 3) vrais joueurs sans équipe (ou d'une équipe trop peu renseignée) : agents libres
+    fa, seen_fa = [], set()
+    for h, c, t, _ in entries:
+        n = norm(h)
+        if n in used or n in seen_fa or (t and is_gc(t)): continue
+        seen_fa.add(n)
+        fa.append([h, c, 58 + zlib.crc32(h.encode()) % 11, age_of("val", h)])
+    free_agents["val"] = fa
+    print("Valorant (sheet) : %d pays complétés, %d nouvelles équipes (%d joueurs), %d agents libres réels"
+          % (fixed, len(new_teams), sum(len(t[1]) for t in new_teams), len(fa)), file=sys.stderr)
+
 # ---------- Fortnite (esportsearnings : nationalité, âge, duos du Major 1 2026) ----------
 solos = {}
 eef = os.path.join(SRC, "ee_fortnite.json")
@@ -266,7 +394,7 @@ print("ages corrigés :", len(age_fix), file=sys.stderr)
 # Calendrier d'une saison : l'édition la plus récente (2025 ou 2026) de chaque compétition. Historique : vainqueurs 2021-2025.
 import csv, datetime, re as _re
 live_tours, live_history = {}, {}
-val_csv = os.path.join(ROOT, "tools/sources/valorant_tournois.csv")
+val_csv = os.path.join(ROOT, "tools/sources/valorant/tournois.csv")
 if os.path.exists(val_csv):
     MONTHS = {m: i + 1 for i, m in enumerate("Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split())}
     def mid_doy(txt, year):
@@ -356,6 +484,8 @@ with open(OUT, "w", encoding="utf-8") as f:
     f.write("// calendrier réel des tournois [nom, semaine, dotation €, tiers admis, places, régions] et palmarès réel [année, tournoi, vainqueur, finaliste, dotation €, tier S/A]\n")
     f.write("const LIVE_TOURNAMENTS = " + json.dumps(live_tours, ensure_ascii=False) + ";\n")
     f.write("const LIVE_HISTORY = " + json.dumps(live_history, ensure_ascii=False) + ";\n")
+    f.write("// vrais joueurs sans équipe, ajoutés comme agents libres : jeu -> [pseudo, pays, note, âge]\n")
+    f.write("const LIVE_FREE_AGENTS = " + json.dumps(free_agents, ensure_ascii=False) + ";\n")
     f.write("""Object.assign(TOURNAMENTS, LIVE_TOURNAMENTS);
 Object.assign(ORGS, LIVE_ORGS);
 for (const [g, l] of Object.entries(LIVE_ROSTERS)) ROSTERS[g] = l;

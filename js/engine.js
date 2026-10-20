@@ -317,7 +317,12 @@ function newWorld(opts) {
   }
   // effectifs incomplets (joueur parti, info manquante) : on complète
   for (const c of Object.values(S.clubs)) for (const game of Object.keys(c.divisions)) aiFillRoster(c.id, game);
-  // agents libres : uniquement des joueurs générés (les pros réels ont tous une équipe)
+  // vrais joueurs sans équipe (sources Liquipedia) : agents libres
+  for (const [game, list] of Object.entries(typeof LIVE_FREE_AGENTS !== "undefined" ? LIVE_FREE_AGENTS : {})) {
+    if (!GAMES[game]) continue;
+    list.forEach(([h, nat, r, a], i) => { const p = makePlayer(h, nat, r, a, game, i, null); p.years = 0; p.club = null; p.starter = false; addPlayer(p); });
+  }
+  // agents libres générés
   for (const game of Object.keys(GAMES)) {
     const n = GAMES[game].size * 14 + 8;
     for (let i = 0; i < n; i++) {

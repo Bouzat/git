@@ -15,7 +15,7 @@ const GAMES = {
           tiers: ["LoL Elite (LCK · LPL · LEC · LTA)", "Ligues régionales (LFL · Prime League · LCK CL · ERL)", "Open Tour (scène amateur)"] },
   cs2:  { name: "Counter-Strike 2",  short: "CS2",  icon: "🔫", fmt: "team", size: 5, roles: ["IGL", "AWP", "Entry", "Rifler", "Lurker"], prize: 2500000, mult: 1.0, color: "#de9b35", rounds: 13,
           tiers: ["Circuit Majors (BLAST · IEM · ESL Pro League)", "ESL Challenger · CCT · European Pro League", "ESEA Open · FACEIT Cups"] },
-  val:  { name: "Valorant",          short: "VAL",  icon: "🎯", fmt: "team", size: 5, roles: ["Duelliste", "Initiateur", "Contrôleur", "Sentinelle", "Flex"], prize: 2000000, mult: 0.9, color: "#ff4655", rounds: 13,
+  val:  { name: "Valorant",          short: "VAL",  icon: "🎯", fmt: "team", size: 5, tierSizes: [16, 32], roles: ["Duelliste", "Initiateur", "Contrôleur", "Sentinelle", "Flex"], prize: 2000000, mult: 0.9, color: "#ff4655", rounds: 13,
           tiers: ["VCT International (EMEA · Pacific · Americas · China)", "VCT Challengers", "Premier · Open Cups"] },
   dota: { name: "Dota 2",            short: "DOTA", icon: "🛡️", fmt: "team", size: 5, roles: ["Carry", "Mid", "Offlane", "Soft Sup", "Hard Sup"], prize: 3000000, mult: 0.9, color: "#a72714",
           tiers: ["The International · Riyadh Masters · PGL", "DreamLeague Division 2 · CCT Dota", "Open Qualifiers"] },
