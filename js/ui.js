@@ -438,7 +438,7 @@ function viewCalendar() {
 }
 
 // ---------- tournois ----------
-const accessLabel = t => ({ "1": "Invitation (tier 1)", "12": "Tiers 1 et 2", "2": "Tier 2", "23": "Open (tiers 2-3)", "3": "Open (tier 3)", "123": "Meilleurs de la région" }[t] || t);
+const accessLabel = t => ({ "1": "Invitation (tier 1)", "12": "Tiers 1 et 2", "2": "Tier 2", "23": "Open (tiers 2-3)", "3": "Open (tier 3)", "123": "Meilleurs de la région", "1230": "Open régional (tous tiers)" }[t] || t);
 function tourStatus(game, name, week) {
   const r = (S.tourResults || []).find(x => x.season === S.season && x.game === game && x.name === name && x.week === week);
   if (!r) return null;

@@ -126,7 +126,10 @@ function seedRealHistory() {
     for (const c of Object.values(S.clubs)) if (c.divisions[game] && c.divisions[game].label) byLabel[normTeam(c.divisions[game].label)] = c.id;
     for (const [year, name, winner] of list.slice().sort((a, b) => a[0] - b[0])) {
       const nw = normTeam(winner);
-      const id = byLabel[nw] || findOrgId(winner) || Object.entries(byLabel).find(([k]) => nw.length > 3 && k.startsWith(nw))?.[1], c = id && S.clubs[id];
+      // « Gentle Mates Alpine », « G2 Stride » : l'organisation dont le nom commence le nom de l'équipe
+      const prefix = () => Object.values(S.clubs).filter(c => c.divisions[game] && !c.solo && !c.filler && normTeam(c.name).length >= 2 && nw.startsWith(normTeam(c.name)))
+        .sort((a, b) => normTeam(b.name).length - normTeam(a.name).length)[0]?.id;
+      const id = byLabel[nw] || findOrgId(winner) || Object.entries(byLabel).find(([k]) => nw.length > 3 && k.startsWith(nw))?.[1] || prefix(), c = id && S.clubs[id];
       if (c) c.titles.push(name);
       S.titles.push({ season: year, game, name, club: c ? (c.divisions[game] && c.divisions[game].label) || c.name : winner, clubId: c ? id : null, real: true });
     }
@@ -1117,7 +1120,8 @@ function awardEwcClubChampionship(report) {
 const CLUB_SHARE = 0.5;
 const PLACE_SHARE = [0.35, 0.18, 0.09, 0.09, 0.045, 0.045, 0.045, 0.045, 0.0125, 0.0125, 0.0125, 0.0125, 0.0125, 0.0125, 0.0125, 0.0125];
 const ROUND_NAME = { 2: "Finale", 4: "Demi-finale", 8: "Quart de finale", 16: "Huitième de finale" };
-// tournoi sur invitation : « 1 » (tier 1 mondial) ou « 123 » (les meilleurs de la région, tous tiers confondus)
+// tournoi sur invitation : « 1 » (tier 1 mondial) ou « 123 » (les meilleurs de la région, tous tiers confondus).
+// « 1230 » : open de toute une région (Opens RLCS) : tous les tiers, les meilleurs qualifiés, mais le club du joueur peut s'inscrire
 const invitational = tiers => tiers === "1" || tiers === "123";
 // tournoi régional (ex. « EU|MENA ») : seules les équipes inscrites dans ces régions y participent
 // CN = équipes chinoises, PAC = Asie-Pacifique hors Chine (les ligues VCT les séparent)
@@ -1128,7 +1132,7 @@ function inRegion(clubId, game, region) {
 }
 const REGION_LABEL = r => r ? r.split("|").map(x => ({ CN: "Chine", PAC: "Pacifique" })[x] || REGIONS[x]).join(" / ") : "Monde";
 function tournamentPool(game, tiers, region) {
-  const ids = GAMES[game].open ? S.leagues[lkey(game, 1)].teams : [...tiers].flatMap(t => S.leagues[lkey(game, +t)].teams);
+  const ids = GAMES[game].open ? S.leagues[lkey(game, 1)].teams : [...new Set([...tiers].filter(t => t >= "1" && t <= "3"))].flatMap(t => S.leagues[lkey(game, +t)].teams);
   return ids.filter(id => S.clubs[id] && divOf(id, game) && tiers.includes(String(S.clubs[id].divisions[game].tier)) && inRegion(id, game, region));
 }
 // le club du joueur participe-t-il ? (open : dès qu'il est dans un tier admis ; invitation : s'il fait partie des mieux classés)

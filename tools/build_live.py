@@ -7,7 +7,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # données actuelles du jeu (orgs, notes connues des joueurs)
 cur = json.loads(subprocess.run(["node", "-e", f"""
-const fs=require('fs');eval(fs.readFileSync({json.dumps(os.path.join(ROOT, 'js/data.js'))},'utf8')+';global.X={{ORGS,ROSTERS,SOLOS}}');
+const fs=require('fs');eval(fs.readFileSync({json.dumps(os.path.join(ROOT, 'js/data.js'))},'utf8')+';global.X={{ORGS,ROSTERS,SOLOS,REGION_OF}}');
 console.log(JSON.stringify(X))"""], capture_output=True, text=True, check=True).stdout)
 ORGS = cur["ORGS"]
 
@@ -293,6 +293,9 @@ STAFF_ROLES = re.compile(r"coach|manager|analyst|staff", re.I)
 NOT_PLAYERS = {"gotaga", "brawks", "squeezie", "kameto", "ibai", "psyonixcory", "psyonixian", "psyonixschuyler", "gumerprod"}
 COLLEGE_RE = re.compile(r"universit|college|\bstate\b|institute|\bUCF\b|\bTUD\b|\bDCU\b|\bSETU\b|\bUEA\b|\bUoB\b|\bVUB\b|\bPXL\b|Roehampton|"
                         r"Loughborough|Keele|Exeter|Salford|Warwick|Portsmouth|Bournemouth|Erasmus|Lackawanna|Penn State|Academics", re.I)
+FILE_REGION = {"Europe": "EU", "North America": "NA", "South America": "SA", "Oceania": "OCE", "Asia-Pacific": "ASIA", "Middle East and North Africa": "MENA"}
+REGION_DEFAULT_CC = {"EU": "FR", "NA": "US", "SA": "BR", "OCE": "AU", "ASIA": "SG", "MENA": "SA"}
+region_of_cc = lambda cc: cur["REGION_OF"].get(cc, "EU")
 def sheet_game(game, folder, size, top_names, keep_existing):
     """Équipes (nouvelles ou complétées), pays et agents libres réels d'un jeu à partir des fichiers de l'utilisateur."""
     entries, team_rows = [], []
@@ -305,13 +308,13 @@ def sheet_game(game, folder, size, top_names, keep_existing):
                 if r[0] in COUNTRY_ISO and not any(r[1:]): cc = COUNTRY_ISO[r[0]]; continue
                 if r[0] in ("Players", "ID", "Staff & Talents") or r[0].startswith("Player Portal") or not r[0].strip() or not cc: continue
                 entries.append((r[0].strip(), cc, r[2].strip()))
-        else:                                                               # blocs par équipe
-            team = None
+        else:                                                               # blocs par équipe (1re ligne : la région)
+            team, freg = None, FILE_REGION.get(lines[0][0].strip(), "") if lines else ""
             for i, r in enumerate(lines):
                 r = (r + [""] * 3)[:3]
                 if r[0] == "ID": continue
                 if i + 1 < len(lines) and lines[i + 1][:1] == ["ID"]: team = r[0].strip(); continue
-                if team and r[0].strip() and not STAFF_ROLES.search(r[2]): team_rows.append((r[0].strip(), team, r[2].strip()))
+                if team and r[0].strip() and not STAFF_ROLES.search(r[2]): team_rows.append((r[0].strip(), team, r[2].strip(), freg))
     cc_of = {}
     for h, c, t in entries: cc_of.setdefault(norm(h), []).append((c, norm(t)))
     def country(h, team=""):
@@ -322,7 +325,7 @@ def sheet_game(game, folder, size, top_names, keep_existing):
     by_org = {x[0]: x for x in existing}
     used = {norm(p[0]) for x in existing if x[2] for p in x[1]}            # effectifs vérifiés : intouchables
     teams = {}
-    for h, t, role in team_rows: teams.setdefault(t, {"src": "teams", "ps": []})["ps"].append(h)
+    for h, t, role, reg in team_rows: teams.setdefault(t, {"src": "teams", "ps": [], "reg": reg})["ps"].append(h)
     for h, c, t in entries:
         if t and t.lower() not in ("retired", "1"): teams.setdefault(t, {"src": "portal", "ps": []})["ps"].append(h)
     order = sorted(teams, key=lambda t: (bool(COLLEGE_RE.search(t)), teams[t]["src"] == "portal"))
@@ -333,6 +336,9 @@ def sheet_game(game, folder, size, top_names, keep_existing):
             if norm(h) not in used and norm(h) not in NOT_PLAYERS and norm(h) not in {norm(x) for x in hs}: hs.append(h)
         if len(hs) < 2: continue
         org = org_for(t)
+        reg = teams[t].get("reg", "")
+        # même nom, autre organisation (Nova Esports en Chine et au Moyen-Orient) : on n'associe pas une équipe à une org d'une autre région
+        if org and org not in by_org and reg and region_of_cc(({**ORGS, **live_orgs}.get(org) or [0, 0, ""])[2]) != reg: org = None
         if org in by_org and (by_org[org][2] or len(hs) < size): continue  # effectif vérifié, ou info trop maigre pour remplacer
         nt = norm(t)
         base = 82 if nt in top_names or org in top_names else 62 if COLLEGE_RE.search(t) else 72 if teams[t]["src"] == "teams" else 67
@@ -346,7 +352,8 @@ def sheet_game(game, folder, size, top_names, keep_existing):
         if not org:
             org = "%s_%s" % (game, nt[:20])
             ccs = [p[1] for p in ps if p[1]]
-            live_orgs.setdefault(org, [t, make_tag(t), max(set(ccs), key=ccs.count) if ccs else "US", hcolor(t), int(max(8, min(45, (base - 58) * 2.2)))])
+            occ = REGION_DEFAULT_CC[reg] if reg and (not ccs or region_of_cc(max(set(ccs), key=ccs.count)) != reg) else (max(set(ccs), key=ccs.count) if ccs else "US")
+            live_orgs.setdefault(org, [t, make_tag(t), occ, hcolor(t), int(max(8, min(45, (base - 58) * 2.2)))])
         new.append([org, ps, 1])
     out = existing + new
     out.sort(key=lambda x: -sum(sorted((p[2] for p in x[1]), reverse=True)[:size]) / max(1, min(size, len(x[1]))))
@@ -622,6 +629,72 @@ if os.path.exists(val_csv):
         doy = mid_doy(gc_latest["date"], gc_latest["year"])
         live_tours["valgc"] = [["VALORANT Game Changers Championship", max(1, min(13, 1 + (doy - 15) // 25)), round(gc_latest["usd"] * 0.92 / 1000) * 1000, "1", min(16, gc_latest["n"])]]
     print("Valorant : %d tournois au calendrier, %d résultats historiques" % (len(cal), len(live_history["val"])), file=sys.stderr)
+
+# ---------- tournois Rocket League (Google Sheet de l'utilisateur, d'après Liquipedia) ----------
+# Calendrier : la saison RLCS 2026 complète (Kick-Off, Majors de Boston et de Paris avec leurs Opens régionaux, EWC, Championnat du monde,
+# CRL, Saudi eLeague, tournois B-Tier) ; il se répète chaque saison (2027, 2028…). Historique : résultats 2024-2025.
+rl_csv = os.path.join(ROOT, "tools/sources/rocketleague_tournois.csv")
+if os.path.exists(rl_csv):
+    MON = {m: i + 1 for i, m in enumerate("jan feb mar apr may jun jul aug sep oct nov dec".split())}
+    def rl_date(txt):
+        # « Sep 15–20, 2026 », « Nov 14 – Dec 06, 2025 », « oct. 22, 2026 » -> (année, jour de l'année au milieu)
+        y = re.search(r"(20\d\d)", txt)
+        parts = re.findall(r"([A-Za-zéû]{3})[a-zéû.]*\s+(\d{1,2})(?:\s*[–-]\s*(\d{1,2}))?", txt)
+        if not y or not parts or parts[0][0].lower()[:3] not in MON: return None, None
+        year = int(y.group(1))
+        m1, d1, d1b = parts[0]
+        start = datetime.date(year, MON[m1.lower()[:3]], int(d1))
+        end = datetime.date(year, MON[parts[1][0].lower()[:3]], int(parts[1][1])) if len(parts) > 1 and parts[1][0].lower()[:3] in MON else datetime.date(year, MON[m1.lower()[:3]], int(d1b or d1))
+        if end < start: end = start
+        return year, (start + (end - start) / 2).timetuple().tm_yday
+    REG_KEYS = [("SSA", "MENA"), ("Africa", "MENA"), ("Johannesburg", "MENA"), ("MENA", "MENA"), ("Middle East", "MENA"), ("Riyadh", "MENA"),
+                ("APAC", "ASIA"), ("Asia", "ASIA"), ("OCE", "OCE"), ("Oceania", "OCE"), ("SAM", "SA"), ("South America", "SA"),
+                ("NA Open", "NA"), ("North America", "NA"), ("United States", "NA"), ("Toronto", "NA"), ("Montréal", "NA"), ("Midland", "NA"), ("CRL", "NA"),
+                ("EU Open", "EU"), ("Europe", "EU"), ("Bern", "EU"), ("Cologne", "EU"), ("Jönköping", "EU"), ("UniRocketeers", "EU")]
+    def rl_region(name, loc):
+        found = []
+        for k, r in REG_KEYS:
+            if (k in name or k in loc) and r not in found: found.append(r)
+        if "Europe MENA" in loc: return "EU|MENA"
+        return found[0] if found else ""
+    SKIP = re.compile(r"1v1|2v2|Showmatch|Bracket Rivalry|FIFAe|Nations Cup|Solo Cup|Ascension Protocol|Club Championship 2027|Veteran Gaming", re.I)
+    rows, tier = [], None
+    for r in csv.reader(open(rl_csv, encoding="utf-8")):
+        r = (r + [""] * 8)[:8]
+        if re.search(r"tier", r[0], re.I) and not r[1]: tier = r[0].strip()[0].upper(); continue
+        if not r[1] or r[0] == "Tournament": continue
+        name, (year, doy) = r[1].strip(), rl_date(r[2])
+        if year is None: continue
+        usd = float(re.sub(r"[^\d.]", "", r[3]) or 0)
+        n = int(re.sub(r"\D", "", r[5]) or 16)
+        rows.append({"tier": tier, "name": name, "year": year, "doy": doy, "usd": usd, "n": n, "loc": r[4].strip(),
+                     "win": r[6].split("\n")[0].strip(), "ru": r[7].split("\n")[0].strip()})
+    cal = []
+    for row in rows:
+        nm = row["name"]
+        if SKIP.search(nm): continue
+        season2026 = ("RLCS 2026" in nm) if "RLCS" in nm else row["year"] == 2026
+        if not season2026: continue
+        week = 1 if row["year"] < 2026 else max(1, min(13, 1 + (row["doy"] - 15) // 25))
+        # les Opens régionaux s'étalent avant leur Major (Boston : semaines 1-2, Paris : semaines 3-5)
+        mo = re.search(r"(Boston|Paris) Major: \w+ Open (\d)", nm)
+        if mo: week = {"Boston": [1, 1, 2], "Paris": [3, 4, 5]}[mo.group(1)][(int(mo.group(2)) - 1) % 3]
+        clean = re.sub(r"\s*\b20\d\d\b\s*(-\s*)?", " ", nm).replace("  ", " ").strip()
+        clean = re.sub(r"^RLCS\s*-?\s*", "RLCS ", clean).strip()
+        if clean.startswith("Esports World Cup"): clean = "EWC — Rocket League"
+        reg = rl_region(nm, row["loc"])
+        if row["tier"] == "S": tiers = "1"
+        elif "Open" in nm and "RLCS" in nm: tiers = "1230"       # Opens RLCS : toutes les équipes de la région, les meilleures sortent
+        elif "Saudi eLeague" in nm: tiers = "123"
+        else: tiers = "23"
+        t = [clean, week, round(row["usd"] * 0.92 / 100) * 100, tiers, max(4, min(16, row["n"]))]
+        if reg and row["tier"] != "S": t.append(reg)
+        cal.append(t)
+    cal.sort(key=lambda t: (t[1], -t[2]))
+    live_tours["rl"] = cal
+    live_history["rl"] = [[row["year"], row["name"], row["win"], row["ru"], round(row["usd"] * 0.92), row["tier"]] for row in rows
+                          if row["year"] <= 2025 and "2026" not in row["name"] and not SKIP.search(row["name"]) and row["win"] not in ("", "TBD", "Cancelled")]
+    print("Rocket League : %d tournois au calendrier, %d résultats historiques" % (len(cal), len(live_history["rl"])), file=sys.stderr)
 
 with open(OUT, "w", encoding="utf-8") as f:
     f.write("// Généré par tools/build_live.py — effectifs récupérés sur les sites de données (VLR…).\n")
