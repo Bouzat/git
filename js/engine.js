@@ -17,8 +17,8 @@ const START_BUDGET = 250000;     // budget d'un club créé de zéro
 const TIER_LABEL = ["Tier 1", "Tier 2", "Tier 3"];
 const TIER_PRIZE = [1, 0.08, 0.012];        // part du cashprize du jeu
 const TIER_FAME_REQ = [65, 30, 0];          // notoriété requise pour acheter une place
-const TIER_OP = [1500, 400, 80];            // frais hebdo par joueur
-const TIER_SPONSOR = [15000, 3000, 500];    // revenus sponsors liés à la division
+const TIER_OP = [3500, 700, 100];            // frais hebdo par joueur
+const TIER_SPONSOR = [6000, 2000, 500];    // revenus sponsors liés à la division
 const TIER_RATING = [[80, 88], [70, 80], [61, 74]]; // niveau des joueurs générés
 const TIER_FAME_TARGET = [75, 40, 15];
 
@@ -184,6 +184,19 @@ function newWorld(opts) {
       const club = c || soloClub(game, tier, e.roster);
       byTier[tier - 1].push(club.id);
     });
+    // divisions réelles sans effectif connu : joueurs inventés au niveau du club
+    for (const [orgId, games] of Object.entries(EXTRA_DIVS)) {
+      if (!games.includes(game) || !ORGS[orgId]) continue;
+      const c = orgClub(orgId);
+      if (c.divisions[game]) continue;
+      const t1Max = (GAMES[game].tierSizes || [LEAGUE_SIZE])[0] + 2;
+      const tier = c.fame >= 70 && byTier[0].length < t1Max ? 1 : 2;
+      const [lo, hi] = TIER_RATING[tier - 1], g = GAMES[game];
+      const roster = Array.from({ length: g.size }, () => [genHandle(), c.country, randi(lo + 2, hi), randi(18, 26)]);
+      addDivision(c, game, tier, roster);
+      c.divisions[game].generated = true;
+      byTier[tier - 1].push(c.id);
+    }
     for (let t = 1; t <= 3; t++) {
       const L = S.leagues[lkey(game, t)] = { key: lkey(game, t), game, tier: t, teams: byTier[t - 1], schedule: [], table: {}, results: [], playoffs: null, champion: null };
       while (L.teams.length < LEAGUE_SIZE) L.teams.push(fillerClub(game, t).id);
@@ -196,6 +209,8 @@ function newWorld(opts) {
       const sub = genPlayer(game, lo - 4, hi - 6, 17, 24, c.id); addPlayer(sub); d.players.push(sub.id);
     }
   }
+  // effectifs incomplets (joueur parti, info manquante) : on complète
+  for (const c of Object.values(S.clubs)) for (const game of Object.keys(c.divisions)) aiFillRoster(c.id, game);
   // agents libres : uniquement des joueurs générés (les pros réels ont tous une équipe)
   for (const game of Object.keys(GAMES)) {
     const n = GAMES[game].size * 14 + 8;

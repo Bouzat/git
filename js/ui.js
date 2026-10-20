@@ -44,6 +44,14 @@ function takeoverList() {
   for (const [game, list] of Object.entries(ROSTERS)) list.forEach(([id], i) => {
     (map[id] = map[id] || { id, divs: [] }).divs.push([game, Math.min(3, Math.floor(i / LEAGUE_SIZE) + 1)]);
   });
+  for (const [game, list] of Object.entries(SOLOS)) list.forEach(x => {
+    if (typeof x[0] === "string" && Array.isArray(x[1]) && ORGS[x[0]]) { const m = map[x[0]] = map[x[0]] || { id: x[0], divs: [] }; if (!m.divs.some(d => d[0] === game)) m.divs.push([game, 1]); }
+  });
+  for (const [id, games] of Object.entries(EXTRA_DIVS)) {
+    if (!ORGS[id]) continue;
+    const m = map[id] = map[id] || { id, divs: [] };
+    for (const g of games) if (!m.divs.some(d => d[0] === g)) m.divs.push([g, ORGS[id][4] >= 70 ? 1 : 2, true]);
+  }
   return Object.values(map).map(o => ({ ...o, name: ORGS[o.id][0], cc: ORGS[o.id][2], color: ORGS[o.id][3], fame: ORGS[o.id][4] })).sort((a, b) => b.fame - a.fame);
 }
 function renderHome() {
@@ -86,11 +94,12 @@ function renderHome() {
       <div class="club-pick ${UI.pickClub === c.id ? "sel" : ""}" style="--c:${c.color}" data-act="pick-club" data-v="${c.id}">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:6px"><b>${esc(c.name)}</b><span>${flag(c.cc)}</span></div>
         <div class="muted" style="font-size:12px;margin:4px 0">Notoriété ${c.fame} · Budget ${money(c.fame * 45000)}</div>
-        <div style="display:flex;flex-wrap:wrap;gap:4px">${c.divs.map(([g, t]) => `<span class="chip" style="border-color:${GAMES[g].color}">${GAMES[g].icon} ${GAMES[g].short} <small class="muted">T${t}</small></span>`).join("")}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px">${c.divs.map(([g, t, gen]) => `<span class="chip" style="border-color:${GAMES[g].color}${gen ? ";border-style:dashed" : ""}" title="${gen ? "Division réelle, joueurs inventés" : "Effectif réel"}">${GAMES[g].icon} ${GAMES[g].short}${gen ? "*" : ""} <small class="muted">${gen ? "" : "T" + t}</small></span>`).join("")}</div>
       </div>`).join("");
     body = `<div class="card" style="width:100%;max-width:1000px">
       <h2>👔 Reprendre un club</h2>
       <div class="form-row" style="max-width:320px"><label for="f-ceo">Votre nom (CEO)</label><input id="f-ceo" placeholder="Ex : Kameto"></div>
+      <p class="muted" style="font-size:12px">* pointillés : division réelle du club, mais effectif réel introuvable, donc joueurs inventés.</p>
       <div class="club-grid">${list}</div>
       <div style="display:flex;gap:8px;justify-content:space-between;margin-top:14px">
         <button data-act="screen" data-v="home">← Retour</button><button class="primary" data-act="start-takeover" ${UI.pickClub ? "" : "disabled"}>Prendre les commandes</button>
@@ -436,7 +445,7 @@ function viewWorld() {
 }
 function clubInfo(id) {
   const c = S.clubs[id];
-  const divs = Object.entries(c.divisions).map(([g, d]) => `<h3 style="margin-top:12px">${GAMES[g].icon} ${GAMES[g].name} · ${TIER_LABEL[d.tier - 1]} ${d.verified ? "<span class='ok' title='Effectif recoupé dans des sources 2026'>✓ 2026</span>" : c.filler ? "" : "<span class='muted' title='Effectif établi de mémoire, peut être dépassé'>≈ non vérifié</span>"}</h3><div class="table-wrap"><table>${clubPlayers(id, g).sort((a, b) => b.starter - a.starter || b.rating - a.rating).map(p => `<tr><td>${p.starter ? "⭐" : ""}</td><td>${flag(p.nat)} ${esc(p.handle)}</td><td class="muted">${p.role}</td><td>${ageTxt(p)} ans</td><td>${R(p.rating)}</td><td>${potTxt(p)}</td></tr>`).join("")}</table></div>`).join("");
+  const divs = Object.entries(c.divisions).map(([g, d]) => `<h3 style="margin-top:12px">${GAMES[g].icon} ${GAMES[g].name} · ${TIER_LABEL[d.tier - 1]} ${d.generated ? "<span class='warn' title='Le club a bien une équipe dans ce jeu, mais son effectif réel est introuvable'>* joueurs inventés</span>" : d.verified ? "<span class='ok' title='Effectif recoupé dans des sources 2026'>✓ 2026</span>" : c.filler ? "" : "<span class='muted' title='Effectif établi de mémoire, peut être dépassé'>≈ non vérifié</span>"}</h3><div class="table-wrap"><table>${clubPlayers(id, g).sort((a, b) => b.starter - a.starter || b.rating - a.rating).map(p => `<tr><td>${p.starter ? "⭐" : ""}</td><td>${flag(p.nat)} ${esc(p.handle)}</td><td class="muted">${p.role}</td><td>${ageTxt(p)} ans</td><td>${R(p.rating)}</td><td>${potTxt(p)}</td></tr>`).join("")}</table></div>`).join("");
   modal(`<div style="display:flex;gap:12px;align-items:center">${badge(c)}<div><h2 style="margin:0">${esc(c.name)} ${flag(c.country)}</h2><span class="muted">${c.solo ? "Pro indépendant · " : ""}Notoriété ${c.fame.toFixed(1)} · ${c.fans.toLocaleString("fr-FR")} fans${c.titles.length ? " · 🏆 " + c.titles.map(esc).join(", ") : ""}</span></div></div>${divs}<div class="actions"><button data-act="close-modal">Fermer</button></div>`);
 }
 

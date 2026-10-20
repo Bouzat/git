@@ -44,6 +44,7 @@ Trois formats de compétition :
 ## Données
 
 - **697 joueurs réels.** Les effectifs de la plupart des grandes équipes ont été recoupés dans la presse esport 2026 (Worlds, LEC/LCK/LPL, Major de Cologne, EWC, VCT Champions, TI 2026, RLCS, OWCS, CDL, PGS, FNCS, Capcom Cup, FC Pro). Ils sont marqués « ✓ 2026 » dans la fiche du club ; les autres (« ≈ non vérifié ») viennent de mes connaissances et peuvent être dépassés.
+- **Divisions des clubs** : chaque organisation a toutes ses divisions réelles 2026 (ex. Falcons : 18 jeux, Vitality avec Bigetron, Karmine Corp en TFT et Trackmania). Quand l'effectif réel d'une division est introuvable, ses joueurs sont inventés et la division est marquée « * » (pointillés).
 - **Âges** : réels quand ils ont pu être vérifiés (sources 2026 pour une partie des joueurs Fortnite, années de naissance connues pour les stars) ; sinon l'âge est estimé et affiché avec un « ~ ».
 - **Potentiel** : marge de progression selon l'âge (un joueur de 25 ans ou plus a atteint son plafond), affichée par votre staff avec une marge d'erreur qui diminue avec le niveau du coaching.
 - Tout est modifiable dans `js/data.js` (format joueur : `[pseudo, nationalité, note, âge]`).
