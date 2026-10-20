@@ -60,7 +60,9 @@ const uid = (() => { let n = 0; return p => p + "_" + Date.now().toString(36) + 
 const lkey = (game, tier, zone = "W") => `${game}:${GAMES[game] && GAMES[game].open ? 1 : tier}:${zone}`;
 const leagueOf = (clubId, game) => { const d = divOf(clubId, game); return d ? S.leagues[lkey(game, d.tier, d.zone || "W")] : null; };
 const leaguesOf = game => Object.values(S.leagues).filter(L => L.game === game);
-const MIN_LEAGUE = 8;            // taille minimale d'une ligue régionale (complétée par des clubs fictifs)
+const MIN_LEAGUE = 8;
+// progression : points d'expérience par semaine (≈ +4 de note par saison pour un titulaire de 18 ans qui joue bien)
+const XP_RATE = 0.09;            // taille minimale d'une ligue régionale (complétée par des clubs fictifs)
 const tierLabel = (game, t) => (GAMES[game] && GAMES[game].statuses ? GAMES[game].statuses : TIER_LABEL)[t - 1];
 
 function flag(cc) {
@@ -425,6 +427,7 @@ function newWorld(opts) {
     }
   }
   seedRealHistory();
+  seedRanking();
   // club du joueur
   if (opts.mode === "create") {
     const c = baseClub("user", opts.name, opts.tag, opts.country, opts.color, 5, false);
@@ -708,13 +711,15 @@ function transferFeeCheck(pid, fee) {
   if (fee < ask * rand(0.88, 1.08)) { p.offerRefused = nowIndex() + ":" + fee; return `${seller.solo ? p.handle : seller.name} refuse votre offre de ${money(fee)}. (Prix estimé : ~${money(ask)})`; }
   return null;
 }
-function sellPlayer(pid) {
+// vente à un club de l'IA (buyerId et fee : offre reçue pour un joueur placé sur la liste des transferts)
+function sellPlayer(pid, buyerId, offerFee) {
   const p = S.players[pid], u = user();
-  const L = leagueOf(u.id, p.game);
-  const buyers = L.teams.filter(id => id !== u.id && S.clubs[id] && !S.clubs[id].solo);
+  const L = leagueOf(p.club, p.game) || leagueOf(u.id, p.game);
+  const buyers = L.teams.filter(id => !isMine(id) && S.clubs[id] && !S.clubs[id].solo);
   const pool = buyers.length ? buyers : Object.values(S.clubs).filter(c => c.ai && !c.solo && c.divisions[p.game]).map(c => c.id);
-  const buyer = S.clubs[pick(pool)];
-  const fee = Math.round(playerValue(p) * rand(0.75, 1.1) / 500) * 500;
+  const buyer = S.clubs[buyerId && S.clubs[buyerId] && S.clubs[buyerId].divisions[p.game] ? buyerId : pick(pool)];
+  const fee = offerFee || Math.round(playerValue(p) * rand(0.75, 1.1) / 500) * 500;
+  delete p.listed;
   const game = p.game;
   removeFromClub(p);
   joinClub(p, buyer, salaryDemand(p, buyer), randi(1, 3));
@@ -891,6 +896,132 @@ function toggleStarter(pid) {
   const other = clubPlayers(p.club, p.game).find(x => x.starter && playRegion(x) !== playRegion(p));
   if (other) return `Règlement : tous les titulaires doivent être inscrits dans la même région. ${p.handle} joue en ${REGIONS[playRegion(p)]}, ${other.handle} en ${REGIONS[playRegion(other)]}. Renégociez son contrat pour changer sa région.`;
   p.starter = true; return null;
+}
+
+// ---------- discussions avec les joueurs (façon FM) ----------
+// forme récente : moyenne des 3 dernières notes (sinon de la saison)
+const recentNote = p => { const n = (p.notes || []).slice(-3); return n.length ? n.reduce((a, b) => a + b, 0) / n.length : avgNote(p); };
+const TALK_SUCCESS = { "Calme": 0.75, "Loyal": 0.7, "Jeune talent": 0.6, "Ambitieux": 0.55, "Mercenaire": 0.45, "Exigeant": 0.4 };
+function boostPlayer(p, val, weeks) { p.boost = Math.max(boostOf(p), val); p.boostUntil = nowIndex() + weeks; }
+// kind : praise (féliciter), motivate (encourager), demand (exiger mieux), playtime (promettre une place), list (liste des transferts)
+function talkToPlayer(pid, kind) {
+  const p = S.players[pid];
+  if (!p || !isMine(p.club)) return { tone: "bad", msg: "Ce joueur n'est pas dans votre club." };
+  if (kind !== "list" && p.talkedAt && nowIndex() - p.talkedAt < 2) return { tone: "bad", msg: `${p.handle} : « On en a déjà parlé cette semaine, coach. » (une discussion toutes les 2 semaines)` };
+  const pers = personalityOf(p), rec = recentNote(p) ?? 6.5, ok = Math.random() < (TALK_SUCCESS[pers] || 0.6);
+  const mood = d => { p.morale = clamp(p.morale + d, 0, 100); };
+  if (kind !== "list") p.talkedAt = nowIndex();
+  let r;
+  if (kind === "praise") {
+    if (rec >= 7) { mood(8); boostPlayer(p, 2, 2); r = ["ok", "« Merci coach, je vais continuer comme ça ! » Il est gonflé à bloc."]; }
+    else if (rec >= 6.2) { mood(4); r = ["ok", "« Merci, ça fait plaisir. »"]; }
+    else if (pers === "Exigeant" || pers === "Ambitieux") { mood(-3); r = ["bad", "« Je sais que je joue mal, pas la peine de me mentir. » Il trouve vos compliments hypocrites."]; }
+    else { mood(1); r = ["", "« Euh… merci ? » Il ne semble pas convaincu de mériter ces compliments."]; }
+  } else if (kind === "motivate") {
+    if (ok || p.morale < 40) { mood(7); boostPlayer(p, 3, 3); r = ["ok", "« Vous avez raison, je vais tout donner. » Il paraît remotivé."]; }
+    else { r = ["", "Il vous écoute poliment, mais reste de marbre."]; }
+  } else if (kind === "demand") {
+    if (rec >= 6.8) { mood(-15); r = ["bad", `« Je suis un des meilleurs de l'équipe (${rec.toFixed(1)} de moyenne) ! » Il est furieux d'être critiqué.`]; }
+    else if (ok) { mood(-2); boostPlayer(p, 5, 3); r = ["ok", "« Vous avez raison, je vais me reprendre. » Il promet de se remettre au travail."]; }
+    else { mood(-12); r = ["bad", "« Vous n'avez rien compris, je fais tout pour l'équipe ! » Il le prend très mal."]; if (p.morale < 30) p.wantsOut = true; }
+  } else if (kind === "playtime") {
+    if (p.starter) r = ["", "Il est déjà titulaire."];
+    else { p.status = "Titulaire"; p.promiseBroken = 0; mood(10); r = ["ok", "« Merci, je ne vous décevrai pas. » Attention : il compte jouer, sinon son moral chutera."]; }
+  } else if (kind === "list") {
+    p.listed = !p.listed;
+    if (!p.listed) { mood(4); r = ["ok", `${p.handle} est retiré de la liste des transferts.`]; }
+    else if (p.wantsOut || (pers === "Mercenaire" && p.morale < 55) || p.morale < 35) { mood(5); r = ["ok", `${p.handle} est sur la liste des transferts. Il n'est pas mécontent de pouvoir partir.`]; }
+    else { mood(-10); r = ["bad", `${p.handle} est sur la liste des transferts. Il est vexé qu'on ne compte plus sur lui.`]; }
+  }
+  mail(`💬 Discussion avec ${p.handle}`, r[1], "transfer", p.game);
+  return { tone: r[0], msg: r[1] };
+}
+// réunion d'équipe d'un jeu : kind = calm (rester calme), reassure (rassurer), pressure (mettre la pression), praise (féliciter le groupe)
+function teamResults(game, n = 5) {
+  const rs = leaguesOf(game).flatMap(L => L.results).filter(r => r.a && (isMine(r.a) || isMine(r.b))).slice(-n);
+  return { n: rs.length, wins: rs.filter(r => isMine(r.winner)).length };
+}
+function teamTalk(game, kind) {
+  const u = user(); u.teamTalks = u.teamTalks || {};
+  if (u.teamTalks[game] && nowIndex() - u.teamTalks[game] < 3) return { tone: "bad", msg: "Vous avez déjà réuni l'équipe il y a peu : attendez quelques semaines." };
+  u.teamTalks[game] = nowIndex();
+  const { n, wins } = teamResults(game), bad = n >= 3 && wins / n < 0.4, good = n >= 3 && wins / n >= 0.6;
+  const lines = [];
+  for (const p of gamePlayers(game)) {
+    const pers = personalityOf(p), ok = Math.random() < (TALK_SUCCESS[pers] || 0.6);
+    let d = 0, txt;
+    if (kind === "praise") { d = good ? 6 : bad ? -4 : 2; txt = good ? "ravi" : bad ? "trouve ça déplacé vu les résultats" : "content"; }
+    else if (kind === "reassure") { d = bad ? 6 : 2; txt = bad ? "rassuré" : "serein"; if (bad && ok) boostPlayer(p, 2, 2); }
+    else if (kind === "pressure") { if (ok || bad) { boostPlayer(p, 4, 2); d = -3; txt = "piqué au vif, veut réagir"; } else { d = -10; txt = "se sent injustement visé"; } }
+    else { d = 2; txt = "écoute calmement"; }
+    p.morale = clamp(p.morale + d, 0, 100);
+    lines.push(`${p.handle} : ${txt} (${d >= 0 ? "+" : ""}${d} moral)`);
+  }
+  const head = { praise: "Vous félicitez le groupe.", reassure: "Vous rassurez le groupe.", pressure: "Vous mettez la pression sur le groupe.", calm: "Vous demandez au groupe de rester concentré." }[kind];
+  const msg = `${head} ${n ? `(${wins} victoire(s) sur les ${n} derniers matchs)` : ""}<br>${lines.join("<br>")}`;
+  mail(`💬 Réunion d'équipe ${GAMES[game].short}`, msg, "transfer", game);
+  return { tone: "", msg };
+}
+// joueurs placés sur la liste des transferts : des clubs de l'IA font des offres
+function offersForListed(report) {
+  for (const p of allUserPlayers().filter(x => x.listed)) {
+    if (Math.random() > 0.12) continue;
+    const cands = Object.values(S.clubs).filter(c => c.ai && !c.solo && !c.filler && c.divisions[p.game] && c.budget > playerValue(p) * 0.6);
+    if (!cands.length) continue;
+    const buyer = pick(cands), fee = Math.round(playerValue(p) * rand(0.7, 1.05) / 500) * 500;
+    report.events.push({ title: `Offre pour ${p.handle}`, body: `<b>${buyer.name}</b> propose <b>${money(fee)}</b> pour ${flag(p.nat)} ${p.handle} (${GAMES[p.game].short}, note ${p.rating}), placé sur la liste des transferts.`,
+      choices: [{ label: "Accepter 💰", fx: () => { if (!S.players[p.id] || !isMine(p.club)) return "Le joueur n'est plus au club."; sellPlayer(p.id, buyer.id, fee); return `${p.handle} part à ${buyer.name} pour ${money(fee)}.`; } },
+                { label: "Refuser", fx: () => "Offre refusée." }] });
+  }
+}
+
+// ---------- classement mondial façon HLTV (CS2) ----------
+// Chaque tournoi rapporte des points selon sa dotation et la place ; chaque victoire en ligue en rapporte un peu.
+// Les points comptent pleinement 3 mois, à 75 % jusqu'à 6 mois, à 40 % jusqu'à un an. Les invitations aux grands
+// tournois suivent ce classement, et les tiers sont refaits d'après lui à chaque fin de saison.
+const RANKED_GAMES = ["cs2"];
+const rankNow = () => S.season * 52 + S.week;
+function rankAdd(game, id, pts, t = rankNow()) { if (!S.clubs[id]) return; ((S.rankLog = S.rankLog || {})[game] = S.rankLog[game] || []).push([t, id, Math.round(pts)]); }
+function rankLeagueWin(game, id) { const d = divOf(id, game); if (d) rankAdd(game, id, [12, 5, 2][d.tier - 1]); }
+function rankTournament(game, order, prize) {
+  const base = clamp(60 + prize / 2500, 60, 1000);
+  order.forEach((id, i) => rankAdd(game, id, base * (i < 1 ? 1 : i < 2 ? 0.7 : i < 4 ? 0.5 : i < 8 ? 0.3 : i < 16 ? 0.15 : 0.07)));
+}
+function rankingOf(game) {
+  const now = rankNow(), tot = {};
+  for (const [t, id, pts] of (S.rankLog && S.rankLog[game]) || []) {
+    const age = now - t, k = age <= 13 ? 1 : age <= 26 ? 0.75 : age <= 52 ? 0.4 : 0;
+    if (k && S.clubs[id] && divOf(id, game)) tot[id] = (tot[id] || 0) + pts * k;
+  }
+  return Object.entries(tot).map(([id, pts]) => ({ id, pts: Math.round(pts) })).sort((a, b) => b.pts - a.pts);
+}
+const rankPos = (game, id) => rankingOf(game).findIndex(x => x.id === id) + 1;
+// classement de départ : d'après le niveau des équipes (comme si la saison précédente venait de finir)
+function seedRanking() {
+  for (const game of RANKED_GAMES) {
+    const ids = leaguesOf(game).flatMap(L => L.teams).filter(id => S.clubs[id]).sort((a, b) => teamStrength(b, game).str - teamStrength(a, game).str);
+    ids.slice(0, 48).forEach((id, i) => rankAdd(game, id, 1000 * Math.pow(0.91, i), rankNow() - 6));
+  }
+}
+function rankSnapshot() {
+  S.rankPrev = S.rankPrev || {};
+  for (const game of RANKED_GAMES) { const o = {}; rankingOf(game).forEach((x, i) => o[x.id] = i + 1); S.rankPrev[game] = o; }
+  for (const g in S.rankLog || {}) S.rankLog[g] = S.rankLog[g].filter(e => rankNow() - e[0] <= 52);
+}
+// fin de saison : les tiers suivent le classement mondial (top 12 en tier 1…)
+function reassignByRanking(game, moves) {
+  const Ls = [1, 2, 3].map(t => S.leagues[lkey(game, t)]), sizes = Ls.map(L => L.teams.length);
+  const pts = {}; rankingOf(game).forEach(x => pts[x.id] = x.pts);
+  const all = Ls.flatMap(L => L.teams).filter(id => S.clubs[id] && divOf(id, game))
+    .sort((a, b) => (pts[b] || 0) - (pts[a] || 0) || teamStrength(b, game).str - teamStrength(a, game).str);
+  let k = 0;
+  Ls.forEach((L, t) => { L.teams = all.slice(k, k + sizes[t]); k += sizes[t]; });
+  Ls[2].teams = Ls[2].teams.concat(all.slice(k));
+  Ls.forEach((L, t) => L.teams.forEach(id => {
+    const d = divOf(id, game);
+    if (isMine(id) && d.tier !== t + 1) moves.push(`${t + 1 < d.tier ? "⬆️" : "⬇️"} ${GAMES[game].short} : ${all.indexOf(id) + 1}e du classement mondial, place en ${TIER_LABEL[t]} (${tierName(game, t + 1)})`);
+    d.tier = t + 1;
+  }));
 }
 
 // ---------- contrats détaillés (façon Football Manager) ----------
@@ -1097,7 +1228,27 @@ function weeklyContractEffects() {
 }
 
 // ---------- matchs ----------
-function effRating(p) { return p.rating * (0.88 + 0.12 * p.form / 100) * (0.92 + 0.08 * p.morale / 100) * adaptFactor(p); }
+// un joueur remotivé par une discussion joue un peu au-dessus de son niveau pendant quelques semaines
+const boostOf = p => p.boostUntil && S && p.boostUntil >= nowIndex() ? (p.boost || 0) : 0;
+function effRating(p) { return p.rating * (0.88 + 0.12 * p.form / 100) * (0.92 + 0.08 * p.morale / 100) * adaptFactor(p) * (1 + boostOf(p) / 100); }
+// ---------- notes de match sur 10 (comme dans FM) ----------
+const gauss = () => (Math.random() + Math.random() + Math.random() - 1.5) / 0.75;
+function addNote(p, n, keep) {
+  n = Math.round(clamp(n, 3, 10) * 10) / 10;
+  p.stats.r = (p.stats.r || 0) + n; p.stats.rn = (p.stats.rn || 0) + 1; p.lastNote = n;
+  // l'historique détaillé n'est gardé que pour vos joueurs (la sauvegarde reste légère)
+  if (keep) p.notes = (p.notes || []).concat(n).slice(-10);
+  return n;
+}
+const avgNote = p => p.stats && p.stats.rn ? p.stats.r / p.stats.rn : null;
+// note de chaque joueur d'une équipe : son niveau face à l'adversaire, le résultat, et une part de hasard
+function rateLineup(lineup, oppStr, won, mvp, keep) {
+  return lineup.map(p => {
+    let n = 6.4 + clamp((effRating(p) - oppStr) / 10, -1.4, 1.4) + (won ? 0.5 : -0.5) + gauss() * 0.7;
+    if (p === mvp) n = Math.max(n + 0.5, 7.5);
+    return [p.handle, addNote(p, n, keep && isMine(p.club)), p.id];
+  });
+}
 function teamStrength(clubId, game) {
   const c = S.clubs[clubId], g = GAMES[game];
   const ps = clubPlayers(clubId, game);
@@ -1140,11 +1291,11 @@ function playSeries(game, a, b, bestOf, stake = 1, stage = "") {
   const g = GAMES[game];
   const A = teamStrength(a, game), B = teamStrength(b, game);
   const need = Math.ceil(bestOf / 2);
-  let wa = 0, wb = 0; const maps = [];
+  let wa = 0, wb = 0; const maps = [], seq = [];
   while (wa < need && wb < need) {
     const sa = A.str + rand(-4, 4), sb = B.str + rand(-4, 4);
     const aWin = Math.random() < 1 / (1 + Math.pow(10, -(sa - sb) / 9));
-    aWin ? wa++ : wb++;
+    aWin ? wa++ : wb++; seq.push(aWin ? "a" : "b");
     if (g.rounds) { const lose = randi(Math.round(g.rounds * 0.2), g.rounds - 2); maps.push(aWin ? `${g.rounds}-${lose}` : `${lose}-${g.rounds}`); }
   }
   const winner = wa > wb ? a : b, loser = winner === a ? b : a;
@@ -1152,10 +1303,15 @@ function playSeries(game, a, b, bestOf, stake = 1, stage = "") {
   afterResult(wl, true); afterResult(winner === a ? B.lineup : A.lineup, false);
   const mvp = wl.slice().sort((x, y) => effRating(y) * rand(0.9, 1.1) - effRating(x) * rand(0.9, 1.1))[0];
   if (mvp) mvp.stats.mvp++;
+  const mine = isMine(a) || isMine(b);
+  const notesA = rateLineup(A.lineup, B.str, winner === a, mvp, mine), notesB = rateLineup(B.lineup, A.str, winner === b, mvp, mine);
+  if (RANKED_GAMES.includes(game)) rankLeagueWin(game, winner, stake);
   const nm = id => { const c = S.clubs[id]; return c.solo ? soloName(c, game) : (c.divisions[game] && c.divisions[game].label) || c.name; };
   clubResult(winner, true, stake, isMine(winner) ? `${g.short} · victoire ${Math.max(wa, wb)}-${Math.min(wa, wb)} contre ${nm(loser)}${stage ? " (" + stage + ")" : ""}` : null);
   clubResult(loser, false, stake, isMine(loser) ? `${g.short} · défaite ${Math.min(wa, wb)}-${Math.max(wa, wb)} contre ${nm(winner)}${stage ? " (" + stage + ")" : ""}` : null);
-  return { a, b, sa: wa, sb: wb, winner, loser, maps, mvp: mvp ? mvp.handle : null, bestOf };
+  const r = { a, b, sa: wa, sb: wb, winner, loser, maps, mvp: mvp ? mvp.handle : null, bestOf };
+  if (mine) { r.seq = seq; r.notesA = notesA; r.notesB = notesB; }
+  return r;
 }
 // Battle royale : un lobby complet (les places restantes sont prises par des équipes de l'open)
 function playLobby(L, entrants, nGames, stake = 0.6, stage = "") {
@@ -1180,8 +1336,12 @@ function playLobby(L, entrants, nGames, stake = 0.6, stage = "") {
     });
   }
   const ranked = entrants.slice().sort((x, y) => res[y].pts - res[x].pts);
+  const notes = {};
   ranked.forEach((id, i) => {
     const good = i < ranked.length / 2;
+    // notes : place au classement du lobby et éliminations
+    const e = S0.find(x => x.id === id), frac = ranked.length > 1 ? i / (ranked.length - 1) : 0, kshare = res[id].kills / Math.max(1, nGames * g.size * 1.6);
+    notes[id] = e.lineup.map(p => [p.handle, addNote(p, 5.2 + (1 - frac) * 3 + kshare * 1.2 + gauss() * 0.6 + (effRating(p) - e.str) / 8, isMine(id)), p.id]);
     afterResult(S0.find(e => e.id === id).lineup, good);
     // les fans suivent le classement du lobby : top 3 = victoire, première moitié = neutre
     const sign = i < 3 ? 1 : good ? 0 : -1;
@@ -1190,14 +1350,15 @@ function playLobby(L, entrants, nGames, stake = 0.6, stage = "") {
   });
   const best = S0.flatMap(e => e.lineup).sort((x, y) => effRating(y) * rand(0.85, 1.15) - effRating(x) * rand(0.85, 1.15))[0];
   if (best) best.stats.mvp++;
-  return { res, ranked, mvp: best ? best.handle : null, lobby: S0.length + nOpen, games: nGames };
+  const mineNotes = {}; for (const id of entrants.filter(isMine)) mineNotes[id] = notes[id];
+  return { res, ranked, mvp: best ? best.handle : null, lobby: S0.length + nOpen, games: nGames, notes: mineNotes };
 }
 
 // ---------- semaine ----------
 // rapport de la semaine en cours : il se remplit au fil des matchs lancés à la main, puis à la fin de la semaine
 function weekReport() {
   if (!S.rep || S.rep.season !== S.season || S.rep.week !== S.week)
-    S.rep = { season: S.season, week: S.week, matches: [], lobbies: [], tournaments: [], income: {}, expenses: {}, events: [], fans: [], done: {}, fields: {} };
+  { S.rep = { season: S.season, week: S.week, matches: [], lobbies: [], tournaments: [], income: {}, expenses: {}, events: [], fans: [], done: {}, fields: {} }; rankSnapshot(); }
   return S.rep;
 }
 // nom d'une équipe en texte simple
@@ -1334,6 +1495,7 @@ function advanceWeek() {
   const u = user(), w = S.week, report = weekReport();
   for (const aca of userAcademies()) autoStarters(aca.id, aca.academyOf);
   for (const g of Object.keys(u.divisions)) arrangeUnits(g);
+
   // tout ce qui n'a pas été lancé à la main se joue maintenant
   for (const L of Object.values(S.leagues)) playLeagueDay(L);
   for (const [game, t] of weekTournaments()) playTournament(game, t);
@@ -1348,7 +1510,7 @@ function advanceWeek() {
   // économie du club joueur : chaque ligne est inscrite au grand livre, jeu par jeu quand c'est possible
   const fac = u.facilities;
   book("sponsors", 300 + 3.6 * u.fame * u.fame + Object.values(u.divisions).reduce((s, d) => s + TIER_SPONSOR[d.tier - 1], 0) * (0.5 + u.fame / 100), "", "Partenaires historiques et droits de diffusion");
-  for (const d of u.sponsorDeals) book("sponsors", d.weekly, "", d.name);
+  sponsorWeek(report);
   book("merch", u.fans * (0.012 + fac.content * 0.003), "", "Merch, abonnements et streaming");
   for (const game of Object.keys(u.divisions)) {
     book("salaries", -gamePlayers(game).reduce((s, p) => s + p.salary, 0), game, "Salaires");
@@ -1362,24 +1524,33 @@ function advanceWeek() {
   u.image = clamp(u.image + (imageTarget(u) - u.image) * 0.12, 0, 100);
   const drift = Math.round(u.fans * ((u.image - 55) / 45 * 0.0004 + fac.content * 0.00025) + fac.content * 5);
   if (drift) { u.fans = Math.max(100, u.fans + drift); report.fans.push([u.image >= 55 ? "Image du club et contenus" : "Image du club (sponsors controversés)", drift]); }
-  u.sponsorDeals = u.sponsorDeals.filter(d => --d.weeks > 0);
   const inc = Object.values(report.income).reduce((a, b) => a + b, 0), exp = Object.values(report.expenses).reduce((a, b) => a + b, 0);
   S.finance.push({ label: weekLabel(S.season, w), season: S.season, week: w, inc: Math.round(inc), exp: Math.round(exp), budget: Math.round(u.budget), fans: u.fans });
   if (S.finance.length > 120) S.finance.shift();
 
-  // entraînement, forme, moral
+  // entraînement, forme, moral ; progression façon FM : âge, qualité de l'entraînement, temps de jeu et notes en match
+  report.progress = report.progress || [];
   for (const p of Object.values(S.players)) {
     const c = p.club && S.clubs[p.club];
     if (!c) continue;
     const f = facOf(c);
-    // à l'académie, les jeunes qui jouent progressent plus vite
-    const aca = c.academyOf && p.starter ? 0.04 + f.academy * 0.02 : 0;
-    if (p.rating < p.pot && Math.random() < (0.06 + f.coaching * 0.025 + (p.age <= 21 ? 0.05 : 0) + aca) * WEEK_SCALE) p.rating++;
+    if (p.rating < p.pot) {
+      const ageF = p.age <= 18 ? 1 : p.age <= 20 ? 0.8 : p.age <= 22 ? 0.55 : p.age <= 24 ? 0.3 : 0.08;
+      const play = p.starter ? 1 : 0.4, avg = avgNote(p);
+      const perf = avg ? clamp(1 + (avg - 6.4) * 0.6, 0.5, 1.8) : 1;
+      // à l'académie, les jeunes qui jouent progressent plus vite
+      const train = 0.7 + f.coaching * 0.12 + (c.academyOf && p.starter ? 0.15 + f.academy * 0.05 : 0);
+      p.xp = (p.xp || 0) + ageF * play * perf * train * XP_RATE;
+      if (p.xp >= 1) { p.xp -= 1; p.rating++; if (isMine(p.club)) report.progress.push([p.id, p.handle, p.game, p.rating]); }
+    }
+    // un jeune qui brille dépasse parfois ce qu'on attendait de lui
+    if (p.age <= 21 && p.rating >= p.pot - 1 && p.stats.rn >= 6 && avgNote(p) >= 7.4 && Math.random() < 0.03 && p.pot < 97) p.pot++;
     p.form = clamp(p.form + (65 - p.form) * 0.08 + rand(-3, 3) + f.house * 0.3, 20, 100);
     let dm = (70 - p.morale) * 0.05 + f.house * 0.3;
-    if (!p.starter && p.rating >= 80) dm -= 1;
+    if (!p.starter && p.rating >= 80 && !unitGame(p.game)) dm -= 1;
     p.morale = clamp(p.morale + dm + rand(-2, 2), 5, 100);
   }
+  offersForListed(report);
 
   if (u.budget < 0) {
     S.board.confidence = clamp(S.board.confidence - 2, 0, 100);
@@ -1491,8 +1662,10 @@ function tournamentPool(game, tiers, region) {
 // Les équipes du club du joueur qui ont décliné le tournoi n'y sont pas.
 function tournamentField(game, tiers, size, region, name) {
   const g = GAMES[game];
+  // jeux à classement mondial (CS2) : les invitations suivent les points du classement
+  const rp = {}; if (RANKED_GAMES.includes(game)) rankingOf(game).forEach(x => rp[x.id] = x.pts);
   const ranked = tournamentPool(game, tiers, region).filter(id => !(isMine(id) && name && declined(game, name)))
-    .map(id => ({ id, s: teamStrength(id, game).str + S.clubs[id].fame * 0.05 })).sort((a, b) => b.s - a.s).map(x => x.id);
+    .map(id => ({ id, s: (rp[id] || 0) * 1000 + teamStrength(id, game).str + S.clubs[id].fame * 0.05 })).sort((a, b) => b.s - a.s).map(x => x.id);
   // open (tiers 2-3 ou 3) : inscriptions libres, plateau tiré au hasard ; sinon les mieux classés
   const pool = tiers.includes("3") && !tiers.includes("1") ? shuffle(ranked) : ranked;
   let n = Math.min(size, pool.length);
@@ -1547,6 +1720,7 @@ function playTournament(game, t) {
   fanChange(order[0], 1, stake * 4, isMine(order[0]) ? `🏆 ${name} remporté` : null);
   champ.titles.push(`${name} ${S.season}`);
   S.titles.push({ season: S.season, game, tier: 0, name, club: clubLabel(order[0], game), clubId: champ.id });
+  if (RANKED_GAMES.includes(game)) rankTournament(game, order, prize);
   if (name.startsWith("EWC")) ewcPoints(order.map(id => S.clubs[id] && S.clubs[id].parent === S.userId && !S.clubs[id].academyOf ? S.userId : id), game);
   const mine = order.findIndex(isMine) + 1;
   (S.tourResults || (S.tourResults = [])).push({ season: S.season, week: w, game, name, prize, n: field.length, top: order.slice(0, 4), mine: mine || null });
@@ -1608,6 +1782,7 @@ function endSeason() {
       }
       continue;
     }
+    if (RANKED_GAMES.includes(game)) { reassignByRanking(game, moves); continue; }
     for (const zone of gameZones(game)) for (let t = 1; t <= 2; t++) {
       const up = S.leagues[lkey(game, t, zone)], low = S.leagues[lkey(game, t + 1, zone)];
       // une académie ne monte jamais dans la division de son équipe première
@@ -1658,7 +1833,7 @@ function endSeason() {
   for (const p of Object.values(S.players)) {
     p.age++;
     if (p.age >= 28 && Math.random() < 0.5) p.rating = Math.max(45, p.rating - randi(0, p.age >= 31 ? 3 : 1));
-    if (p.age <= 23 && p.pot > p.rating) p.rating = Math.min(p.pot, p.rating + randi(0, 2));
+    if (p.age <= 23 && p.pot > p.rating && Math.random() < 0.4) p.rating++;
     p.stats = { w: 0, l: 0, mvp: 0 };
     if (p.club) {
       p.years--;
@@ -1779,29 +1954,82 @@ function randomEvent() {
   return ev;
 }
 
-// ---------- sponsors : offres et négociation ----------
-const BRANDS_SMALL = ["Le Kebab du Coin", "Garage Auto Martin", "Boulangerie du Centre", "PC Shop Local", "Cybercafé Pixel", "Salle de sport FitZone", "Pizzeria Napoli", "Imprimerie Express"];
-const BRANDS_MID = ["LDLC", "Materiel.net", "Konix", "Glorious", "Cooler Master", "NZXT", "Fnac", "Boulanger", "Uber Eats", "Deliveroo"];
-const BRANDS_BIG = ["HyperX", "Red Bull", "Logitech G", "Monster Energy", "Secretlab", "Razer", "Alienware", "Intel", "Corsair", "Mercedes-Benz", "BMW", "Orange", "Lacoste", "Puma", "Adidas", "Coca-Cola", "Samsung"];
+// ---------- sponsors ----------
 const round50 = v => Math.round(v / 50) * 50;
-// éthique d'une marque : « ethique » (énergie verte, réemploi, sport, éducation), « neutre », « controverse » (paris, crypto, vape, pétrole)
-const BRANDS_ETHIC = { small: ["Recyclerie du Quartier", "Coopérative Bio Locale", "Vélo Atelier", "Librairie Le Pixel"], mid: ["Back Market", "Ecosia", "Too Good To Go", "Fairphone", "Veja"], big: ["Decathlon", "SNCF Connect", "Patagonia", "La Poste", "Engie Énergies Vertes"] };
-const BRANDS_SHADY = { small: ["PariFoot Express", "VapeCloud", "CryptoBros"], mid: ["BetZilla", "QuickCasino", "NFT Arena", "FastCrédit"], big: ["CryptoMoon Exchange", "Royal Spin Casino", "PetroGulf Energy", "MegaBet"] };
-function sponsorOffer(kind) {
-  const u = user(), size = u.fame >= 55 ? "big" : u.fame >= 25 ? "mid" : "small";
-  const ethic = kind || (Math.random() < 0.25 ? "ethique" : Math.random() < 0.3 ? "controverse" : "neutre");
-  const brand = pick(ethic === "ethique" ? BRANDS_ETHIC[size] : ethic === "controverse" ? BRANDS_SHADY[size] : { big: BRANDS_BIG, mid: BRANDS_MID, small: BRANDS_SMALL }[size]);
+// catalogue des marques : [nom, secteur, éthique, taille] ; taille 1 = commerce local, 2 = marque nationale, 3 = marque internationale.
+// Éthique : « ethique » (réemploi, énergie verte, sport, mobilité), « neutre », « controverse » (paris, crypto, casinos, pétrole, vape).
+const BRANDS = [
+  ["Le Kebab du Coin", "Restauration", "neutre", 1], ["Garage Auto Martin", "Automobile", "neutre", 1], ["Boulangerie du Centre", "Alimentation", "neutre", 1], ["PC Shop Local", "Informatique", "neutre", 1],
+  ["Cybercafé Pixel", "Gaming", "neutre", 1], ["Salle de sport FitZone", "Sport", "neutre", 1], ["Pizzeria Napoli", "Restauration", "neutre", 1], ["Imprimerie Express", "Services", "neutre", 1],
+  ["Recyclerie du Quartier", "Réemploi", "ethique", 1], ["Coopérative Bio Locale", "Alimentation bio", "ethique", 1], ["Vélo Atelier", "Mobilité douce", "ethique", 1], ["Librairie Le Pixel", "Culture", "ethique", 1],
+  ["PariFoot Express", "Paris sportifs", "controverse", 1], ["VapeCloud", "Cigarette électronique", "controverse", 1], ["CryptoBros", "Cryptomonnaies", "controverse", 1],
+  ["LDLC", "Informatique", "neutre", 2], ["Materiel.net", "Informatique", "neutre", 2], ["Konix", "Périphériques", "neutre", 2], ["Glorious", "Périphériques", "neutre", 2], ["Cooler Master", "Matériel PC", "neutre", 2],
+  ["NZXT", "Matériel PC", "neutre", 2], ["Fnac", "Distribution", "neutre", 2], ["Boulanger", "Distribution", "neutre", 2], ["Uber Eats", "Livraison", "neutre", 2], ["Deliveroo", "Livraison", "neutre", 2],
+  ["Back Market", "Réemploi", "ethique", 2], ["Ecosia", "Moteur de recherche", "ethique", 2], ["Too Good To Go", "Anti-gaspillage", "ethique", 2], ["Fairphone", "Téléphonie", "ethique", 2], ["Veja", "Mode", "ethique", 2],
+  ["BetZilla", "Paris sportifs", "controverse", 2], ["QuickCasino", "Casino en ligne", "controverse", 2], ["NFT Arena", "NFT", "controverse", 2], ["FastCrédit", "Crédit rapide", "controverse", 2],
+  ["HyperX", "Périphériques", "neutre", 3], ["Red Bull", "Boisson énergisante", "neutre", 3], ["Logitech G", "Périphériques", "neutre", 3], ["Monster Energy", "Boisson énergisante", "neutre", 3], ["Secretlab", "Chaises gaming", "neutre", 3],
+  ["Razer", "Périphériques", "neutre", 3], ["Alienware", "Matériel PC", "neutre", 3], ["Intel", "Processeurs", "neutre", 3], ["Corsair", "Matériel PC", "neutre", 3], ["Mercedes-Benz", "Automobile", "neutre", 3],
+  ["BMW", "Automobile", "neutre", 3], ["Orange", "Télécoms", "neutre", 3], ["Lacoste", "Mode", "neutre", 3], ["Puma", "Équipementier", "neutre", 3], ["Adidas", "Équipementier", "neutre", 3],
+  ["Coca-Cola", "Boissons", "neutre", 3], ["Samsung", "Électronique", "neutre", 3],
+  ["Decathlon", "Sport", "ethique", 3], ["SNCF Connect", "Transport ferroviaire", "ethique", 3], ["Patagonia", "Mode responsable", "ethique", 3], ["La Poste", "Services", "ethique", 3], ["Engie Énergies Vertes", "Énergie renouvelable", "ethique", 3],
+  ["CryptoMoon Exchange", "Cryptomonnaies", "controverse", 3], ["Royal Spin Casino", "Casino en ligne", "controverse", 3], ["PetroGulf Energy", "Pétrole", "controverse", 3], ["MegaBet", "Paris sportifs", "controverse", 3],
+];
+const BRAND_SIZE = ["", "Local", "National", "International"];
+const brandOf = name => { const b = BRANDS.find(x => x[0] === name); return b ? { brand: b[0], sector: b[1], ethic: b[2], size: b[3] } : { brand: name, sector: "Divers", ethic: "neutre", size: 1 }; };
+// taille des marques que le club peut attirer, d'après sa notoriété
+const brandReach = () => user().fame >= 55 ? 3 : user().fame >= 25 ? 2 : 1;
+// jeu phare du club (celui que regardent les sponsors) : le mieux placé et le plus populaire
+function mainGame() {
+  const u = user(), gs = Object.keys(u.divisions);
+  return gs.sort((a, b) => GAMES[b].mult * [3, 1.6, 1][u.divisions[b].tier - 1] - GAMES[a].mult * [3, 1.6, 1][u.divisions[a].tier - 1])[0] || null;
+}
+// place actuelle de l'équipe principale dans sa ligue, et place « attendue » d'après son niveau
+function leagueRank(game) { const L = leagueOf(S.userId, game); if (!L) return 0; return finalOrder(L).indexOf(S.userId) + 1; }
+function expectedRank(game) {
+  const L = leagueOf(S.userId, game); if (!L) return 0;
+  const me = teamStrength(S.userId, game).str;
+  return L.teams.filter(id => S.clubs[id] && teamStrength(id, game).str > me).length + 1;
+}
+// clauses proposées par la marque : un objectif de classement (trois niveaux au choix), parfois un titre ou une hausse de fans
+function sponsorClauses(o) {
+  const game = mainGame(), out = { levels: [], extra: [] };
+  if (game) {
+    const L = leagueOf(S.userId, game), n = L.teams.length, e = clamp(expectedRank(game), 1, n), pot = o.weekly * o.weeks;
+    out.levels = [
+      { label: "Prudent", target: Math.min(n, e + 2), bonus: round50(pot * 0.12) },
+      { label: "Standard", target: e, bonus: round50(pot * 0.25) },
+      { label: "Ambitieux", target: Math.max(1, e - 2), bonus: round50(pot * 0.5) },
+    ];
+    out.game = game;
+  }
+  if (o.size === 3) out.extra.push({ kind: "title", label: "Remporter au moins un titre (ligue ou tournoi) pendant le contrat", bonus: round50(o.weekly * 6) });
+  if (o.ethic === "ethique") out.extra.push({ kind: "fans", pct: 5, label: "Gagner au moins 5 % de fans pendant le contrat", bonus: round50(o.weekly * 4) });
+  return out;
+}
+function sponsorOffer(arg) {
+  const u = user();
+  // arg : nom de marque, ou type de marque (« ethique », « neutre », « controverse ») pour une marque au hasard
+  let b;
+  if (arg && !["ethique", "neutre", "controverse"].includes(arg)) b = brandOf(arg);
+  else {
+    const reach = brandReach(), ethic = arg || (Math.random() < 0.25 ? "ethique" : Math.random() < 0.3 ? "controverse" : "neutre");
+    b = brandOf(pick(BRANDS.filter(x => x[2] === ethic && x[3] === reach && !u.sponsorDeals.some(d => d.name === x[0])).map(x => x[0]).concat(["PC Shop Local"])));
+  }
   const tierBonus = Object.values(u.divisions).reduce((s, d) => s + [3000, 600, 80][d.tier - 1], 0);
-  // les marques controversées paient bien plus cher, les marques éthiques un peu moins (et regardent l'image du club)
-  const mult = ethic === "controverse" ? rand(1.6, 2.2) : ethic === "ethique" ? rand(0.8, 0.95) * (0.7 + (u.image ?? 60) / 200) : 1;
+  // les marques controversées paient bien plus cher, les marques éthiques un peu moins (et regardent l'image du club) ; une grande marque paie plus qu'un commerce local
+  const mult = (b.ethic === "controverse" ? rand(1.6, 2.2) : b.ethic === "ethique" ? rand(0.8, 0.95) * (0.7 + (u.image ?? 60) / 200) : 1) * [0, 0.6, 0.9, 1.2][b.size];
   const weekly = round50((200 + u.fame * u.fame * rand(1.5, 3) + tierBonus * rand(0.5, 1)) * mult);
   // plafond secret de la marque : plus le club a de fans, plus elle est prête à payer
   const max = weekly * rand(1.1, 1.45) * (1 + Math.min(0.3, u.fans / 3e6));
-  return { brand, ethic, weekly, weeks: randi(10, 26), max, patience: randi(2, 4), round: 0, history: [] };
+  const o = { ...b, weekly, weeks: randi(20, 40), max, patience: randi(2, 4), round: 0, history: [], level: 1 };
+  o.clauses = sponsorClauses(o);
+  return o;
 }
-// ask : montant hebdo demandé ; weeks : durée demandée. Un contrat plus long fait baisser le plafond hebdo de la marque.
-function negotiateSponsor(o, ask, weeks) {
-  const lim = o.max * (1 - (weeks - o.weeks) * 0.006);
+// ask : montant hebdo demandé ; weeks : durée demandée. Un contrat plus long fait baisser le plafond hebdo de la marque ;
+// un objectif ambitieux la rend plus généreuse, un objectif prudent moins.
+function negotiateSponsor(o, ask, weeks, level = o.level) {
+  o.level = level;
+  const lim = o.max * (1 - (weeks - o.weeks) * 0.006) * [0.92, 1, 1.08][level];
   o.round++;
   o.history.push({ ask, weeks });
   if (ask <= o.weekly) return { status: "accept", weekly: ask, weeks };
@@ -1813,20 +2041,72 @@ function negotiateSponsor(o, ask, weeks) {
   return { status: "counter", weekly: o.weekly, weeks, last: o.round >= o.patience };
 }
 function signSponsor(o, weekly, weeks) {
-  const u = user();
-  u.sponsorDeals.push({ name: o.brand, weekly, weeks, ethic: o.ethic || "neutre" });
-  mail(`Sponsor signé : ${o.brand}`, `<b>${o.brand}</b> devient partenaire du club : ${money(weekly)}/semaine pendant ${weeks} semaines (${money(weekly * weeks)} au total).` +
+  const u = user(), C = o.clauses || { levels: [], extra: [] }, lv = C.levels[o.level ?? 1];
+  const clauses = (lv ? [{ kind: "rank", game: C.game, target: lv.target, bonus: lv.bonus, label: `Finir ${lv.target === 1 ? "1er" : "dans le top " + lv.target} de ${divName(S.userId, C.game)}`, status: "pending", main: true }] : [])
+    .concat(C.extra.map(x => ({ ...x, status: "pending" })));
+  u.sponsorDeals.push({ name: o.brand, sector: o.sector, size: o.size, weekly, weeks, total: weeks, ethic: o.ethic || "neutre", clauses, start: nowIndex(), fans0: u.fans, titles0: u.titles.length, renewals: o.renewals || 0 });
+  S.sponsorMarket && (S.sponsorMarket.list = S.sponsorMarket.list.filter(x => x.brand !== o.brand));
+  mail(`Sponsor signé : ${o.brand}`, `<b>${o.brand}</b> (${o.sector}) devient partenaire du club : ${money(weekly)}/semaine pendant ${weeks} semaines (${money(weekly * weeks)} au total).` +
+    (clauses.length ? `<br>Clauses : ${clauses.map(c => `${c.label} → prime de ${money(c.bonus)}`).join(" ; ")}.${lv ? " Si l'objectif de classement est atteint, la marque proposera de renouveler le contrat." : ""}` : "") +
     (o.ethic === "controverse" ? `<br>⚠️ Marque controversée : l'image du club va se dégrader tant que le contrat court. Les fans seront moins nombreux à vous rejoindre après les victoires et plus nombreux à partir après les défaites.` : o.ethic === "ethique" ? `<br>🌱 Marque éthique : l'image du club s'améliore, vos victoires attireront plus de fans.` : ""), "sponsor");
 }
-// démarchage actif : une tentative par semaine, la réussite dépend de la notoriété
-// kind : type de marque visé (éthique, neutre, controversée). Les marques éthiques exigent une bonne image ; les controversées disent presque toujours oui.
-function prospectSponsor(kind = "neutre") {
-  const key = S.season + "-" + S.week, u = user();
-  if (S.prospect === key) return { error: "Vous avez déjà démarché des marques cette semaine." };
-  S.prospect = key;
-  const chance = (0.35 + u.fame / 150) * (kind === "controverse" ? 1.5 : kind === "ethique" ? 0.5 + (u.image ?? 60) / 120 : 1);
-  if (Math.random() > chance) return { error: kind === "ethique" && (u.image ?? 60) < 50 ? "Les marques éthiques refusent : l'image du club est trop dégradée. Réessayez quand elle sera meilleure." : "Aucune marque n'a donné suite cette semaine. Réessayez la semaine prochaine." };
-  return { offer: sponsorOffer(kind) };
+// vérifie une clause ; final : fin du contrat ou fin de la saison de ligue
+function checkClause(d, c, final) {
+  const u = user();
+  if (c.status !== "pending") return;
+  let met = null;
+  if (c.kind === "rank") { const pos = leagueRank(c.game); if (final) met = pos > 0 && pos <= c.target; c.pos = pos; }
+  else if (c.kind === "title") { if (u.titles.length > d.titles0) met = true; else if (final) met = false; }
+  else if (c.kind === "fans") { const pct = (u.fans / d.fans0 - 1) * 100; c.pos = Math.round(pct * 10) / 10; if (pct >= c.pct) met = true; else if (final) met = false; }
+  if (met === null) return;
+  c.status = met ? "met" : "failed";
+  if (met) { book("sponsors", c.bonus, c.game || "", `${d.name} : prime d'objectif`); mail(`✅ Objectif atteint : ${d.name}`, `${c.label} : prime de <b>${money(c.bonus)}</b> versée.`, "sponsor"); }
+  else mail(`❌ Objectif manqué : ${d.name}`, `${c.label} : objectif manqué, pas de prime.${c.main ? " La marque ne renouvellera sans doute pas le contrat." : ""}`, "sponsor");
+}
+// chaque semaine : paiements, clauses, fins de contrat et propositions de renouvellement, marques intéressées
+function sponsorWeek(report) {
+  const u = user();
+  for (const d of u.sponsorDeals) book("sponsors", d.weekly, "", d.name);
+  for (const d of u.sponsorDeals) for (const c of d.clauses || []) checkClause(d, c, c.kind === "rank" && S.week === PO_FINAL);
+  for (const d of u.sponsorDeals) {
+    if (--d.weeks > 0) continue;
+    for (const c of d.clauses || []) checkClause(d, c, true);
+    const main = (d.clauses || []).find(c => c.main), ok = !main || main.status === "met";
+    if (ok && Math.random() < 0.9) {
+      const o = sponsorOffer(d.name);
+      o.weekly = round50(d.weekly * rand(1.08, 1.25)); o.max = Math.max(o.max, o.weekly * 1.2); o.weeks = d.total; o.renewals = (d.renewals || 0) + 1; o.clauses = sponsorClauses(o);
+      report.events.push({ title: `Renouvellement : ${d.name}`, sponsor: o, intro: `<b>${esc0(d.name)}</b> est satisfait du partenariat et propose de le renouveler, avec une hausse : <b>${money(o.weekly)}/sem</b>.` });
+    } else mail(`Fin de contrat : ${d.name}`, `Le contrat avec <b>${d.name}</b> est terminé. ${ok ? "La marque change de stratégie et ne renouvelle pas." : "Objectifs manqués : la marque ne renouvelle pas."}`, "sponsor");
+  }
+  u.sponsorDeals = u.sponsorDeals.filter(d => d.weeks > 0);
+  // marché des sponsors : de nouvelles marques s'intéressent au club toutes les 4 semaines
+  const M = S.sponsorMarket;
+  if (!M || nowIndex() - M.at >= 4 || M.season !== S.season) refreshSponsorMarket();
+}
+const esc0 = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+function refreshSponsorMarket() {
+  const u = user(), reach = brandReach(), taken = new Set(u.sponsorDeals.map(d => d.name));
+  const pool = shuffle(BRANDS.filter(b => !taken.has(b[0]) && b[3] <= reach && b[3] >= reach - 1 && !(b[2] === "ethique" && (u.image ?? 60) < 40)));
+  S.sponsorMarket = { at: nowIndex(), season: S.season, list: pool.slice(0, randi(3, 5)).map(b => ({ brand: b[0], interest: randi(45, 95) })) };
+}
+// démarchage : chance qu'une marque accepte de discuter (taille de la marque, notoriété, image du club)
+function contactChance(name) {
+  const u = user(), b = brandOf(name), reach = brandReach();
+  let c = b.size < reach ? 0.85 : b.size === reach ? 0.35 + u.fame / 250 : b.size === reach + 1 ? 0.12 : 0.02;
+  if (b.ethic === "ethique") c *= 0.4 + (u.image ?? 60) / 100;
+  if (b.ethic === "controverse") c *= 1.4;
+  return clamp(c, 0.02, 0.95);
+}
+function contactBrand(name) {
+  const u = user(), key = S.season + "-" + S.week;
+  S.contacts = S.contacts && S.contacts.key === key ? S.contacts : { key, n: 0 };
+  S.brandCooldown = S.brandCooldown || {};
+  if (u.sponsorDeals.some(d => d.name === name)) return { error: `${name} est déjà partenaire du club.` };
+  if (S.brandCooldown[name] && S.brandCooldown[name] > nowIndex()) return { error: `${name} vous a déjà répondu non récemment. Réessayez plus tard.` };
+  if (S.contacts.n >= 2) return { error: "Votre équipe commerciale a déjà contacté 2 marques cette semaine." };
+  S.contacts.n++;
+  if (Math.random() > contactChance(name)) { S.brandCooldown[name] = nowIndex() + 8; return { error: `${name} décline : ${brandOf(name).size > brandReach() ? "votre club n'est pas encore assez connu pour cette marque." : brandOf(name).ethic === "ethique" && (u.image ?? 60) < 55 ? "l'image du club ne correspond pas à ses valeurs." : "pas de budget pour l'esport en ce moment."} Nouvelle tentative possible dans 8 semaines.` }; }
+  return { offer: sponsorOffer(name) };
 }
 
 // ---------- installations ----------

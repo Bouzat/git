@@ -108,6 +108,18 @@ Le **calendrier Rocket League** est la vraie saison RLCS 2026 (`tools/sources/ro
 
 **Valorant** utilise le vrai calendrier (fichier `tools/sources/valorant/tournois.csv`, tiré d'une Google Sheet d'après Liquipedia). On y trouve les Kickoffs, Stages 1 et 2 de chaque ligue VCT, les Masters (Santiago, Londres), l'EWC, Champions, les Ascensions et Threshold, la China Evolution Series, l'EMEA Clash, Project Blender, Red Bull Home Ground, SOOP League, Saudi eLeague, etc. C'est la dernière édition de chaque compétition, avec ses dotations et son nombre d'équipes. Les compétitions régionales sont réservées aux équipes de la région (Europe/Moyen-Orient, Amériques, Pacifique, Chine). Le palmarès réel 2021-2025 (127 titres) est attribué aux clubs dès le début de la partie.
 
+## Notes de match, progression et discussions (façon FM)
+
+- Chaque joueur reçoit une **note sur 10** à chaque match : son niveau face à l'adversaire, le résultat, une part de hasard, un bonus pour le MVP. Les notes de vos joueurs s'affichent après chaque match, et l'effectif montre la moyenne de la saison et les 5 derniers matchs.
+- **Progression** : les jeunes progressent d'autant plus vite qu'ils jouent, qu'ils ont de bonnes notes et que le staff de coaching est bon ; à 25 ans et plus, la progression est quasi nulle. Un jeune qui brille peut même dépasser son potentiel estimé.
+- **Discussions** (💬) : félicitez un joueur, encouragez-le, exigez mieux (risqué selon sa personnalité), promettez-lui une place, mettez-le sur la liste des transferts (des clubs feront des offres), renégociez ou résiliez son contrat. Le tableau de bord liste les joueurs en difficulté et en forme. Les **réunions d'équipe** (féliciter, rassurer, mettre la pression, rester concentrés) aident quand les résultats ne suivent pas.
+- **Matchs en direct** : un match lancé au jour de match se déroule manche par manche (ou partie par partie en battle royale) avec un fil d'actions, pour le suspense. On peut accélérer ou passer au résultat.
+- **Recherche** : le champ du menu trouve une équipe ou un joueur.
+
+## Classement mondial CS2 (façon HLTV)
+
+Chaque tournoi CS2 rapporte des points selon sa dotation et la place, chaque victoire en ligue un peu. Les points comptent pleinement 3 mois, à 75 % jusqu'à 6 mois et à 40 % jusqu'à un an. Les invitations aux grands tournois suivent ce classement, et en fin de saison les tiers sont refaits d'après lui (top 12 en tier 1).
+
 ## Contrats et négociation (façon FM)
 
 Chaque signature, transfert ou prolongation se négocie avec le joueur et son agent :
@@ -124,6 +136,8 @@ Chaque signature, transfert ou prolongation se négocie avec le joueur et son ag
 - **Petits tournois générés chaque saison** pour tous les jeux : cash cups et LAN ouvertes (FACEIT, ESEA, DreamHack Open, Gamers Assembly… en CS2, chaque semaine) et circuits tier 2 (CCT, NODWIN Clutch Series, European Pro League, Skyesports…). De quoi faire grandir un nouveau club.
 
 ## Sponsors
+
+L'onglet **🤝 Sponsors** présente vos partenaires (montant, semaines restantes, clauses et leur avancement), les **marques intéressées** par le club (la discussion est assurée, la liste change toutes les 4 semaines) et tout le catalogue de marques à **démarcher vous-même** (2 contacts par semaine, avec vos chances de succès selon la taille de la marque, votre notoriété et votre image). Chaque contrat a une **clause d'objectif** de classement dans votre ligue phare, à choisir entre prudent, standard et ambitieux : plus c'est ambitieux, plus la prime et le montant hebdomadaire sont élevés. Objectif atteint : prime versée et proposition de renouvellement (avec une hausse). Objectif manqué : pas de prime, pas de renouvellement. Les grandes marques ajoutent une prime au titre, les marques éthiques une prime à la croissance des fans.
 
 Les offres arrivent au fil des semaines, et vous pouvez démarcher une marque éthique, classique ou controversée depuis l'onglet Finances (une fois par semaine ; les marques éthiques refusent un club à l'image dégradée). Chaque offre se négocie : contre-proposez un montant et une durée, la marque se rapproche de votre demande jusqu'à son plafond secret, mais elle peut rompre si vous êtes trop gourmand ou si les discussions s'éternisent.
 

@@ -134,11 +134,12 @@ function render() {
   document.documentElement.style.setProperty("--club", u.color);
   const unread = S.inbox.filter(m => !m.read).length;
   const navs = [["dash", "🏠 Tableau de bord"], ["roster", "👥 Effectifs"], ["market", "💱 Mercato"], ["calendar", "🗓️ Calendrier"], ["comp", "🏆 Compétitions"], ["tours", "📅 Tournois"],
-    ["finance", "💰 Finances"], ["facilities", "🏗️ Infrastructures"], ["inbox", "✉️ Messagerie"], ["world", "🌍 Clubs & palmarès"]];
+    ["finance", "💰 Finances"], ["sponsors", "🤝 Sponsors"], ["facilities", "🏗️ Infrastructures"], ["inbox", "✉️ Messagerie"], ["world", "🌍 Clubs & palmarès"]];
   const pending = S.over ? [] : weekEvents().filter(e => !e.done);
   $app.innerHTML = `<div class="game">
     <aside class="side">
       <div class="club-badge">${badge(u)}<div><b>${esc(u.name)}</b><div class="muted" style="font-size:12px">CEO : ${esc(S.ceo)}</div></div></div>
+      <div class="side-search"><input id="g-search" placeholder="🔎 Équipe ou joueur…" autocomplete="off" aria-label="Rechercher une équipe ou un joueur"><div id="g-results" class="search-res hidden"></div></div>
       ${navs.map(([k, l]) => `<button class="nav ${UI.view === k ? "active" : ""}" data-act="view" data-v="${k}"><span>${l}</span>${k === "inbox" && unread ? `<span class="pill">${unread}</span>` : ""}</button>`).join("")}
       <div style="flex:1"></div>
       <button class="nav" data-act="quit">🚪 Menu principal</button>
@@ -154,7 +155,7 @@ function render() {
         ${S.over ? `<button class="danger" data-act="quit">Partie terminée — Menu</button>` : `<button data-act="skip" title="Joue cette semaine puis passe les semaines sans match jusqu'au prochain">⏭ Prochain match</button>
           <button class="primary" data-act="next">${pending.length ? `🎮 Jour de match (${pending.length})` : "Semaine suivante ▶"}</button>`}
       </div>
-      ${({ dash: viewDash, roster: viewRoster, market: viewMarket, calendar: viewCalendar, comp: viewComp, tours: viewTours, finance: viewFinance, facilities: viewFacilities, inbox: viewInbox, world: viewWorld })[UI.view]()}
+      ${({ dash: viewDash, roster: viewRoster, market: viewMarket, calendar: viewCalendar, comp: viewComp, tours: viewTours, finance: viewFinance, sponsors: viewSponsors, facilities: viewFacilities, inbox: viewInbox, world: viewWorld })[UI.view]()}
     </main></div>`;
 }
 
@@ -214,23 +215,39 @@ function viewDash() {
     <div class="card"><h3>📅 Résultats de la semaine passée</h3>${lastHtml}</div>
   </div>
   <h3 style="margin-top:20px">Divisions</h3><div class="grid g3">${divCards}</div>
+  ${formCard()}
   <h3 style="margin-top:20px">Prochains tournois</h3><div class="card">${upcomingTours(5) || "<p class='muted'>Aucun tournoi à venir pour vos jeux cette saison.</p>"}</div>
   <h3 style="margin-top:20px">Derniers messages</h3><div class="card" style="padding:0">${mails || "<p class='muted' style='padding:12px'>Rien de neuf.</p>"}</div>`;
 }
+// note de match sur 10 (vert : très bon, rouge : mauvais)
+const noteCls = n => n >= 8 ? "n-top" : n >= 7 ? "n-good" : n >= 6 ? "n-ok" : "n-bad";
+const noteChip = n => n == null ? "<span class='muted'>—</span>" : `<span class="note ${noteCls(n)}">${n.toFixed(1)}</span>`;
+const notesLine = list => list && list.length ? `<div class="notes-line">${list.map(([h, n]) => `<span>${esc(h)} ${noteChip(n)}</span>`).join("")}</div>` : "";
+// joueurs en difficulté et en forme (notes des 3 derniers matchs) : à aller voir pour les remotiver, les recadrer ou renégocier
+function formCard() {
+  const ps = allUserPlayers().filter(p => recentNote(p) != null);
+  if (!ps.length) return "";
+  const row = p => `<tr><td>${gchip(p.game)}</td><td>${flag(p.nat)} <b>${esc(p.handle)}</b>${playerBadges(p)}</td><td>${noteChip(recentNote(p))}</td><td>${formSpark(p)}</td><td>${bar(p.morale)}</td><td><button class="small" data-act="talk" data-v="${p.id}">💬 Lui parler</button></td></tr>`;
+  const sorted = ps.slice().sort((a, b) => recentNote(a) - recentNote(b));
+  return `<div class="grid g2" style="margin-top:20px">
+    <div class="card"><h3>📉 Joueurs en difficulté</h3><div class="table-wrap"><table>${sorted.slice(0, 5).map(row).join("")}</table></div></div>
+    <div class="card"><h3>⭐ Joueurs en forme</h3><div class="table-wrap"><table>${sorted.slice(-5).reverse().map(row).join("")}</table></div></div></div>`;
+}
 function matchRow(r) {
   const g = r.game ? GAMES[r.game] : null, game = r.game || UI.compGame;
+  const myNotes = S && S.userId ? (isMine(r.a) ? r.notesA : isMine(r.b) ? r.notesB : null) : null;
   return `<div class="match">
     <div class="r ${r.winner === r.a ? "win" : "lose"}">${displayName(r.a, game)}</div>
     <div class="score">${r.sa} - ${r.sb}</div>
     <div class="${r.winner === r.b ? "win" : "lose"}">${displayName(r.b, game)}</div>
-  </div><div class="muted sub">${g ? g.icon + " " + g.short + (r.tier ? " T" + r.tier : "") + " · " : ""}${r.stage || ""} (BO${r.bestOf})${r.maps && r.maps.length ? " · " + r.maps.join(", ") : ""}${r.mvp ? " · MVP " + esc(r.mvp) : ""}</div>`;
+  </div><div class="muted sub">${g ? g.icon + " " + g.short + (r.tier ? " T" + r.tier : "") + " · " : ""}${r.stage || ""} (BO${r.bestOf})${r.maps && r.maps.length ? " · " + r.maps.join(", ") : ""}${r.mvp ? " · MVP " + esc(r.mvp) : ""}</div>${notesLine(myNotes)}`;
 }
 function lobbyRow(l) {
   const g = GAMES[l.game], m = l.mine;
   const places = m.places.map(p => p === 1 ? "<b class='win'>👑 1er</b>" : p <= 10 ? `<b>${p}e</b>` : `${p}e`).join(" · ");
   return `<div class="lobby"><div><b>${g.icon} ${g.short}${g.open ? "" : " T" + l.tier}</b> — ${l.stage} · lobby de ${l.lobby} ${g.unit}s${g.size > 1 ? ` (${l.lobby * g.size} joueurs)` : ""}</div>
     <div>Placements : ${places}</div>
-    <div><b>${m.pts} pts</b> · ${m.kills} éliminations · <b>${l.rank}e</b> du circuit cette semaine${l.mvp ? " · meilleur joueur : " + esc(l.mvp) : ""}</div></div>`;
+    <div><b>${m.pts} pts</b> · ${m.kills} éliminations · <b>${l.rank}e</b> du circuit cette semaine${l.mvp ? " · meilleur joueur : " + esc(l.mvp) : ""}</div>${notesLine(l.notes && l.notes[l.club])}</div>`;
 }
 
 // ---------- effectifs ----------
@@ -250,12 +267,14 @@ function viewRoster() {
   const nSt = ps.filter(p => p.starter).length;
   const rows = ps.map(p => `<tr>
     <td>${p.starter ? "⭐" : "<span class='muted'>banc</span>"}</td>
-    <td>${flag(p.nat)} <b>${esc(p.handle)}</b> <small class="muted" title="Région de jeu">${playRegion(p)}</small>${adaptFactor(p) < 1 ? ` <small class="warn" title="Adaptation à sa nouvelle région">✈️</small>` : ""}</td><td>${p.role}</td><td>${ageTxt(p)}</td><td>${R(p.rating)}</td>
+    <td>${flag(p.nat)} <b>${esc(p.handle)}</b> <small class="muted" title="Région de jeu">${playRegion(p)}</small>${adaptFactor(p) < 1 ? ` <small class="warn" title="Adaptation à sa nouvelle région">✈️</small>` : ""}${playerBadges(p)}</td><td>${p.role}</td><td>${ageTxt(p)}</td><td>${R(p.rating)}</td>
     <td>${potTxt(p)}</td>
+    <td>${noteChip(avgNote(p))}</td><td>${formSpark(p)}</td>
     <td>${bar(p.form)}</td><td>${bar(p.morale)}</td>
     <td>${money(p.salary)}/sem</td><td class="${p.years <= 1 ? "warn" : ""}">${p.years} an(s)</td><td>${p.clause ? money(p.clause) : "<span class='muted'>—</span>"}</td><td>${money(playerValue(p))}</td>
     <td style="white-space:nowrap">
       <button class="small" data-act="starter" data-v="${p.id}">${p.starter ? "→ Banc" : "→ Titulaire"}</button>
+      <button class="small" data-act="talk" data-v="${p.id}" title="Parler au joueur">💬</button>
       <button class="small" data-act="contract" data-v="${p.id}">Contrat</button>
       ${academyOf(p.game) ? `<button class="small" data-act="to-academy" data-v="${p.id}" title="Envoyer le joueur dans l'académie (même contrat)">↓ Académie</button>` : ""}
       <button class="small" data-act="sell" data-v="${p.id}">Vendre</button>
@@ -265,9 +284,10 @@ function viewRoster() {
     <div class="card"><div class="toolbar"><div style="flex:1;min-width:0"><h3 style="margin:0">${g.icon} ${g.name}${d.label ? ` (${esc(d.label)})` : ""} — Titulaires ${nSt}/${g.size}${teamRegion(u.id, UI.rosterGame) ? " · " + REGIONS[teamRegion(u.id, UI.rosterGame)] : ""} · Force ${R(Math.round(teamStrength(u.id, UI.rosterGame).str))}</h3>
       <div style="margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">${tchip(d.tier, UI.rosterGame)}<span class="muted">${esc(divName(u.id, UI.rosterGame))}</span></div></div>
       <button class="small" data-act="auto-lineup">⚡ Composition auto</button>
+      <button class="small" data-act="team-talk" data-v="${UI.rosterGame}">💬 Réunion d'équipe</button>
       <button class="small" data-act="goto-market" data-v="${UI.rosterGame}">🔎 Recruter</button>
       <button class="small danger" data-act="close-div">Fermer la division</button></div>
-    <div class="table-wrap"><table><tr><th></th><th>Joueur</th><th>Rôle</th><th>Âge</th><th>Note</th><th>Potentiel</th><th>Forme</th><th>Moral</th><th>Salaire</th><th>Contrat</th><th>Clause</th><th>Valeur</th><th></th></tr>${rows || `<tr><td colspan="13" class="muted">Aucun joueur. Rendez-vous au mercato !</td></tr>`}</table></div></div>
+    <div class="table-wrap"><table><tr><th></th><th>Joueur</th><th>Rôle</th><th>Âge</th><th>Note</th><th>Potentiel</th><th title="Note moyenne en match cette saison (sur 10)">Moy.</th><th title="5 derniers matchs">Derniers matchs</th><th>Forme</th><th>Moral</th><th>Salaire</th><th>Contrat</th><th>Clause</th><th>Valeur</th><th></th></tr>${rows || `<tr><td colspan="15" class="muted">Aucun joueur. Rendez-vous au mercato !</td></tr>`}</table></div></div>
     ${academyCard(UI.rosterGame)}
     ${open}`;
 }
@@ -280,19 +300,64 @@ function unitRoster(game) {
     const pos = standings(L.key).findIndex(r => r.id === id) + 1;
     const opts = p => teams.filter(t => t !== id && divOf(t, game).zone === playerZone(p) && clubPlayers(t, game).length < g.size)
       .map(t => `<option value="${t}">→ ${g.unit} ${teams.indexOf(t) + 1} (${esc(soloName(S.clubs[t], game))})</option>`).join("") + (ps.length > 1 ? `<option value="new">→ nouveau ${g.unit} (${ZONE_NAMES[playerZone(p)]})</option>` : "");
-    const rows = ps.map(p => `<tr><td>${flag(p.nat)} <b>${esc(p.handle)}</b> <small class="muted">${playRegion(p)}</small>${adaptFactor(p) < 1 ? ` <small class="warn" title="Adaptation à sa nouvelle région">✈️</small>` : ""}</td><td>${p.role}</td><td>${ageTxt(p)}</td><td>${R(p.rating)}</td><td>${potTxt(p)}</td><td>${bar(p.form)}</td><td>${bar(p.morale)}</td>
+    const rows = ps.map(p => `<tr><td>${flag(p.nat)} <b>${esc(p.handle)}</b> <small class="muted">${playRegion(p)}</small>${adaptFactor(p) < 1 ? ` <small class="warn" title="Adaptation à sa nouvelle région">✈️</small>` : ""}</td><td>${p.role}</td><td>${ageTxt(p)}</td><td>${R(p.rating)}</td><td>${potTxt(p)}</td><td>${noteChip(avgNote(p))}</td><td>${bar(p.form)}</td><td>${bar(p.morale)}</td>
       <td>${money(p.salary)}/sem</td><td class="${p.years <= 1 ? "warn" : ""}">${p.years} an(s)</td>
-      <td style="white-space:nowrap">${opts(p) ? `<select class="small-sel" data-change="unit-move" data-pid="${p.id}" aria-label="Changer d'équipe"><option value="">Changer d'équipe…</option>${opts(p)}</select>` : ""}
+      <td style="white-space:nowrap"><button class="small" data-act="talk" data-v="${p.id}" title="Parler au joueur">💬</button> ${opts(p) ? `<select class="small-sel" data-change="unit-move" data-pid="${p.id}" aria-label="Changer d'équipe"><option value="">Changer d'équipe…</option>${opts(p)}</select>` : ""}
         <button class="small" data-act="contract" data-v="${p.id}">Contrat</button><button class="small" data-act="sell" data-v="${p.id}">Vendre</button><button class="small danger" data-act="release" data-v="${p.id}">Libérer</button></td></tr>`).join("")
-      + mates.map(p => `<tr class="mate"><td>${flag(p.nat)} ${esc(p.handle)}* </td><td>${p.role}</td><td>${ageTxt(p)}</td><td>${R(p.rating)}</td><td colspan="6" class="muted">Partenaire extérieur au club : il joue avec votre joueur, vous ne le payez pas.</td></tr>`).join("");
+      + mates.map(p => `<tr class="mate"><td>${flag(p.nat)} ${esc(p.handle)}* </td><td>${p.role}</td><td>${ageTxt(p)}</td><td>${R(p.rating)}</td><td colspan="7" class="muted">Partenaire extérieur au club : il joue avec votre joueur, vous ne le payez pas.</td></tr>`).join("");
     return `<div class="card" style="margin-bottom:14px"><div class="toolbar"><div style="flex:1;min-width:0"><h3 style="margin:0">${g.icon} ${g.unit[0].toUpperCase() + g.unit.slice(1)} ${k + 1} · ${ZONE_NAMES[d.zone]} — Force ${R(Math.round(teamStrength(id, game).str))}</h3>
       <div style="margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">${tchip(d.tier, game)}<span class="muted">${esc(leagueName(L))}${pos ? ` · ${pos}e / ${L.teams.length}` : ""}</span></div></div></div>
-      <div class="table-wrap"><table><tr><th>Joueur</th><th>Rôle</th><th>Âge</th><th>Note</th><th>Potentiel</th><th>Forme</th><th>Moral</th><th>Salaire</th><th>Contrat</th><th></th></tr>${rows || `<tr><td colspan="10" class="muted">Aucun joueur.</td></tr>`}</table></div></div>`;
+      <div class="table-wrap"><table><tr><th>Joueur</th><th>Rôle</th><th>Âge</th><th>Note</th><th>Potentiel</th><th>Moy.</th><th>Forme</th><th>Moral</th><th>Salaire</th><th>Contrat</th><th></th></tr>${rows || `<tr><td colspan="11" class="muted">Aucun joueur.</td></tr>`}</table></div></div>`;
   }).join("");
   return `<div class="card" style="margin-bottom:14px"><div class="toolbar"><div style="flex:1;min-width:0"><h3 style="margin:0">${g.icon} ${g.name} ${S.season} — ${g.unit}s (${g.size} joueurs)</h3>
       <p class="muted" style="margin:6px 0 0;font-size:13px">Pas de banc : chacun de vos joueurs joue dans un ${g.unit}. Vous pouvez aligner plusieurs ${g.unit}s, chacun dans la FNCS de sa région (un ${g.unit} américain en Amérique du Nord, un ${g.unit} européen en Europe). Un joueur seul se trouve un partenaire hors du club, que vous ne payez pas (marqué d'un astérisque). Pour changer un joueur de région, renégociez son contrat.</p></div>
-      <button class="small" data-act="goto-market" data-v="${game}">🔎 Recruter</button><button class="small danger" data-act="close-div">Fermer la division</button></div></div>${cards}`;
+      <button class="small" data-act="team-talk" data-v="${game}">💬 Réunion d'équipe</button><button class="small" data-act="goto-market" data-v="${game}">🔎 Recruter</button><button class="small danger" data-act="close-div">Fermer la division</button></div></div>${cards}`;
 }
+// 5 dernières notes en petites pastilles
+const formSpark = p => (p.notes || []).length ? `<span class="spark">${p.notes.slice(-5).map(n => `<i class="${noteCls(n)}" style="height:${Math.round(20 + (n - 3) * 11)}%" title="${n.toFixed(1)}"></i>`).join("")}</span>` : "<span class='muted'>—</span>";
+const playerBadges = p => (p.listed ? ` <span class="chip warn" title="Sur la liste des transferts">📋 à vendre</span>` : "") + (boostOf(p) > 0 ? ` <span class="chip ok" title="Remotivé après une discussion">🔥</span>` : "") + (p.wantsOut ? ` <span class="chip bad" title="Veut partir">🚪</span>` : "");
+// discussion avec un joueur (façon FM)
+function talkModal(pid, reply) {
+  const p = S.players[pid]; if (!p) return closeModal();
+  const avg = avgNote(p), rec = recentNote(p), cool = p.talkedAt && nowIndex() - p.talkedAt < 2;
+  const opt = (k, label, hint) => `<button class="talk-opt" data-act="talk-do" data-v="${p.id}|${k}" ${cool && k !== "list" ? "disabled" : ""}><b>${label}</b><small class="muted">${hint}</small></button>`;
+  modal(`<h2>💬 ${flag(p.nat)} ${esc(p.handle)}</h2>
+    <p class="muted" style="margin-top:-6px">${GAMES[p.game].icon} ${GAMES[p.game].short} · ${p.role} · ${ageTxt(p)} ans · ${R(p.rating)} · ${personalityOf(p)} · statut « ${p.status || "Titulaire"} »${p.starter ? " · titulaire" : " · remplaçant"}</p>
+    <div class="offer"><div><span class="muted">Moyenne de la saison</span><b>${avg ? avg.toFixed(2) : "—"}</b></div><div><span class="muted">3 derniers matchs</span><b>${rec ? rec.toFixed(2) : "—"}</b></div><div><span class="muted">Moral</span><b>${Math.round(p.morale)}/100</b></div></div>
+    <div style="margin:6px 0">${formSpark(p)} ${(p.notes || []).slice(-10).map(noteChip).join(" ")}</div>
+    ${reply ? `<div class="reply ${reply.tone || ""}">${reply.msg}</div>` : ""}
+    ${cool ? "<p class='muted' style='font-size:12px'>Vous lui avez parlé récemment : attendez la semaine prochaine pour une nouvelle discussion.</p>" : ""}
+    <div class="talk-grid">
+      ${opt("praise", "👏 Le féliciter", "Efficace s'il joue bien, hypocrite sinon.")}
+      ${opt("motivate", "💪 L'encourager", "Remonte le moral, petit bonus pendant 3 semaines.")}
+      ${opt("demand", "😤 Exiger mieux", "Risqué : il peut se reprendre (gros bonus) ou se vexer.")}
+      ${!p.starter && !unitGame(p.game) ? opt("playtime", "🎯 Lui promettre une place", "Il deviendra « Titulaire » promis : faites-le jouer.") : ""}
+      ${opt("list", p.listed ? "📋 Le retirer de la liste des transferts" : "📋 Le mettre sur la liste des transferts", p.listed ? "Il reste au club." : "Les clubs intéressés feront des offres.")}
+      <button class="talk-opt" data-act="renew" data-v="${p.id}"><b>✍️ Renégocier son contrat</b><small class="muted">Salaire, durée, statut, région…</small></button>
+      <button class="talk-opt" data-act="release" data-v="${p.id}"><b>🚪 Résilier son contrat</b><small class="muted">Indemnité de rupture.</small></button>
+    </div>
+    <div class="actions"><button data-act="close-modal">Fermer</button></div>`);
+}
+function teamTalkModal(game, reply) {
+  const { n, wins } = teamResults(game), u = user(), cool = u.teamTalks && u.teamTalks[game] && nowIndex() - u.teamTalks[game] < 3;
+  const opt = (k, label, hint) => `<button class="talk-opt" data-act="team-talk-do" data-v="${game}|${k}" ${cool ? "disabled" : ""}><b>${label}</b><small class="muted">${hint}</small></button>`;
+  const worst = gamePlayers(game).filter(p => recentNote(p) != null).sort((a, b) => recentNote(a) - recentNote(b)).slice(0, 3);
+  modal(`<h2>💬 Réunion d'équipe — ${GAMES[game].icon} ${GAMES[game].name}</h2>
+    <p>${n ? `Derniers résultats : <b class="${wins / n >= 0.5 ? "ok" : "bad"}">${wins} victoire(s) sur ${n}</b>.` : "Pas encore de résultats cette saison."}${worst.length ? ` Les moins en forme : ${worst.map(p => `<span class="link" data-act="talk" data-v="${p.id}">${esc(p.handle)}</span> ${noteChip(recentNote(p))}`).join(", ")}.` : ""}</p>
+    ${reply ? `<div class="reply">${reply.msg}</div>` : ""}
+    <div class="talk-grid">
+      ${opt("praise", "👏 Féliciter le groupe", "Après de bons résultats.")}
+      ${opt("reassure", "🤝 Rassurer", "Après une mauvaise passe : remonte le moral.")}
+      ${opt("pressure", "😤 Mettre la pression", "Réveille certains, en vexe d'autres.")}
+      ${opt("calm", "🧘 Rester concentrés", "Sans risque, effet léger.")}
+    </div>
+    ${cool ? "<p class='muted' style='font-size:12px'>Vous avez réuni l'équipe il y a peu : attendez quelques semaines.</p>" : ""}
+    <div class="actions"><button data-act="close-modal">Fermer</button></div>`);
+}
+ACTIONS["talk"] = v => talkModal(v);
+ACTIONS["talk-do"] = v => { const [pid, k] = v.split("|"); const r = talkToPlayer(pid, k); scheduleSave(); render(); talkModal(pid, r); };
+ACTIONS["team-talk"] = v => teamTalkModal(v);
+ACTIONS["team-talk-do"] = v => { const [g, k] = v.split("|"); const r = teamTalk(g, k); scheduleSave(); render(); teamTalkModal(g, r); };
 // équipe réserve d'un jeu par équipes
 function academyCard(game) {
   if (!canHaveAcademy(game)) return "";
@@ -452,6 +517,7 @@ function viewComp() {
     side = `<h3>${nd ? `Journée ${nd} — ${weekLabel(S.season, nw)}` : "Affiches"}</h3>${fixtures}<h3 style="margin-top:16px">Derniers résultats</h3>${L.results.slice(-6).reverse().map(matchRow).join("") || "<p class='muted'>Aucun résultat.</p>"}`;
   }
   return `<h2>${g.icon} ${esc(leagueName(L))} <small class="muted">${g.open ? "circuit ouvert" : TIER_LABEL[L.tier - 1]}${L.zone !== "W" ? " · " + ZONE_NAMES[L.zone] : ""}</small></h2><div class="tabs">${tabs}</div>${ztabs ? `<div class="tabs">${ztabs}</div>` : ""}<div class="tabs">${ttabs}</div>
+    ${RANKED_GAMES.includes(UI.compGame) ? rankCard(UI.compGame) : ""}
     <div class="grid g2">
       <div class="card"><h3>Classement · ${FMT_LABEL[g.fmt]}</h3><div class="table-wrap"><table>${table}</table></div>
         <p class="muted" style="font-size:12px">${cut ? `circuit ouvert : dans cette région, le top ${cut[0]} obtient le statut Élite et le top ${cut[1]} le statut Pro pour la saison suivante (invitations, sponsors) · ` : ""}${!cut && UI.compTier > 1 ? "▲ montée · " : ""}${!cut && UI.compTier < 3 ? "▼ relégation · " : ""}cashprize ${money(tierPrize(UI.compGame, UI.compTier))} (40 % au champion)</p></div>
@@ -462,6 +528,17 @@ function viewComp() {
     </div>`;
 }
 
+// classement mondial façon HLTV (CS2)
+function rankCard(game) {
+  const list = rankingOf(game), prev = (S.rankPrev && S.rankPrev[game]) || {};
+  const me = list.findIndex(x => isMine(x.id));
+  const show = list.slice(0, 30).concat(me >= 30 ? [list[me]] : []);
+  const rows = show.map(x => { const i = list.indexOf(x), mv = prev[x.id] ? prev[x.id] - (i + 1) : 0, d = divOf(x.id, game);
+    return `<tr class="${isMine(x.id) ? "me" : ""}"><td><b>${i + 1}</b></td><td>${mv > 0 ? `<span class="ok">▲${mv}</span>` : mv < 0 ? `<span class="bad">▼${-mv}</span>` : "<span class='muted'>=</span>"}</td><td><span style="color:${S.clubs[x.id].color}">■</span> <b class="link" data-act="club-info" data-v="${x.id}">${displayName(x.id, game)}</b></td><td>${tchip(d.tier)}</td><td style="text-align:right"><b>${x.pts}</b></td></tr>`; }).join("");
+  return `<div class="card" style="margin-bottom:16px"><h3>🌍 Classement mondial ${GAMES[game].short} (points façon HLTV)</h3>
+    <p class="muted" style="margin-top:-6px;font-size:13px">Chaque tournoi rapporte des points selon sa dotation et votre place, chaque victoire en ligue un peu. Les points comptent pleinement 3 mois, à 75 % jusqu'à 6 mois, à 40 % jusqu'à un an. Les invitations aux grands tournois suivent ce classement, et en fin de saison le top 12 joue en tier 1, les 12 suivants en tier 2.</p>
+    <div class="table-wrap" style="max-height:420px;overflow:auto"><table><tr><th>#</th><th></th><th>Équipe</th><th>Tier</th><th style="text-align:right">Points</th></tr>${rows}</table></div></div>`;
+}
 // ---------- calendrier ----------
 // ce que le club joue (ou a joué) dans une ligue la semaine w (null si rien)
 function leagueEntry(L, w) {
@@ -544,7 +621,7 @@ ACTIONS["tour-toggle"] = v => {
 };
 
 // ---------- tournois ----------
-const accessLabel = t => ({ "1": "Invitation (tier 1)", "12": "Tiers 1 et 2", "2": "Tier 2", "23": "Open (tiers 2-3)", "3": "Open (tier 3)", "123": "Meilleurs de la région", "1230": "Open régional (tous tiers)" }[t] || t);
+const accessLabel = t => ({ "1": "Invitation (les meilleurs)", "12": "Tiers 1 et 2", "2": "Tier 2", "23": "Open (tiers 2-3)", "3": "Open (tier 3)", "123": "Meilleurs de la région", "1230": "Open régional (tous tiers)" }[t] || t);
 function tourStatus(game, name, week) {
   const r = (S.tourResults || []).find(x => x.season === S.season && x.game === game && x.name === name && x.week === week);
   if (!r) return null;
@@ -640,12 +717,8 @@ function viewFinance() {
     <div class="card"><h3>Recettes de la saison <span class="ok">${money(tot(inc))}</span></h3><table>${catRows(inc)}</table></div>
     <div class="card"><h3>Dépenses de la saison <span class="bad">${money(tot(exp))}</span></h3><table>${catRows(exp)}</table></div>
   </div>
-  <div class="card" style="margin-top:16px"><div class="toolbar"><h3 style="margin:0;flex:1">Contrats de sponsoring</h3>
-    <button class="small" data-act="prospect" data-v="ethique" title="Moins bien payé, améliore l'image : vos victoires attirent plus de fans">🌱 Marque éthique</button>
-    <button class="small" data-act="prospect" data-v="neutre">🤝 Marque classique</button>
-    <button class="small" data-act="prospect" data-v="controverse" title="Paris, crypto, casinos : très bien payé, mais l'image du club se dégrade et les fans fuient">🎰 Marque controversée</button></div>
-    <p class="muted" style="margin-top:-4px;font-size:13px">L'image du club dépend de vos sponsors. Avec une bonne image, chaque victoire attire plus de fans et les défaites en font moins partir ; avec des sponsors controversés, c'est l'inverse, et des fans partent chaque semaine.</p>
-    ${deals ? `<div class="table-wrap"><table>${deals}</table></div>` : "<p class='muted'>Aucun contrat spécifique. Démarchez une marque (une tentative par semaine) ou attendez les offres.</p>"}</div>
+  <div class="card" style="margin-top:16px"><div class="toolbar"><h3 style="margin:0;flex:1">Contrats de sponsoring</h3><button class="small primary" data-act="view" data-v="sponsors">🤝 Gérer les sponsors</button></div>
+    ${deals ? `<div class="table-wrap"><table>${deals}</table></div>` : "<p class='muted'>Aucun contrat. Voyez les marques intéressées et démarchez-en dans l'onglet Sponsors.</p>"}</div>
   <div class="card" style="margin-top:16px"><div class="toolbar"><h3 style="margin:0;flex:1">Grand livre</h3>${gameSel}</div>
     <div class="table-wrap"><table><tr><th>Semaine</th><th>Section</th><th>Catégorie</th><th>Détail</th><th style="text-align:right">Montant</th></tr>${ledRows || "<tr><td colspan='5' class='muted'>Aucune opération.</td></tr>"}</table></div>
     ${led.length > 60 ? `<p class="muted" style="font-size:12px">Les 60 dernières opérations sont affichées.</p>` : ""}</div>`;
@@ -901,36 +974,82 @@ ACTIONS["nego-quit"] = () => { NEGO = null; closeModal(); };
 
 // ---------- négociation de sponsors ----------
 let SP = null;
+// logo d'une marque : ses initiales sur une couleur qui lui est propre
+const brandLogo = (name, big) => { const h = [...name].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7) % 360; const ini = name.replace(/[^A-Za-zÀ-ÿ0-9 ]/g, "").split(" ").filter(Boolean).slice(0, 2).map(w => w[0]).join("").toUpperCase();
+  return `<span class="brand-logo ${big ? "big" : ""}" style="background:hsl(${h} 55% 42%)">${esc(ini)}</span>`; };
+const clauseIcon = c => c.status === "met" ? "✅" : c.status === "failed" ? "❌" : "⏳";
 function sponsorModal(o, intro) {
   SP = o;
-  const total = o.weekly * o.weeks;
+  const total = o.weekly * o.weeks, e = ETHIC[o.ethic || "neutre"], C = o.clauses || { levels: [], extra: [] };
   const hist = o.history.map((h, i) => `<li>Tour ${i + 1} : vous demandez ${money(h.ask)}/sem sur ${h.weeks} sem.</li>`).join("");
-  const e = ETHIC[o.ethic || "neutre"];
-  modal(`<h2>${e[0]} ${esc(o.brand)}</h2><p>${intro}</p>
-    <p><span class="chip ${e[2]}">${e[0]} Marque ${e[1].toLowerCase()}</span> ${o.ethic === "controverse" ? "<span class='bad'>Très bien payé, mais l'image du club va se dégrader : vos victoires rapporteront moins de fans, vos défaites en feront partir plus, et des fans partiront chaque semaine.</span>" : o.ethic === "ethique" ? "<span class='ok'>Un peu moins payé, mais l'image du club s'améliore : vos victoires attireront plus de fans.</span>" : "<span class='muted'>Sans effet sur l'image du club.</span>"}</p>
-    <div class="offer"><div><span class="muted">Offre actuelle</span><b>${money(o.weekly)}/sem</b></div><div><span class="muted">Durée</span><b>${o.weeks} semaines</b></div><div><span class="muted">Total</span><b>${money(total)}</b></div></div>
+  const lv = C.levels.map((l, i) => `<label class="clause-opt ${i === (o.level ?? 1) ? "sel" : ""}"><input type="radio" name="sp-level" value="${i}" ${i === (o.level ?? 1) ? "checked" : ""} data-change="sp-level"> <b>${l.label}</b> : finir ${l.target === 1 ? "1er" : "dans le top " + l.target} · prime <b>${money(l.bonus)}</b></label>`).join("");
+  modal(`<div class="brand-head">${brandLogo(o.brand, true)}<div><h2 style="margin:0">${esc(o.brand)}</h2><div class="muted">${esc(o.sector || "")} · marque ${(BRAND_SIZE[o.size] || "").toLowerCase()} · <span class="${e[2]}">${e[0]} ${e[1]}</span></div></div></div>
+    <p>${intro}</p>
+    <p class="${e[2]}" style="font-size:13px">${o.ethic === "controverse" ? "Très bien payé, mais l'image du club va se dégrader : vos victoires rapporteront moins de fans, vos défaites en feront partir plus, et des fans partiront chaque semaine." : o.ethic === "ethique" ? "Un peu moins payé, mais l'image du club s'améliore : vos victoires attireront plus de fans." : "Sans effet sur l'image du club."}</p>
+    <div class="offer"><div><span class="muted">Offre actuelle</span><b>${money(o.weekly)}/sem</b></div><div><span class="muted">Durée</span><b>${o.weeks} semaines</b></div><div><span class="muted">Total garanti</span><b>${money(total)}</b></div></div>
+    ${lv ? `<h3 style="margin:14px 0 6px">Clause d'objectif (${GAMES[C.game].icon} ${esc(divName(S.userId, C.game))})</h3><div class="clause-list">${lv}</div><p class="muted" style="font-size:12px;margin-top:4px">Plus l'objectif est ambitieux, plus la prime est grosse et plus la marque accepte de payer cher. Objectif atteint : prime versée et proposition de renouvellement. Objectif manqué : pas de prime, et la marque ne renouvelle pas.</p>` : ""}
+    ${C.extra.length ? `<div class="clause-list">${C.extra.map(x => `<div class="clause-opt">➕ ${esc(x.label)} · prime <b>${money(x.bonus)}</b></div>`).join("")}</div>` : ""}
     ${hist ? `<ul class="muted" style="font-size:13px">${hist}</ul>` : ""}
-    <div style="display:flex;gap:12px;flex-wrap:wrap">
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:10px">
       <div class="form-row" style="flex:1;min-width:140px"><label for="sp-ask">Votre demande (€/semaine)</label><input id="sp-ask" type="number" step="50" min="0" value="${round50(o.weekly * 1.25)}"></div>
-      <div class="form-row"><label for="sp-weeks">Durée</label><select id="sp-weeks">${[8, 13, 20, 26, 39, 52].map(w => `<option value="${w}" ${Math.abs(w - o.weeks) < 4 ? "selected" : ""}>${w} semaines</option>`).join("")}</select></div>
+      <div class="form-row"><label for="sp-weeks">Durée</label><select id="sp-weeks">${[13, 20, 26, 39, 52].map(w => `<option value="${w}" ${Math.abs(w - o.weeks) < 5 ? "selected" : ""}>${w} semaines</option>`).join("")}</select></div>
     </div>
     <p class="muted" style="font-size:12px">Demander trop peut faire fuir la marque. Un contrat plus long rapporte plus au total, mais la marque paiera un peu moins par semaine.</p>
     <div class="actions"><button data-act="sp-refuse">Refuser</button><button data-act="sp-counter">Contre-proposer</button><button class="primary" data-act="sp-accept">Accepter ${money(o.weekly)}/sem</button></div>`);
 }
-ACTIONS["sp-accept"] = () => { signSponsor(SP, SP.weekly, SP.weeks); toast(`Contrat ${SP.brand} signé !`); SP = null; save(); render(); ACTIONS["next-event"](); };
-ACTIONS["sp-refuse"] = () => { mail(`Offre déclinée : ${SP.brand}`, `Vous avez refusé l'offre de ${SP.brand} (${money(SP.weekly)}/sem).`, "event"); SP = null; save(); render(); ACTIONS["next-event"](); };
+const spLevel = () => { const el = document.querySelector('input[name="sp-level"]:checked'); return el ? +el.value : (SP.level ?? 1); };
+ACTIONS["sp-accept"] = () => { SP.level = spLevel(); signSponsor(SP, SP.weekly, SP.weeks); toast(`Contrat ${SP.brand} signé !`); SP = null; save(); render(); ACTIONS["next-event"](); };
+ACTIONS["sp-refuse"] = () => { mail(`Offre déclinée : ${SP.brand}`, `Vous avez refusé l'offre de ${SP.brand} (${money(SP.weekly)}/sem).`, "sponsor"); SP = null; save(); render(); ACTIONS["next-event"](); };
 ACTIONS["sp-counter"] = () => {
   const ask = +document.getElementById("sp-ask").value, weeks = +document.getElementById("sp-weeks").value;
-  const r = negotiateSponsor(SP, ask, weeks);
+  const r = negotiateSponsor(SP, ask, weeks, spLevel());
   if (r.status === "accept") { signSponsor(SP, r.weekly, r.weeks); toast(`${SP.brand} accepte : ${money(r.weekly)}/sem !`); SP = null; save(); render(); return ACTIONS["next-event"](); }
-  if (r.status === "walk") { mail(`Négociation rompue : ${SP.brand}`, `${SP.brand} a mis fin aux discussions.`, "event"); toast(`${SP.brand} quitte la table des négociations.`); SP = null; save(); render(); return ACTIONS["next-event"](); }
+  if (r.status === "walk") { mail(`Négociation rompue : ${SP.brand}`, `${SP.brand} a mis fin aux discussions.`, "sponsor"); toast(`${SP.brand} quitte la table des négociations.`); SP = null; save(); render(); return ACTIONS["next-event"](); }
   sponsorModal(SP, `<b>${esc(SP.brand)}</b> fait une contre-proposition.${r.last ? " <b class='warn'>La marque prévient que c'est sa dernière offre.</b>" : ""}`);
 };
-ACTIONS["prospect"] = v => {
-  const r = prospectSponsor(v || "neutre");
-  if (r.error) return toast(r.error);
-  sponsorModal(r.offer, `Votre équipe commerciale a décroché un rendez-vous avec <b>${esc(r.offer.brand)}</b>.`);
-};
+// ---------- sponsors (onglet) ----------
+function viewSponsors() {
+  const u = user();
+  if (!S.sponsorMarket) refreshSponsorMarket();
+  if (!UI.spFilter) UI.spFilter = { ethic: "all", size: "reach" };
+  const F = UI.spFilter, reach = brandReach();
+  const deals = u.sponsorDeals.map(d => {
+    const e = ETHIC[d.ethic || "neutre"], done = d.total ? 1 - d.weeks / d.total : 0;
+    const cl = (d.clauses || []).map(c => { const prog = c.kind === "rank" ? (leagueRank(c.game) ? ` · actuellement ${leagueRank(c.game)}e` : "") : c.kind === "fans" && c.pos !== undefined ? ` · ${c.pos >= 0 ? "+" : ""}${c.pos} % pour l'instant` : "";
+      return `<div class="clause ${c.status}">${clauseIcon(c)} ${esc(c.label)} · prime ${money(c.bonus)}<span class="muted">${c.status === "pending" ? prog : ""}</span></div>`; }).join("");
+    return `<div class="card sp-card"><div class="brand-head">${brandLogo(d.name)}<div style="min-width:0"><b>${esc(d.name)}</b><div class="muted" style="font-size:12px">${esc(d.sector || "")} · <span class="${e[2]}">${e[0]} ${e[1]}</span>${d.renewals ? ` · renouvelé ${d.renewals}×` : ""}</div></div><div class="sp-amt">${money(d.weekly)}<small>/sem</small></div></div>
+      <div style="margin:8px 0 4px;font-size:12px" class="muted">${d.weeks} semaine(s) restante(s) sur ${d.total || d.weeks} · ${money(d.weekly * d.weeks)} à venir</div>${bar(Math.round(done * 100), "var(--accent2)")}
+      ${cl ? `<div style="margin-top:8px">${cl}</div>` : "<p class='muted' style='font-size:12px'>Aucune clause d'objectif.</p>"}</div>`;
+  }).join("");
+  const market = S.sponsorMarket.list.filter(x => !u.sponsorDeals.some(d => d.name === x.brand)).map(x => {
+    const b = brandOf(x.brand), e = ETHIC[b.ethic];
+    return `<div class="card sp-card"><div class="brand-head">${brandLogo(b.brand)}<div style="min-width:0"><b>${esc(b.brand)}</b><div class="muted" style="font-size:12px">${esc(b.sector)} · ${BRAND_SIZE[b.size]} · <span class="${e[2]}">${e[0]} ${e[1]}</span></div></div></div>
+      <div style="margin:8px 0;font-size:13px">Intérêt ${bar(x.interest, "var(--ok)")} ${x.interest} %</div>
+      <button class="small primary" data-act="sp-talk" data-v="${esc(b.brand)}">🤝 Négocier</button></div>`;
+  }).join("");
+  const list = BRANDS.filter(b => !u.sponsorDeals.some(d => d.name === b[0]) && (F.ethic === "all" || b[2] === F.ethic) && (F.size === "all" || (F.size === "reach" ? b[3] <= reach + 1 : b[3] === +F.size)))
+    .sort((a, b) => b[3] - a[3] || a[0].localeCompare(b[0]))
+    .map(b => { const ch = Math.round(contactChance(b[0]) * 100), e = ETHIC[b[2]], cd = S.brandCooldown && S.brandCooldown[b[0]] > nowIndex();
+      return `<tr><td>${brandLogo(b[0])} <b>${esc(b[0])}</b></td><td class="muted">${esc(b[1])}</td><td>${BRAND_SIZE[b[3]]}</td><td class="${e[2]}">${e[0]} ${e[1]}</td><td><span class="${ch >= 50 ? "ok" : ch >= 20 ? "warn" : "bad"}">${ch} %</span></td>
+        <td>${cd ? "<span class='muted'>a refusé récemment</span>" : `<button class="small" data-act="sp-contact" data-v="${esc(b[0])}">📞 Contacter</button>`}</td></tr>`; }).join("");
+  const opt = (k, cur, list) => list.map(([v, l]) => `<option value="${v}" ${cur === v ? "selected" : ""}>${l}</option>`).join("");
+  return `<h2>🤝 Sponsors</h2>
+    <div class="grid g3">
+      <div class="card"><h3>Revenus sponsors</h3><div class="kpi">${money(u.sponsorDeals.reduce((s, d) => s + d.weekly, 0))}<span class="muted" style="font-size:14px">/sem</span></div><div class="muted">${u.sponsorDeals.length} partenaire(s) · hors partenaires historiques et droits</div></div>
+      <div class="card"><h3>Image du club</h3><div class="kpi">${imageTxt(u.image ?? 60)} <span class="muted" style="font-size:14px">${Math.round(u.image ?? 60)}/100</span></div>${bar(u.image ?? 60)}</div>
+      <div class="card"><h3>Attractivité</h3><div class="kpi">${BRAND_SIZE[reach]}</div><div class="muted">Notoriété ${u.fame.toFixed(0)} : les marques ${BRAND_SIZE[reach].toLowerCase()}es s'intéressent à vous${reach < 3 ? ` (marques ${BRAND_SIZE[reach + 1].toLowerCase()}es à partir de ${reach === 1 ? 25 : 55} de notoriété)` : ""}.</div></div>
+    </div>
+    <h3 style="margin-top:20px">Vos partenaires</h3><div class="sp-grid">${deals || "<p class='muted'>Aucun partenaire pour l'instant.</p>"}</div>
+    <h3 style="margin-top:20px">Marques intéressées par le club</h3><p class="muted" style="margin-top:-6px;font-size:13px">Elles vous ont contacté : la discussion est assurée. La liste change toutes les 4 semaines.</p><div class="sp-grid">${market || "<p class='muted'>Aucune marque pour le moment.</p>"}</div>
+    <div class="card" style="margin-top:20px"><div class="toolbar"><h3 style="margin:0;flex:1">Démarcher une marque</h3>
+      <select data-change="sp-f-ethic" aria-label="Type de marque">${opt("e", F.ethic, [["all", "Toutes les marques"], ["ethique", "🌱 Éthiques"], ["neutre", "🤝 Classiques"], ["controverse", "🎰 Controversées"]])}</select>
+      <select data-change="sp-f-size" aria-label="Taille">${opt("s", F.size, [["reach", "À ma portée"], ["all", "Toutes tailles"], ["1", "Locales"], ["2", "Nationales"], ["3", "Internationales"]])}</select></div>
+      <p class="muted" style="margin-top:-4px;font-size:13px">Votre équipe commerciale peut contacter 2 marques par semaine. Une marque trop grande pour votre notoriété refuse presque toujours ; les marques éthiques regardent l'image du club. Une marque qui refuse ne peut pas être recontactée avant 8 semaines.</p>
+      <div class="table-wrap"><table><tr><th>Marque</th><th>Secteur</th><th>Taille</th><th>Éthique</th><th>Chances</th><th></th></tr>${list}</table></div></div>`;
+}
+ACTIONS["sp-talk"] = v => { S.sponsorMarket.list = S.sponsorMarket.list.filter(x => x.brand !== v); sponsorModal(sponsorOffer(v), `<b>${esc(v)}</b> s'intéresse à votre club et vous propose un partenariat.`); };
+ACTIONS["sp-contact"] = v => { const r = contactBrand(v); if (r.error) { toast(r.error); return render(); } sponsorModal(r.offer, `<b>${esc(v)}</b> accepte de vous rencontrer et fait une première offre.`); };
+ACTIONS["prospect"] = () => { UI.view = "sponsors"; render(); };
 
 // ---------- boucle hebdomadaire ----------
 let pendingEvents = [];
@@ -960,10 +1079,73 @@ function matchDayModal(last) {
     <p class="muted" style="font-size:12px">Lancez vos matchs un par un pour suivre chaque résultat, ou simulez tout le reste de la semaine d'un coup (pratique avec beaucoup de jeux). Vous pouvez fermer cette fenêtre pour changer une composition avant de jouer.</p>
     <div class="actions"><button data-act="close-modal">Fermer</button><button class="primary" data-act="md-finish">${left.length ? `⏩ Simuler le reste de la semaine (${left.length})` : "Terminer la semaine ▶"}</button></div>`);
 }
+// ---------- match en direct (animation) ----------
+// le résultat est déjà calculé ; on le dévoile manche par manche pour garder du suspense
+const LIVE = { timer: null, speed: 1, steps: [], i: 0, onDone: null };
+function flavor(game, side, m, players) {
+  const g = GAMES[game], p = players.length ? pick(players) : "un joueur", team = side;
+  const lines = g.rounds ? [`Pistol round pour ${team}`, `Clutch 1v3 de ${p} !`, `ACE de ${p} !`, `${team} enchaîne 5 rounds`, `Retake parfait de ${team}`, `${p} ouvre le round à l'AWP`, `Éco gagné par ${team} !`]
+    : game === "rl" ? [`But de ${p} !`, `Arrêt décisif de ${p}`, `Double tap de ${p} !`, `${team} met la pression`, `But en prolongation pour ${team} !`]
+    : g.fmt === "duel" ? [`Combo dévastateur de ${p}`, `${p} lit parfaitement son adversaire`, `Perfect pour ${p} !`, `${p} revient de nulle part`]
+    : [`First blood pour ${team}`, `${team} prend le Baron`, `Teamfight remporté par ${team}`, `${p} fait un quadra kill !`, `${team} détruit un inhibiteur`, `Steal de ${p} !`];
+  return pick(lines);
+}
+function liveSteps(r) {
+  const steps = [];
+  for (const m of r.matches) {
+    const A = clubLabel(m.a, m.game), B = clubLabel(m.b, m.game), pa = (m.notesA || []).map(x => x[0]), pb = (m.notesB || []).map(x => x[0]);
+    steps.push({ t: 900, m, a: 0, b: 0, log: `${GAMES[m.game].icon} ${m.stage || ""} — ${A} contre ${B}, BO${m.bestOf}` });
+    let a = 0, b = 0;
+    (m.seq || []).forEach((w, i) => {
+      steps.push({ t: 700, m, a, b, live: true, log: flavor(m.game, w === "a" ? A : B, m, w === "a" ? pa : pb) });
+      w === "a" ? a++ : b++;
+      steps.push({ t: 1300, m, a, b, flash: w, log: `<b>${w === "a" ? A : B}</b> remporte la manche ${i + 1}${m.maps && m.maps[i] ? " (" + m.maps[i] + ")" : ""} · ${a}-${b}` });
+    });
+    steps.push({ t: 1100, m, a: m.sa, b: m.sb, end: true, log: `🏁 <b>${clubLabel(m.winner, m.game)}</b> gagne ${Math.max(m.sa, m.sb)}-${Math.min(m.sa, m.sb)}${m.mvp ? " · MVP " + esc(m.mvp) : ""}` });
+  }
+  for (const l of r.lobbies) {
+    steps.push({ t: 900, l, k: -1, log: `${GAMES[l.game].icon} ${l.stage} — lobby de ${l.lobby} ${GAMES[l.game].unit}s` });
+    l.mine.places.forEach((pl, k) => steps.push({ t: 1300, l, k, log: `Partie ${k + 1} : <b>${pl === 1 ? "👑 TOP 1 !" : pl + "e"}</b>` }));
+    steps.push({ t: 1100, l, k: l.mine.places.length, end: true, log: `🏁 ${l.mine.pts} points · <b>${l.rank}e</b> de la journée` });
+  }
+  for (const t of r.tournaments) steps.push({ t: 1200, tour: t, log: `🏆 ${esc(t.name)} : ${t.place === 1 ? "<b class='win'>VAINQUEUR !</b>" : `<b>${t.place}e</b> sur ${t.n}`}` });
+  return steps;
+}
+function liveRender() {
+  const st = LIVE.steps[LIVE.i], log = LIVE.steps.slice(0, LIVE.i + 1).map(x => x.log).reverse().slice(0, 7);
+  let board = "";
+  if (st.m) {
+    const m = st.m, A = clubLabel(m.a, m.game), B = clubLabel(m.b, m.game);
+    board = `<div class="live-board"><div class="live-team ${st.end && m.winner === m.a ? "win" : ""}">${esc(A)}</div>
+      <div class="live-score"><span class="${st.flash === "a" ? "flash" : ""}">${st.a}</span> - <span class="${st.flash === "b" ? "flash" : ""}">${st.b}</span></div>
+      <div class="live-team ${st.end && m.winner === m.b ? "win" : ""}">${esc(B)}</div></div>
+      <div class="live-bar ${st.live ? "playing" : ""}"><i></i></div>`;
+  } else if (st.l) {
+    const l = st.l, pl = l.mine.places.slice(0, Math.max(0, st.k + 1));
+    board = `<div class="live-board"><div class="live-places">${l.mine.places.map((p, k) => `<span class="${k <= st.k ? (p === 1 ? "top1" : p <= 10 ? "good" : "") : "hidden-pl"}">${k <= st.k ? (p === 1 ? "👑" : p) : "?"}</span>`).join("")}</div></div><div class="live-bar ${st.end ? "" : "playing"}"><i></i></div>`;
+  } else board = `<div class="live-board"><div class="live-team win">${st.log}</div></div>`;
+  modal(`<h2><span class="live-dot"></span> EN DIRECT</h2>${board}<div class="live-log">${log.map((x, i) => `<div class="${i ? "muted" : ""}">${x}</div>`).join("")}</div>
+    <div class="actions"><button data-act="live-fast">${LIVE.speed > 1 ? "⏩ Vitesse ×4" : "⏩ Accélérer"}</button><button class="primary" data-act="live-skip">⏭ Voir le résultat</button></div>`);
+}
+function liveNext() {
+  clearTimeout(LIVE.timer);
+  if (LIVE.i >= LIVE.steps.length - 1) { const f = LIVE.onDone; LIVE.onDone = null; return f && f(); }
+  LIVE.i++; liveRender();
+  LIVE.timer = setTimeout(liveNext, LIVE.steps[LIVE.i].t / LIVE.speed);
+}
+function playLive(r, onDone) {
+  LIVE.steps = liveSteps(r); LIVE.i = 0; LIVE.onDone = onDone; LIVE.speed = 1;
+  if (!LIVE.steps.length) return onDone();
+  liveRender(); LIVE.timer = setTimeout(liveNext, LIVE.steps[0].t);
+}
+ACTIONS["live-fast"] = () => { LIVE.speed = LIVE.speed > 1 ? 1 : 4; liveRender(); };
+ACTIONS["live-skip"] = () => { clearTimeout(LIVE.timer); const f = LIVE.onDone; LIVE.onDone = null; f && f(); };
 ACTIONS["md-play"] = v => {
   const r = playEvent(v);
+  playLive(r, () => showEventResult(r));
+};
+function showEventResult(r) {
   const res = resultsHtml(r) || "<p class='muted'>Votre équipe n'a pas joué.</p>";
-  const fans = r.fans.reduce((s, [, d]) => s + d, 0);
   render();
   matchDayModal(`<div class="card md-result">${res}${fanRecap(r.fans, "📈 Fans après ce match")}${r.money ? `<p>Gains : <b class="${r.money >= 0 ? "ok" : "bad"}">${r.money >= 0 ? "+" : ""}${money(r.money)}</b></p>` : ""}</div>`);
 };
@@ -991,6 +1173,7 @@ function showSummary(reps) {
   const title = se ? "🏁 Fin de la saison " + last.season : reps.length > 1 ? `${weekLabel(reps[0].season, reps[0].week)} → ${weekLabel(last.season, last.week, true)}` : `Semaine du ${weekLabel(last.season, last.week, true)}`;
   modal(`<h2>${title}</h2>${reps.length > 1 ? `<p class="muted" style="margin-top:-6px">${reps.length} semaines jouées.</p>` : ""}${res}
     <div class="grid g2" style="margin-top:12px">${fanRecap(reps.flatMap(r => r.fans))}${moneyRecap(merge("income"), merge("expenses"))}</div>
+    ${(() => { const pr = reps.flatMap(r => r.progress || []); return pr.length ? `<div class="recap" style="margin-top:12px"><div class="recap-h"><span>📈 Progression des joueurs</span></div>${pr.map(([id, h, g, r]) => `<div class="recap-r"><span>${GAMES[g].icon} ${esc(h)}</span><b class="ok">${r} (+1)</b></div>`).join("")}</div>` : ""; })()}
     ${missing.length ? `<p class="bad">⚠️ Effectif incomplet en ${missing.map(g => GAMES[g].short).join(", ")} : vos équipes jouent en sous-nombre !</p>` : ""}
     ${se ? `<p>${se.moves.length ? se.moves.join("<br>") : "Pas de changement de division."}</p><p>Objectif du conseil ${se.ok ? "<b class='ok'>atteint ✅</b>" : "<b class='bad'>manqué ❌</b>"}. Le bilan complet est dans la messagerie.</p>` : ""}
     ${S.over ? `<p class="bad"><b>Vous avez été licencié. Fin de partie.</b></p>` : ""}
@@ -1009,7 +1192,7 @@ function maybeAlloc() {
 ACTIONS["next-event"] = () => {
   const ev = pendingEvents.shift();
   if (!ev) { if (!maybeAlloc()) closeModal(); return; }
-  if (ev.sponsor) return sponsorModal(ev.sponsor, `<b>${esc(ev.sponsor.brand)}</b> vous contacte pour un partenariat.`);
+  if (ev.sponsor) return sponsorModal(ev.sponsor, ev.intro || `<b>${esc(ev.sponsor.brand)}</b> vous contacte pour un partenariat.`);
   window._ev = ev;
   modal(`<h2>${ev.title}</h2><p>${ev.body}</p><div class="actions">${ev.choices.map((c, i) => `<button class="${i ? "" : "primary"}" data-act="ev-choice" data-v="${i}">${c.label}</button>`).join("")}</div>`);
 };
@@ -1020,17 +1203,49 @@ ACTIONS["ev-choice"] = v => {
   ACTIONS["next-event"]();
 };
 
+// ---------- recherche (menu) ----------
+function searchResults(q) {
+  q = q.trim().toLowerCase(); if (q.length < 2) return "";
+  const norm = x => x.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase(), nq = norm(q);
+  const clubs = Object.values(S.clubs).filter(c => !c.filler && !c.sister && !c.unitOf && Object.keys(c.divisions).length && (norm(c.name).includes(nq) || Object.values(c.divisions).some(d => d.label && norm(d.label).includes(nq))))
+    .sort((a, b) => (norm(b.name).startsWith(nq) - norm(a.name).startsWith(nq)) || b.fame - a.fame).slice(0, 8);
+  const players = Object.values(S.players).filter(p => norm(p.handle).includes(nq)).sort((a, b) => (norm(b.handle).startsWith(nq) - norm(a.handle).startsWith(nq)) || b.rating - a.rating).slice(0, 8);
+  const cl = clubs.map(c => `<div class="sr" data-act="club-info" data-v="${c.id}"><span style="color:${c.color}">■</span> <b>${esc(c.name)}</b> ${flag(c.country)} <small class="muted">${Object.keys(c.divisions).map(g => GAMES[g].icon).join("")}</small></div>`).join("");
+  const pl = players.map(p => { const c = S.clubs[p.club]; return `<div class="sr" data-act="player-info" data-v="${p.id}">${flag(p.nat)} <b>${esc(p.handle)}</b> <small class="muted">${GAMES[p.game].short} · ${p.rating} · ${c ? esc(c.solo ? "indépendant" : c.name) : "agent libre"}</small></div>`; }).join("");
+  return (cl ? `<div class="sr-h">Équipes</div>${cl}` : "") + (pl ? `<div class="sr-h">Joueurs</div>${pl}` : "") || "<div class='sr muted'>Aucun résultat.</div>";
+}
+document.addEventListener("input", e => {
+  if (e.target.id !== "g-search") return;
+  const box = document.getElementById("g-results"), html = searchResults(e.target.value);
+  box.innerHTML = html; box.classList.toggle("hidden", !html);
+});
+// fiche d'un joueur (recherche) : voir, recruter ou lui parler
+function playerInfo(pid) {
+  const p = S.players[pid]; if (!p) return;
+  const c = S.clubs[p.club], mine = c && isMine(c.id), avg = avgNote(p);
+  const act = mine ? `<button data-act="talk" data-v="${p.id}">💬 Lui parler</button><button data-act="contract" data-v="${p.id}">📄 Contrat</button>`
+    : !c ? `<button class="primary" data-act="sign" data-v="${p.id}">Signer</button>` : `<button class="primary" data-act="offer" data-v="${p.id}">Faire une offre (~${money(askingPrice(p))})</button>`;
+  modal(`<h2>${flag(p.nat)} ${esc(p.handle)}</h2><p class="muted" style="margin-top:-6px">${GAMES[p.game].icon} ${GAMES[p.game].name} · ${p.role} · ${ageTxt(p)} ans · ${c ? (c.solo ? "pro indépendant" : `<span class="link" data-act="club-info" data-v="${c.parent || c.id}">${esc(c.name)}</span>`) : "agent libre"}</p>
+    <div class="offer"><div><span class="muted">Note</span><b>${R(p.rating)}</b></div><div><span class="muted">Potentiel</span><b>${potTxt(p)}</b></div><div><span class="muted">Moyenne en match</span><b>${avg ? avg.toFixed(2) : "—"}</b></div><div><span class="muted">Valeur</span><b>${money(playerValue(p))}</b></div></div>
+    <p>Région de jeu : ${REGIONS[playRegion(p)]} · ${personalityOf(p)} · contrat ${p.years} an(s) · ${money(p.salary)}/sem${p.clause ? ` · clause ${money(p.clause)}` : ""}</p>
+    <div class="actions"><button data-act="close-modal">Fermer</button>${act}</div>`);
+}
+ACTIONS["player-info"] = v => playerInfo(v);
+
 // ---------- délégation d'événements ----------
 document.addEventListener("click", e => {
   const el = e.target.closest("[data-act]");
   if (el && !el.disabled) { ACTIONS[el.dataset.act] && ACTIONS[el.dataset.act](el.dataset.v); return; }
-  if (e.target.id === "modal" && !pendingEvents.length && !document.querySelector('#modal [data-act="ev-choice"], #modal [data-act="next-event"], #modal [data-act="sp-counter"], #modal [data-act="nego-propose"]')) closeModal();
+  if (e.target.id === "modal" && !pendingEvents.length && !document.querySelector('#modal [data-act="ev-choice"], #modal [data-act="next-event"], #modal [data-act="sp-counter"], #modal [data-act="nego-propose"], #modal [data-act="live-skip"], #modal [data-act="md-finish"]')) closeModal();
 });
 document.addEventListener("change", e => {
   const k = e.target.dataset.change; if (!k) return;
   if (k === "unit-move") { if (e.target.value) { const err = assignUnit(e.target.dataset.pid, e.target.value); if (err) toast(err); scheduleSave(); } return render(); }
   if (k.startsWith("al-")) return allocSum();
   if (k === "fin-game") { UI.finGame = e.target.value; return render(); }
+  if (k === "sp-f-ethic") { UI.spFilter.ethic = e.target.value; return render(); }
+  if (k === "sp-f-size") { UI.spFilter.size = e.target.value; return render(); }
+  if (k === "sp-level") { document.querySelectorAll(".clause-opt").forEach(x => x.classList.toggle("sel", x.contains(e.target))); return; }
   if (k === "mail-q") { UI.inbox.q = e.target.value; UI.mailOpen = null; return render(); }
   const m = UI.market;
   if (k === "m-game") { m.game = e.target.value; m.role = "all"; }
