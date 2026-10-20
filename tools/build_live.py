@@ -2,6 +2,7 @@
 # Usage : python3 tools/build_live.py <dossier des données> js/data_live.js
 import csv, json, os, re, subprocess, sys, unicodedata, zlib
 SRC, OUT = sys.argv[1], sys.argv[2]
+LIVE_FORMAT = 3   # à incrémenter avec LIVE_EXPECTED (js/data.js) quand le contenu change de façon importante
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # données actuelles du jeu (orgs, notes connues des joueurs)
@@ -263,6 +264,8 @@ print("ages corrigés :", len(age_fix), file=sys.stderr)
 
 with open(OUT, "w", encoding="utf-8") as f:
     f.write("// Généré par tools/build_live.py — effectifs récupérés sur les sites de données (VLR…).\n")
+    # numéro de version attendu par data.js (LIVE_EXPECTED) : l'interface prévient si le navigateur sert un fichier périmé
+    f.write("const LIVE_BUILD = %d;\n" % LIVE_FORMAT)
     f.write("// Ces données remplacent celles de data.js pour les jeux concernés.\n")
     f.write("const LIVE_ORGS = " + json.dumps(live_orgs, ensure_ascii=False) + ";\n")
     f.write("const LIVE_ROSTERS = " + json.dumps(rosters, ensure_ascii=False) + ";\n")

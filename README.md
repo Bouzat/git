@@ -25,7 +25,7 @@ Pour les jeux ajoutés, seuls les échecs (Carlsen, Nakamura, Firouzja, Gukesh�
 
 Chaque jeu a 3 tiers (ex. CS2 : Majors/BLAST/IEM → ESL Challenger/CCT → ESEA/FACEIT). Les 2 premiers de chaque tier montent, les 2 derniers descendent. On peut aussi acheter une place plus haut quand le club est assez connu.
 
-**Fortnite est un circuit ouvert** : un seul classement FNCS pour tous les duos (pros et amateurs), sans divisions. Chaque club a un statut recalculé en fin de saison d'après son classement : **Élite** (top 20), **Pro** (top 80) ou **Open**. Ce statut fixe les invitations aux grands tournois, l'accès aux cash cups, les sponsors et les frais. Un nouveau club entre en statut Open. Dans les classements, un duo d'organisation s'affiche avec le nom du club, par exemple « XSET (Clix & Rapid) ».
+**Fortnite est un circuit ouvert** : un seul classement FNCS pour tous les duos (pros et amateurs), sans divisions. Chaque club a un statut recalculé en fin de saison d'après son classement : **Élite** (top 20), **Pro** (top 80) ou **Open**. Ce statut fixe les invitations aux grands tournois, l'accès aux cash cups, les sponsors et les frais. Un nouveau club entre en statut Open. Comme la vraie FNCS, le format alterne : **duos les années paires (2026), trios les années impaires (2027)**. Les clubs de l'IA complètent leurs équipes, mais le vôtre doit recruter son troisième joueur. Dans les classements, un duo d'organisation s'affiche avec le nom du club, par exemple « XSET (Clix & Rapid) ».
 
 Trois formats de compétition :
 - **Équipes** : séries BO3 en saison régulière, playoffs avec demies BO3 et finale BO5.

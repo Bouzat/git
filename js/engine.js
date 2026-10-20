@@ -177,6 +177,7 @@ function newWorld(opts) {
     clubs: {}, players: {}, leagues: {}, inbox: [], finance: [], titles: [],
     userId: null, board: { confidence: 60, objective: null }, lastWeek: null,
   };
+  applySeasonFormats();
   for (const game of Object.keys(GAMES)) {
     const entries = [];
     for (const [orgId, roster, verified] of (ROSTERS[game] || [])) entries.push({ orgId, roster, verified: !!verified, avg: roster.reduce((s, p) => s + p[2], 0) / roster.length });
@@ -270,7 +271,34 @@ function roundRobin(teams) {
 }
 const emptyRow = fmt => fmt === "br" ? { pts: 0, kills: 0, top1: 0, games: 0, place: 0 } : { w: 0, l: 0, mw: 0, ml: 0 };
 
+// formats qui changent selon l'année (Fortnite : duos puis trios). À appeler dès que S.season change ou qu'une partie est chargée.
+function applySeasonFormats() {
+  const changed = [];
+  for (const [k, g] of Object.entries(GAMES)) {
+    if (!g.formats) continue;
+    const f = g.formats[S.season % 2 === 0 ? "even" : "odd"];
+    if (g.size !== f.size) changed.push(k);
+    Object.assign(g, f);
+  }
+  return changed;
+}
 function newSeasonSetup(first) {
+  const changed = applySeasonFormats();
+  for (const game of changed) {
+    if (first) continue;
+    const g = GAMES[game];
+    // les clubs de l'IA complètent (ou réduisent) leurs équipes ; le joueur doit recruter lui-même
+    for (const c of Object.values(S.clubs)) {
+      if (!c.divisions[game]) continue;
+      if (c.id !== S.userId) aiFillRoster(c.id, game);
+      if (c.id !== S.userId || g.size < clubPlayers(c.id, game).filter(p => p.starter).length) autoStarters(c.id, game);
+    }
+    if (user().divisions[game]) {
+      const n = clubPlayers(S.userId, game).length;
+      mail(`${g.icon} ${g.name} ${S.season} : place aux ${g.unit}s !`, `La FNCS change de format cette saison : les équipes jouent en <b>${g.unit}s</b> (${g.size} joueurs, lobbies de ${g.lobby * g.size} joueurs).` +
+        (n < g.size ? `<br>Votre effectif n'a que ${n} joueur(s) : recrutez vite, une place vide coûte très cher en lobby.` : `<br>Vérifiez vos titulaires dans l'onglet Effectifs.`), "info");
+    }
+  }
   for (const L of Object.values(S.leagues)) {
     L.teams = L.teams.filter(id => S.clubs[id] && divOf(id, L.game));
     const fmt = GAMES[L.game].fmt;
@@ -1227,7 +1255,7 @@ function news(text) { mail("📰 " + text, text, "news"); }
 
 // ---------- sauvegarde ----------
 function save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); } catch (e) { /* stockage indisponible */ } }
-function load() { try { const s = localStorage.getItem(SAVE_KEY); if (s) { S = JSON.parse(s); return true; } } catch (e) { } return false; }
+function load() { try { const s = localStorage.getItem(SAVE_KEY); if (s) { S = JSON.parse(s); applySeasonFormats(); return true; } } catch (e) { } return false; }
 // empreinte de la base de données : une partie créée avant une mise à jour des effectifs garde l'ancien monde
 function dataVersion() {
   const txt = JSON.stringify([ORGS, ROSTERS, SOLOS, typeof EXTRA_DIVS !== "undefined" ? EXTRA_DIVS : 0]);

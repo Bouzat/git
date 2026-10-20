@@ -6,6 +6,9 @@
 //  L'ordre des joueurs suit l'ordre des rôles du jeu.
 // =====================================================================
 
+// version de js/data_live.js attendue (voir LIVE_FORMAT dans tools/build_live.py)
+const LIVE_EXPECTED = 3;
+
 // fmt : "team" (séries BO3/BO5), "br" (battle royale en lobby), "duel" (1 contre 1)
 const GAMES = {
   lol:  { name: "League of Legends", short: "LoL",  icon: "⚔️", fmt: "team", size: 5, roles: ["Top", "Jungle", "Mid", "ADC", "Support"], prize: 3000000, mult: 1.0, color: "#c89b3c",
@@ -30,6 +33,8 @@ const GAMES = {
           // circuit ouvert : une seule compétition (FNCS) pour tous les duos ; le « tier » d'un club n'est plus qu'un statut
           // (Élite = top 20, Pro = top 80, Open = le reste) recalculé chaque saison d'après son classement
           open: true, circuit: "FNCS — circuit ouvert", statuses: ["Élite", "Pro", "Open"],
+          // la FNCS alterne les formats : duos les années paires (2026), trios les années impaires (2027)
+          formats: { even: { size: 2, unit: "duo", lobby: 50 }, odd: { size: 3, unit: "trio", lobby: 33 } },
           tiers: ["FNCS — statut Élite", "FNCS — statut Pro", "FNCS — statut Open"] },
   apex: { name: "Apex Legends",      short: "APEX", icon: "🪂", fmt: "br", size: 3, lobby: 20, gamesPerWeek: 4, roles: ["IGL", "Fragger", "Support"], prize: 700000, mult: 0.5, color: "#da292a", unit: "trio",
           tiers: ["ALGS Pro League", "ALGS Challenger Circuit", "Online Tournaments"] },
