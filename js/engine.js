@@ -127,6 +127,9 @@ function addDivision(club, game, tier, roster) {
     const p = makePlayer(h, n, r, a, game, i, club.id);
     p.starter = i < GAMES[game].size; addPlayer(p); club.divisions[game].players.push(p.id);
   });
+  // une équipe réelle est inscrite dans une seule région (celle de son premier joueur), même si ses joueurs viennent d'ailleurs
+  const ps = clubPlayers(club.id, game);
+  if (ps.length) { const r = homeRegion(ps[0]); ps.forEach(p => { if (homeRegion(p) !== r) p.region = r; }); }
 }
 // équipe supplémentaire d'une organisation dans un jeu solo/duo (ex. 2e duo Fortnite de Solary)
 function sisterClub(orgId, game) {
@@ -486,17 +489,27 @@ function joinClub(p, club, salary, years) {
   p.club = club.id; p.salary = salary; p.years = years; p.starter = false;
   p.morale = clamp(p.morale + 15, 0, 100);
   club.divisions[p.game].players.push(p.id);
-  if (club.ai) autoStarters(club.id, p.game);
+  if (club.ai) {
+    // les clubs de l'IA inscrivent leur recrue dans la région de l'équipe
+    const mate = clubPlayers(club.id, p.game).find(x => x.id !== p.id);
+    if (mate && playRegion(mate) !== playRegion(p)) { p.region = playRegion(mate); p.movedAt = nowIndex(); }
+    autoStarters(club.id, p.game);
+  }
   else if (clubPlayers(club.id, p.game).filter(x => x.starter).length < GAMES[p.game].size) p.starter = true;
 }
 function removeFromClub(p) {
   const d = divOf(p.club, p.game);
   if (d) d.players = d.players.filter(id => id !== p.id);
   p.club = null; p.starter = false;
+  // sans contrat, le joueur rentre jouer chez lui
+  delete p.region; delete p.movedAt;
 }
 function autoStarters(clubId, game) {
   const ps = clubPlayers(clubId, game).sort((a, b) => effRating(b) - effRating(a));
-  ps.forEach((p, i) => p.starter = i < GAMES[game].size);
+  // la région de l'équipe est celle de son meilleur joueur ; les titulaires doivent tous y être inscrits
+  const region = ps.length ? playRegion(ps[0]) : null;
+  let n = 0;
+  ps.forEach(p => p.starter = playRegion(p) === region && n++ < GAMES[game].size);
 }
 function aiFillRoster(clubId, game) {
   const c = S.clubs[clubId], g = GAMES[game], d = divOf(clubId, game);
@@ -520,6 +533,8 @@ function toggleStarter(pid) {
   const p = S.players[pid];
   if (p.starter) { p.starter = false; return null; }
   if (clubPlayers(p.club, p.game).filter(x => x.starter).length >= GAMES[p.game].size) return `Déjà ${GAMES[p.game].size} titulaire(s). Passez d'abord un joueur sur le banc.`;
+  const other = clubPlayers(p.club, p.game).find(x => x.starter && playRegion(x) !== playRegion(p));
+  if (other) return `Règlement : tous les titulaires doivent être inscrits dans la même région. ${p.handle} joue en ${REGIONS[playRegion(p)]}, ${other.handle} en ${REGIONS[playRegion(other)]}. Renégociez son contrat pour changer sa région.`;
   p.starter = true; return null;
 }
 
@@ -558,6 +573,29 @@ function expectedStatus(p, club) {
   return rank < size + 2 ? "Rotation" : "Remplaçant";
 }
 // ce que demande le joueur (et son agent)
+// ---------- régions ----------
+const homeRegion = p => REGION_OF[p.nat] || "EU";
+const playRegion = p => p.region || homeRegion(p);
+// envie de s'installer dans une autre région (0 = jamais, 1 = partant), propre à chaque joueur
+function relocateWill(p) {
+  const pers = personalityOf(p);
+  const base = (hashOf(p.id + "|move") % 100) / 100;
+  return clamp(base + ({ Ambitieux: 0.2, Mercenaire: 0.25, Loyal: -0.15, "Jeune talent": -0.1 }[pers] || 0) - (p.age <= 17 ? 0.15 : 0), 0, 1);
+}
+// semaines écoulées depuis un instant nowIndex() (≈ 14 semaines par saison)
+const weeksSince = t => (S.season - Math.floor(t / 100)) * 14 + (S.week - t % 100);
+const ADAPT_WEEKS = 8;
+// malus d'adaptation après un changement de région (nouveau ping, nouveaux horaires, déménagement)
+function adaptFactor(p) {
+  if (!p.movedAt) return 1;
+  const w = weeksSince(p.movedAt);
+  return w >= ADAPT_WEEKS ? 1 : 1 - 0.06 * (1 - w / ADAPT_WEEKS);
+}
+// règlement : tous les titulaires d'une équipe sont inscrits dans la même région
+function teamRegion(clubId, game) {
+  const st = clubPlayers(clubId, game).filter(p => p.starter);
+  return st.length ? playRegion(st[0]) : null;
+}
 function contractDemands(p, club, ctx) {
   const pers = PERSONALITIES[personalityOf(p)];
   const greed = pers.greed * (ctx === "renew" && p.morale < 40 ? 1.25 : 1) * (ctx === "renew" && personalityOf(p) === "Loyal" ? 0.92 : 1);
@@ -573,6 +611,7 @@ function contractDemands(p, club, ctx) {
     winBonus: round50(salary * rand(0.08, 0.2)),
     clauseMax: star ? Math.round(value * rand(1.6, 2.6) / 10000) * 10000 : 0,
     status: expectedStatus(p, club),
+    region: playRegion(p),
   };
 }
 function startNegotiation(pid, ctx, fee = 0) {
@@ -592,8 +631,16 @@ const REPLIES = {
 function proposeContract(N, offer) {
   const p = S.players[N.pid], d = N.dem, pers = PERSONALITIES[personalityOf(p)];
   const ratio = (v, want) => want <= 0 ? 1.1 : Math.min(1.15, v / want);
+  // jouer hors de chez lui : certains refusent net, les autres veulent être payés pour s'installer
+  const home = homeRegion(p), region = offer.region || playRegion(p), moving = region !== playRegion(p) && region !== home;
+  const will = relocateWill(p), movePremium = moving ? 1.12 + 0.6 * (1 - will) : 1;
+  if (moving && will < 0.25) {
+    N.round++; N.patience -= 1; N.log.push({ offer: { ...offer }, score: 0 });
+    if (N.patience <= 0) { p.noTalkUntil = nowIndex() + 4; return { status: "walk", msg: `« Mon client ne quittera pas ${REGIONS[home]}, c'est non négociable. » ${p.handle} met fin aux négociations pour 4 semaines.` }; }
+    return { status: "counter", tone: "insult", msg: `« Mon client refuse de jouer en ${REGIONS[region]} : il veut rester en ${REGIONS[home]}. Ce n'est pas une question d'argent. »` };
+  }
   const parts = {
-    salary: ratio(offer.salary, d.salary), bonus: ratio(offer.bonus, d.bonus),
+    salary: ratio(offer.salary, d.salary * movePremium), bonus: ratio(offer.bonus, d.bonus),
     share: ratio(offer.prizeShare, d.prizeShare), win: ratio(offer.winBonus, d.winBonus),
   };
   let score = Object.entries(pers.w).reduce((t, [k, w]) => t + w * parts[k], 0) / Object.values(pers.w).reduce((a, b) => a + b, 0);
@@ -605,6 +652,7 @@ function proposeContract(N, offer) {
   const agentR = offer.agentFee / d.agentFee;
   if (agentR < 1) { score -= (1 - agentR) * 0.12; if (agentR < 0.8) issues.push(`l'agent réclame ${money(d.agentFee)} de commission`); }
   for (const [k, lbl] of [["share", "la part du cashprize trop basse"], ["bonus", "la prime à la signature trop basse"], ["salary", "le salaire trop bas"]]) if (parts[k] < 0.92) issues.unshift(`trouve ${lbl}`);
+  if (moving && parts.salary < 0.97) issues.unshift(`accepte de s'installer en ${REGIONS[region]}, mais veut environ ${money(round50(d.salary * movePremium))}/sem pour ça`);
   N.round++;
   N.log.push({ offer: { ...offer }, score });
   if (score >= 0.97) return { status: "accept", msg: "« Marché conclu, mon client est ravi ! »" };
@@ -625,6 +673,7 @@ function acceptContract(N, offer) {
   const upfront = offer.bonus + offer.agentFee + (N.ctx === "transfer" ? N.fee : 0);
   if (u.budget < upfront) return `Budget insuffisant : il faut ${money(upfront)} tout de suite (prime, commission${N.ctx === "transfer" ? ", transfert" : ""}).`;
   u.budget -= upfront;
+  const prevRegion = playRegion(p), prevMoved = p.movedAt;
   let from = "";
   if (N.ctx === "transfer") {
     const seller = S.clubs[p.club];
@@ -638,10 +687,16 @@ function acceptContract(N, offer) {
     joinClub(p, u, offer.salary, offer.years);
   }
   Object.assign(p, { salary: offer.salary, years: offer.years, prizeShare: offer.prizeShare, winBonus: offer.winBonus, clause: offer.clause, status: offer.status, promiseBroken: 0 });
+  const region = offer.region || prevRegion;
+  if (region !== homeRegion(p)) p.region = region; else delete p.region;
+  if (region !== prevRegion) p.movedAt = nowIndex(); else if (prevMoved) p.movedAt = prevMoved;
+  // un titulaire inscrit dans une autre région que ses coéquipiers passe sur le banc
+  const tr = teamRegion(u.id, p.game);
+  if (p.starter && tr && clubPlayers(u.id, p.game).some(x => x.starter && x.id !== p.id && playRegion(x) !== playRegion(p))) p.starter = false;
   p.morale = clamp(p.morale + 10, 0, 100);
   mail(`${N.ctx === "renew" ? "Prolongation" : "Signature"} : ${p.handle}`,
     `${flag(p.nat)} <b>${p.handle}</b> (${GAMES[p.game].short}, ${p.rating})${from} — ${offer.years} an(s), ${money(offer.salary)}/sem, statut « ${offer.status} ».<br>
-     Prime de signature ${money(offer.bonus)} · commission d'agent ${money(offer.agentFee)} · ${offer.prizeShare} % des cashprizes · prime de victoire ${money(offer.winBonus)} · clause libératoire ${offer.clause ? money(offer.clause) : "aucune"}.`, "transfer");
+     Région de jeu : ${REGIONS[playRegion(p)]}${p.movedAt === nowIndex() ? ` (déménagement : ${ADAPT_WEEKS} semaines d'adaptation)` : ""}.<br>Prime de signature ${money(offer.bonus)} · commission d'agent ${money(offer.agentFee)} · ${offer.prizeShare} % des cashprizes · prime de victoire ${money(offer.winBonus)} · clause libératoire ${offer.clause ? money(offer.clause) : "aucune"}.`, "transfer");
   return null;
 }
 // prix d'une clause libératoire d'un joueur IA : son club ne peut pas refuser
@@ -674,7 +729,7 @@ function weeklyContractEffects() {
 }
 
 // ---------- matchs ----------
-function effRating(p) { return p.rating * (0.88 + 0.12 * p.form / 100) * (0.92 + 0.08 * p.morale / 100); }
+function effRating(p) { return p.rating * (0.88 + 0.12 * p.form / 100) * (0.92 + 0.08 * p.morale / 100) * adaptFactor(p); }
 function teamStrength(clubId, game) {
   const c = S.clubs[clubId], g = GAMES[game];
   const ps = clubPlayers(clubId, game);

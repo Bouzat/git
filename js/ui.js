@@ -227,7 +227,7 @@ function viewRoster() {
   const nSt = ps.filter(p => p.starter).length;
   const rows = ps.map(p => `<tr>
     <td>${p.starter ? "⭐" : "<span class='muted'>banc</span>"}</td>
-    <td>${flag(p.nat)} <b>${esc(p.handle)}</b></td><td>${p.role}</td><td>${ageTxt(p)}</td><td>${R(p.rating)}</td>
+    <td>${flag(p.nat)} <b>${esc(p.handle)}</b> <small class="muted" title="Région de jeu">${playRegion(p)}</small>${adaptFactor(p) < 1 ? ` <small class="warn" title="Adaptation à sa nouvelle région">✈️</small>` : ""}</td><td>${p.role}</td><td>${ageTxt(p)}</td><td>${R(p.rating)}</td>
     <td>${potTxt(p)}</td>
     <td>${bar(p.form)}</td><td>${bar(p.morale)}</td>
     <td>${money(p.salary)}/sem</td><td class="${p.years <= 1 ? "warn" : ""}">${p.years} an(s)</td><td>${p.clause ? money(p.clause) : "<span class='muted'>—</span>"}</td><td>${money(playerValue(p))}</td>
@@ -237,7 +237,7 @@ function viewRoster() {
       <button class="small" data-act="sell" data-v="${p.id}">Vendre</button>
       <button class="small danger" data-act="release" data-v="${p.id}">Libérer</button></td></tr>`).join("");
   return `<h2>Effectifs</h2><div class="tabs">${tabs}</div>
-    <div class="card"><div class="toolbar"><div style="flex:1;min-width:0"><h3 style="margin:0">${g.icon} ${g.name} — Titulaires ${nSt}/${g.size} · Force ${R(Math.round(teamStrength(u.id, UI.rosterGame).str))}</h3>
+    <div class="card"><div class="toolbar"><div style="flex:1;min-width:0"><h3 style="margin:0">${g.icon} ${g.name} — Titulaires ${nSt}/${g.size}${teamRegion(u.id, UI.rosterGame) ? " · " + REGIONS[teamRegion(u.id, UI.rosterGame)] : ""} · Force ${R(Math.round(teamStrength(u.id, UI.rosterGame).str))}</h3>
       <div style="margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">${tchip(d.tier, UI.rosterGame)}<span class="muted">${GAMES[UI.rosterGame].open ? GAMES[UI.rosterGame].circuit : tierName(UI.rosterGame, d.tier)}</span></div></div>
       <button class="small" data-act="auto-lineup">⚡ Composition auto</button>
       <button class="small" data-act="goto-market" data-v="${UI.rosterGame}">🔎 Recruter</button>
@@ -600,7 +600,7 @@ function openNego(N, intro) {
   NEGO = N;
   const d = N.dem;
   // première proposition pré-remplie avec les demandes, à vous de les ajuster
-  NEGO.draft = { status: d.status, salary: d.salary, years: d.years[0] === 1 ? 2 : d.years[0], bonus: d.bonus, agentFee: d.agentFee, prizeShare: d.prizeShare, winBonus: d.winBonus, clause: d.clauseMax || 0 };
+  NEGO.draft = { region: d.region, status: d.status, salary: d.salary, years: d.years[0] === 1 ? 2 : d.years[0], bonus: d.bonus, agentFee: d.agentFee, prizeShare: d.prizeShare, winBonus: d.winBonus, clause: d.clauseMax || 0 };
   negoModal(intro || "");
 }
 function negoModal(reply, tone) {
@@ -615,6 +615,7 @@ function negoModal(reply, tone) {
       <div><span class="muted">Patience</span><b>${moodTxt}</b>${bar(mood * 100)}</div></div>
     ${reply ? `<div class="reply ${tone || ""}">${reply}</div>` : ""}
     <div class="nego-grid">
+      <div class="form-row nego-f"><label for="n-region">Région de jeu</label><select id="n-region">${Object.entries(REGIONS).map(([k, l]) => `<option value="${k}" ${k === (o.region || d.region) ? "selected" : ""}>${l}</option>`).join("")}</select><small class="muted">Originaire de : ${REGIONS[homeRegion(p)]}${d.region !== homeRegion(p) ? ` · joue en ${REGIONS[d.region]}` : ""}</small></div>
       <div class="form-row nego-f"><label for="n-status">Statut promis</label><select id="n-status">${STATUSES.slice().reverse().map(x => `<option ${x === o.status ? "selected" : ""}>${x}</option>`).join("")}</select><small class="muted">Demande : ${d.status}</small></div>
       <div class="form-row nego-f"><label for="n-years">Durée</label><select id="n-years">${[1, 2, 3, 4].map(y => `<option value="${y}" ${y === o.years ? "selected" : ""}>${y} an${y > 1 ? "s" : ""}</option>`).join("")}</select><small class="muted">Souhaite : ${d.years[0]} à ${d.years[1]} ans</small></div>
       ${field("n-salary", "Salaire (€/semaine)", o.salary, money(d.salary))}
@@ -624,13 +625,13 @@ function negoModal(reply, tone) {
       ${field("n-win", "Prime par victoire (€)", o.winBonus, money(d.winBonus))}
       ${field("n-clause", "Clause libératoire (€, 0 = aucune)", o.clause, d.clauseMax ? "≤ " + money(d.clauseMax) : "indifférent", 10000)}
     </div>
-    <p class="muted" style="font-size:12px">À payer à la signature : prime + commission${N.ctx === "transfer" ? " + indemnité" : ""}. Une clause basse rassure le joueur mais un autre club pourra le racheter à ce prix. Une offre trop basse vexe l'agent et fait fondre sa patience ; à zéro, le joueur claque la porte pour un mois.</p>
+    <p class="muted" style="font-size:12px">À payer à la signature : prime + commission${N.ctx === "transfer" ? " + indemnité" : ""}. Une clause basse rassure le joueur mais un autre club pourra le racheter à ce prix. Une offre trop basse vexe l'agent et fait fondre sa patience ; à zéro, le joueur claque la porte pour un mois. Demander à un joueur de jouer dans une autre région : certains refusent net, d'autres veulent un meilleur salaire pour s'installer, et il lui faudra ${ADAPT_WEEKS} semaines d'adaptation. Règlement : tous les titulaires d'une équipe jouent dans la même région.</p>
     ${log ? `<ul class="muted" style="font-size:12px">${log}</ul>` : ""}
     <div class="actions"><button data-act="nego-quit">Abandonner</button><button class="primary" data-act="nego-propose">Faire l'offre</button></div>`);
 }
 function readOffer() {
   const n = id => Math.max(0, +document.getElementById(id).value || 0);
-  return { status: document.getElementById("n-status").value, years: +document.getElementById("n-years").value, salary: n("n-salary"), bonus: n("n-bonus"),
+  return { region: document.getElementById("n-region").value, status: document.getElementById("n-status").value, years: +document.getElementById("n-years").value, salary: n("n-salary"), bonus: n("n-bonus"),
     agentFee: n("n-agent"), prizeShare: clamp(Math.round(n("n-share")), 0, 100), winBonus: n("n-win"), clause: n("n-clause") };
 }
 function contractModal(pid) {
@@ -638,7 +639,7 @@ function contractModal(pid) {
   const row = (k, v) => `<tr><td class="muted">${k}</td><td style="text-align:right"><b>${v}</b></td></tr>`;
   modal(`<h2>📄 Contrat — ${flag(p.nat)} ${esc(p.handle)}</h2>
     <p class="muted" style="margin-top:-6px">${GAMES[p.game].icon} ${GAMES[p.game].short} · ${p.role} · ${ageTxt(p)} ans · ${R(p.rating)} · potentiel ${potTxt(p)} · ${personalityOf(p)}</p>
-    <table>${row("Statut promis", (p.status || "Titulaire") + (p.promiseBroken >= 3 ? " <span class='bad'>(promesse non tenue)</span>" : ""))}${row("Salaire", money(p.salary) + "/sem")}${row("Durée restante", p.years + " an(s)")}
+    <table>${row("Région de jeu", REGIONS[playRegion(p)] + (playRegion(p) !== homeRegion(p) ? ` <span class="muted">(originaire de ${REGIONS[homeRegion(p)]})</span>` : "") + (adaptFactor(p) < 1 ? ` <span class="warn">· en adaptation (${Math.max(0, ADAPT_WEEKS - weeksSince(p.movedAt))} sem.)</span>` : ""))}${row("Statut promis", (p.status || "Titulaire") + (p.promiseBroken >= 3 ? " <span class='bad'>(promesse non tenue)</span>" : ""))}${row("Salaire", money(p.salary) + "/sem")}${row("Durée restante", p.years + " an(s)")}
       ${row("Part du cashprize", (p.prizeShare ?? 50) + " %")}${row("Prime par victoire", money(p.winBonus || 0))}${row("Clause libératoire", p.clause ? money(p.clause) : "aucune")}
       ${row("Moral", Math.round(p.morale) + " / 100")}${row("Valeur estimée", money(playerValue(p)))}</table>
     <div class="actions"><button data-act="close-modal">Fermer</button><button class="primary" data-act="renew" data-v="${pid}">Renégocier / prolonger</button></div>`);

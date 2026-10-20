@@ -76,6 +76,7 @@ Chaque signature, transfert ou prolongation se négocie avec le joueur et son ag
 - **Salaire, durée, prime à la signature, commission de l'agent, prime par victoire.**
 - **Part du cashprize** reversée au joueur : le club ne garde que le reste des gains de ligue et de tournoi.
 - **Clause libératoire** : les stars et les ambitieux en exigent une ; un club plus prestigieux peut alors racheter le joueur à ce prix. Vous pouvez aussi payer la clause d'un joueur adverse, son club ne peut pas refuser.
+- **Région de jeu** (Europe, Amérique du Nord, Amérique du Sud, Moyen-Orient & Afrique, Asie, Océanie) : vous pouvez demander à un joueur de jouer dans une autre région que la sienne (ex. Peterbot en Europe). Certains refusent net, les autres réclament un meilleur salaire pour s'installer, puis passent 8 semaines d'adaptation (performances en baisse). Règlement : tous les titulaires d'une équipe sont inscrits dans la même région.
 - **Personnalité** (Calme, Loyal, Ambitieux, Mercenaire, Exigeant, Jeune talent) : elle change les demandes et la **patience**. Une offre insultante fait fondre la patience ; à zéro, le joueur claque la porte et refuse de vous parler pendant 4 semaines.
 
 ## Esports World Cup et petits tournois

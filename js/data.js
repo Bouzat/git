@@ -365,6 +365,18 @@ const COUNTRIES = {
   PH:"Philippines", ID:"Indonésie", AU:"Australie", MX:"Mexique", CL:"Chili",
 };
 
+// Régions de compétition. Chaque joueur a une région d'origine (selon sa nationalité) et une région de jeu fixée par son contrat.
+const REGIONS = { EU: "Europe", NA: "Amérique du Nord", SA: "Amérique du Sud", MENA: "Moyen-Orient & Afrique", ASIA: "Asie", OCE: "Océanie" };
+const REGION_COUNTRIES = {
+  NA: "US CA MX PR DO CU JM TT GT HN SV NI CR PA",
+  SA: "BR AR CL CO PE UY PY BO EC VE",
+  MENA: "SA AE QA KW BH OM JO LB IQ SY EG MA DZ TN LY IL IR PS YE SN CI NG GH KE ZA CM ET",
+  ASIA: "KR CN JP TW HK MO VN TH PH ID MY SG KH LA MM IN PK BD LK NP MN KZ UZ KG TJ",
+  OCE: "AU NZ FJ PG",
+};
+const REGION_OF = {};
+for (const [r, ccs] of Object.entries(REGION_COUNTRIES)) for (const cc of ccs.split(" ")) REGION_OF[cc] = r;
+
 // Syllabes pour générer des pseudos réalistes
 const NAME_PARTS = {
   a: ["zen","kai","rex","nova","blitz","vex","lynx","fury","zero","ace","myth","sky","drak","jin","ryu","volt","echo","flux","grim","haze",
