@@ -43,7 +43,7 @@ Trois formats de compétition :
 
 ## Données
 
-Les effectifs Valorant (48 équipes, octobre 2026) viennent de **vlr.gg**, les duos Fortnite (nationalités, âges, 110 duos) d'**esportsearnings.com** et les âges réels de **Wikidata**, via les outils du dossier `tools/` :
+Les effectifs Valorant (48 équipes, octobre 2026) viennent de **vlr.gg**, les duos Fortnite (210 duos, 119 organisations) d'**esportsearnings.com** et des portails joueurs et équipes de **Liquipedia** (pays et équipe actuelle de chaque joueur, toutes régions, fichiers `tools/sources/liquipedia_fortnite_*.tsv`, licence CC-BY-SA), et les âges réels de **Wikidata**, via les outils du dossier `tools/` :
 
 ```bash
 python3 tools/fetch_vlr.py data/vlr_teams.json      # classements et effectifs Valorant

@@ -164,19 +164,41 @@ if os.path.exists(eef):
         ps = [[m["h"], m["cc"], rating - i, info.get(k, ("", 0, ""))[1]] for i, (m, k) in enumerate(zip(r["members"], ms))]
         seen.update(ms)
         duos.append(ps)
-    # Liquipedia (Portal:Players/Europe, copié par l'utilisateur) : pays et équipe des joueurs européens.
-    # Les sources 2026 (FN_ORGS) restent prioritaires : la page Liquipedia date de novembre 2025.
+    # Liquipedia (Portal:Players de chaque région et Portal:Teams, copiés par l'utilisateur) : pays et équipe actuelle.
+    # Les colonnes « équipe » des portails sont tenues à jour automatiquement : elles priment sur les autres sources.
     LQ = {}
-    lq_file = os.path.join(ROOT, "tools/sources/liquipedia_fortnite_europe.tsv")
-    if os.path.exists(lq_file):
+    for lq_name in ("liquipedia_fortnite_europe.tsv", "liquipedia_fortnite_world.tsv"):
+        lq_file = os.path.join(ROOT, "tools/sources", lq_name)
+        if not os.path.exists(lq_file): continue
         for line in open(lq_file, encoding="utf-8"):
             if line.startswith("#") or not line.strip(): continue
             h, cc, team = (line.rstrip("\n").split("\t") + ["", ""])[:3]
-            LQ[norm(h)] = (cc, team.strip())
-    LQ_ALIAS = {"scaryy": "scary", "velo": "velofps"}
-    lq = lambda h: LQ.get(LQ_ALIAS.get(norm(h), norm(h)))
+            LQ.setdefault(norm(h), []).append((h, cc, team.strip()))
+    LQ_ALIAS = {"scaryy": "scary", "velo": "velofps", "houndzee": "houndz", "nuti": "nutifps", "snevy": "snivy"}
+    def lq(h, cc=""):
+        # plusieurs joueurs peuvent porter le même pseudo : on prend celui du même pays
+        es = LQ.get(LQ_ALIAS.get(norm(h), norm(h)))
+        if not es: return None
+        e = next((e for e in es if cc and e[1] == cc), es[0])
+        return (e[1], e[2])
     by_org_name = {norm(v[0]): k for k, v in {**ORGS, **live_orgs}.items()}
-    TEAM_ALIAS = {"havokbyvitality": "havok", "teamvitality": "vitality", "allgamersglobal": "ag"}
+    TEAM_ALIAS = {"havokbyvitality": "havok", "teamvitality": "vitality", "allgamersglobal": "ag", "gengesports": "geng",
+                  "teamfalcons": "falcons", "teamliquid": "liquid", "twistedminds": "tm", "zetadivision": "zeta",
+                  "100thieves": "100t", "teambds": "bds", "auroragaming": "aurora"}
+    # classement Liquipedia des équipes (gains) et équipes actives du Portal:Teams : base de leur niveau
+    LQ_TOP = ["teamfalcons", "teamliquid", "xset", "dignitas", "twistedminds", "solary", "havokbyvitality", "aight", "gentlemates", "big"]
+    LQ_ACTIVE = {norm(t) for t in """1P Esport|AIGHT|All Gamers Global|Aurora Gaming|BIG|CGN Esports|Detect Esports|DynastyX Esport|EGY Esports|
+        Enefy Esports|Fear Esports|Flawless Region|FLC Clan|FOKUS CLAN|GameWard|Gentle Mates|HavoK by Vitality|JMC Esport|K13 Esport|KoS Esports|
+        Kosma Gaming|KPI Gaming|Lyost Esport|MGA Esport|Morning Stars|Natrix Esports|Northern Star Gaming|NTO Corp|ORA Esport|Poyo Esports|R4C Esport|
+        Ravens Esports|Reality Zone|Red Bull eSports|ROC Esports|Royalsten Esports|RXB Esports|S8UL Esports|SK Gaming|Solary|T1|Team Atlantic|
+        Team Orchid|Team Vitality|THE ONE|X6 E-SPORT|XP42 Esports|Zenn eSports|7VEN|Alliance Esport|Beneath Reality|Chronic|Clan Housen|CoveX|
+        Cynapse Esports|Dignitas|Elite Esports|FNO|Force Esports|FUSION|Gen.G Esports|HYLND|Limit Esports|Marine Region|Matrix Gaming|MNRS Sports|
+        OCE5N|Oni Esports|ONIC Esports|Precision Esports|Sly Enterprises|Swamp Gaming|Team Pulsar|Twisted Minds|TYT Esports|Void Esports|
+        Winthrop University|Xen|XSET|F4TALITY|Fluxo W7M|FURIA|FUT Esports|Hero Base|Isurus Gaming|Leviatán|LOUD|Lynox Esport|ShindeN|
+        SmokeSolid Gaming|T6 eSports|Team Liquid|Anarchy Esports|Chrome Realm|Coast Esports|Devious Esports|Hawk Esports|JFT Esports|JOGO|
+        Lavish Esports|Loyal Esports|NXG JFT|Overlooked Esports|PWR|TRKF E-Sport|ZO Esports|Absolute First|Baron Clan|Blue Phoenix e-sports|
+        Crazy Raccoon|Delta Esports|DetonatioN FocusMe|EDGE|ENTER FORCE.36|FISTERIA|Gz|KIT Gaming Elite|LYNX e-sports|NEXUS|NLT|OBI E-sports|
+        orz e-Sports|QT DIG|REJECT|Riddle|S2 e-sports|VOLARE|ZETA DIVISION|RVL ESPORT|Team Falcons""".split("|")}
     def org_of_team(team, cc, rating):
         n = norm(team)
         if n in TEAM_ALIAS: return TEAM_ALIAS[n]
@@ -188,24 +210,41 @@ if os.path.exists(eef):
     def with_org(x):
         ps = x[1] if isinstance(x[0], str) else x
         for p in ps:
-            if lq(p[0]) and lq(p[0])[0]: p[1] = lq(p[0])[0]
-        key = tuple(sorted(norm(p[0]) for p in ps))
-        org = next((o for k, o in FN_ORGS.items() if tuple(sorted(k)) == key), None)
-        if not org:
-            teams = [lq(p[0])[1] for p in ps if lq(p[0]) and lq(p[0])[1]]
-            if teams: org = org_of_team(teams[0], ps[0][1], ps[0][2])
+            if norm(p[0]) in CC_FIX: p[1] = CC_FIX[norm(p[0])]
+            e = lq(p[0], p[1])
+            if e and e[0]: p[1] = e[0]
+        # 1) équipe Liquipedia d'un des deux joueurs ; 2) sinon, si Liquipedia les connaît tous les deux sans équipe : indépendants ;
+        # 3) sinon l'organisation trouvée dans les autres sources
+        teams = [lq(p[0], p[1])[1] for p in ps if lq(p[0], p[1]) and lq(p[0], p[1])[1]]
+        if teams: org = org_of_team(teams[0], ps[0][1], ps[0][2])
+        elif all(lq(p[0], p[1]) for p in ps): org = None
+        else:
+            key = tuple(sorted(norm(p[0]) for p in ps))
+            org = next((o for k, o in FN_ORGS.items() if tuple(sorted(k)) == key), None)
         return [org, ps] if org else ps
     duos = [with_org(x) for x in duos]
-    for x in duos:
-        for p in (x[1] if isinstance(x[0], str) else x):
-            if norm(p[0]) in CC_FIX: p[1] = CC_FIX[norm(p[0])]
-    # on garde tous les duos d'organisation et ceux du Global Championship, puis les meilleurs autres duos jusqu'à 120
+    # duos supplémentaires : les autres joueurs des équipes Liquipedia (un duo par équipe), pour remplir les tiers 2 et 3
+    used = {LQ_ALIAS.get(norm(p[0]), norm(p[0])) for x in duos for p in (x[1] if isinstance(x[0], str) else x)}
+    free = {}
+    for n, es in LQ.items():
+        for h, cc, team in es:
+            if team and n not in used: free.setdefault(norm(team), []).append((h, cc, team))
+    rank = lambda t: (LQ_TOP.index(t) if t in LQ_TOP else 50 if t in LQ_ACTIVE else 99)
+    extra = []
+    for t in sorted(free, key=lambda t: (rank(t), t)):
+        ms = free[t]
+        if len(ms) < 2 or rank(t) == 99: continue
+        r = 80 if rank(t) < 50 else 74
+        ps = [[h, cc, r - i, 0] for i, (h, cc, _) in enumerate(ms[:2])]
+        extra.append([org_of_team(ms[0][2], ms[0][1], r), ps])
+    duos += extra[:100]
+    # on garde tous les duos d'organisation et ceux du Global Championship, puis les meilleurs autres duos jusqu'à 210
     KEEP = {norm(h) for pair in LCQ for h in pair} | {"merstach", "akiira", "kurama"}
     must = [x for x in duos if isinstance(x[0], str) or any(norm(p[0]) in KEEP for p in x)]
     rest = [x for x in duos if not (isinstance(x[0], str) or any(norm(p[0]) in KEEP for p in x))]
-    keep = must + rest[:max(0, 120 - len(must))]
+    keep = must + rest[:max(0, 210 - len(must))]
     order = {id(x): i for i, x in enumerate(duos)}
-    solos["fn"] = sorted(keep, key=lambda x: order[id(x)])   # 20 en tier 1, 60 en tier 2, 30 en tier 3 (le reste de la scène est amateur)
+    solos["fn"] = sorted(keep, key=lambda x: order[id(x)])   # 20 en tier 1, 60 en tier 2, le reste en tier 3 (lobbies de 50 complétés par des duos amateurs)
 
 # âges réels (Wikidata) pour tous les joueurs déjà présents dans data.js
 age_fix = {}
