@@ -1124,7 +1124,7 @@ function offersForListed(report) {
     if (fee < 500) continue;
     const o = { id: "of" + Math.random().toString(36).slice(2, 8), club: buyer.id, fee, max, until: now + 2, at: now };
     p.offers.push(o);
-    mail(`💼 Offre pour ${p.handle} : ${money(fee)}`, `<b>${buyer.name}</b> propose <b>${money(fee)}</b> pour ${flag(p.nat)} ${p.handle} (${GAMES[p.game].short}, note ${p.rating}). Prix demandé : ${money(ask)}. L'offre est valable 2 semaines : acceptez, refusez ou faites une contre-proposition dans Mercato → Liste des transferts.`, "transfer", p.game);
+    mail(`💼 Offre pour ${p.handle} : ${money(fee)}`, `<b>${buyer.name}</b> propose <b>${money(fee)}</b> pour ${flag(p.nat)} ${p.handle} (${GAMES[p.game].short}, note ${p.rating}). Prix demandé : ${money(ask)}. Répondez avant de passer à la semaine suivante : acceptez, refusez ou faites une contre-proposition (bouton « 📨 Offres à traiter » ou Mercato → Liste des transferts).`, "transfer", p.game);
   }
 }
 function findOffer(pid, oid) { const p = S.players[pid]; return p && (p.offers || []).find(o => o.id === oid); }

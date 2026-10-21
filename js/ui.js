@@ -208,7 +208,7 @@ function render() {
         <div class="stat"><b class="${S.board.confidence < 30 ? "bad" : S.board.confidence < 55 ? "warn" : "ok"}">${Math.round(S.board.confidence)}%</b><span>Confiance du conseil</span></div>
         <div class="spacer"></div>
         ${S.over ? `<button class="danger" data-act="quit">Partie terminée — Menu</button>` : `<button data-act="skip" title="Joue cette semaine puis passe les semaines sans match jusqu'au prochain">⏭ Prochain match</button>
-          <button class="primary" data-act="next">${pending.length ? `🎮 Jour de match (${pending.length})` : "Semaine suivante ▶"}</button>`}
+          <button class="primary" data-act="next">${pendingOffers().length ? `📨 Offres à traiter (${pendingOffers().length})` : pending.length ? `🎮 Jour de match (${pending.length})` : "Semaine suivante ▶"}</button>`}
       </div>
       ${({ dash: viewDash, roster: viewRoster, market: viewMarket, calendar: viewCalendar, comp: viewComp, tours: viewTours, finance: viewFinance, sponsors: viewSponsors, staff: viewStaff, facilities: viewFacilities, inbox: viewInbox, world: viewWorld })[UI.view]()}
     </main></div>`;
@@ -486,7 +486,7 @@ const affordTxt = p => { if (!user().divisions[p.game]) return ""; const room = 
 function viewTransferList() {
   const u = user(), m = UI.market, now = rankNow();
   const mine = allUserPlayers().filter(p => p.listed && (m.game === "all" || p.game === m.game));
-  const offerRows = p => (p.offers || []).map(o => `<div class="tl-offer"><span><b>${esc(S.clubs[o.club].name)}</b> propose <b class="ok">${money(o.fee)}</b>${o.final ? " <small class='warn'>(dernière offre)</small>" : ""} <small class="muted">· expire dans ${Math.max(0, o.until - now) + 1} sem.</small></span>
+  const offerRows = p => (p.offers || []).map(o => `<div class="tl-offer"><span><b>${esc(S.clubs[o.club].name)}</b> propose <b class="ok">${money(o.fee)}</b>${o.final ? " <small class='warn'>(dernière offre)</small>" : ""} <small class="warn">· réponse attendue</small></span>
       <span style="white-space:nowrap"><button class="small primary" data-act="tl-accept" data-v="${p.id}|${o.id}">Accepter</button><button class="small" data-act="tl-counter" data-v="${p.id}|${o.id}">Contre-proposition</button><button class="small danger" data-act="tl-refuse" data-v="${p.id}|${o.id}">Refuser</button></span></div>`).join("");
   const mineRows = mine.map(p => { const lvl = transferInterest(p), st = mercatoStatus(p.game); return `<tr><td>${flag(p.nat)} <b class="link" data-act="player-info" data-v="${p.id}">${esc(p.handle)}</b></td><td>${gchip(p.game)}</td><td>${ageTxt(p)}</td><td>${R(p.rating)}</td><td>${money(playerValue(p))}</td><td><b>${money(p.askPrice || playerValue(p))}</b></td>
       <td data-sort="${now - (p.listedAt ?? now)}">${now - (p.listedAt ?? now)} sem.</td><td data-sort="${lvl}"><span class="tl-int i${lvl}">${INTEREST_LABEL[lvl]}</span>${st.open ? "" : `<br><small class="bad">🔴 mercato fermé</small>`}</td>
@@ -1098,20 +1098,21 @@ Object.assign(ACTIONS, {
     toast(was ? `Prix de ${p.handle} : ${money(p.askPrice)}` : `${p.handle} est sur la liste des transferts.`); save(); render();
   },
   "tl-unlist": v => { const p = S.players[v]; unlistPlayer(v); p.morale = clamp(p.morale + 3, 0, 100); closeModal(); toast(`${p.handle} est retiré de la liste des transferts.`); save(); render(); },
-  "tl-accept": v => { const [pid, oid] = v.split("|"); const r = acceptTransferOffer(pid, oid); toast(r); save(); render(); },
-  "tl-refuse": v => { const [pid, oid] = v.split("|"), o = findOffer(pid, oid); if (o) mail(`Offre refusée`, `Vous refusez l'offre de ${S.clubs[o.club].name} (${money(o.fee)}) pour ${S.players[pid].handle}.`, "transfer", S.players[pid].game); refuseTransferOffer(pid, oid); save(); render(); },
+  "tl-accept": v => { const [pid, oid] = v.split("|"); const r = acceptTransferOffer(pid, oid); toast(r); save(); render(); if (UI.offerFlow) offersModal(); },
+  "tl-refuse": v => { const [pid, oid] = v.split("|"), o = findOffer(pid, oid); if (o) mail(`Offre refusée`, `Vous refusez l'offre de ${S.clubs[o.club].name} (${money(o.fee)}) pour ${S.players[pid].handle}.`, "transfer", S.players[pid].game); refuseTransferOffer(pid, oid); save(); render(); if (UI.offerFlow) offersModal(); },
   "tl-counter": v => {
     const [pid, oid] = v.split("|"), p = S.players[pid], o = findOffer(pid, oid); if (!o) return toast("Offre expirée.");
     modal(`<h2>Contre-proposition à ${esc(S.clubs[o.club].name)}</h2><p>Offre actuelle pour ${esc(p.handle)} : <b>${money(o.fee)}</b> · prix demandé ${money(p.askPrice)} · valeur ${money(playerValue(p))}</p>
       <div class="form-row"><label for="f-counter">Votre prix (€)</label><input id="f-counter" type="number" step="500" value="${Math.max(o.fee + 500, p.askPrice || 0)}"></div>
       <p class="muted" style="font-size:12px">Le club peut accepter, monter une dernière fois, ou se retirer si vous demandez trop.</p>
-      <div class="actions"><button data-act="close-modal">Annuler</button><button class="primary" data-act="tl-do-counter" data-v="${v}">Envoyer</button></div>`);
+      <div class="actions"><button data-act="${UI.offerFlow ? "offers-back" : "close-modal"}">Annuler</button><button class="primary" data-act="tl-do-counter" data-v="${v}">Envoyer</button></div>`);
   },
   "tl-do-counter": v => {
     const [pid, oid] = v.split("|"), r = counterTransferOffer(pid, oid, +document.getElementById("f-counter").value || 0);
     closeModal(); mail(`Contre-proposition : ${S.players[pid].handle}`, r.msg, "transfer", S.players[pid].game);
     if (r.status === "accept") { const t = acceptTransferOffer(pid, oid); toast(r.msg + " " + t); } else toast(r.msg);
     save(); render();
+    if (UI.offerFlow) offersModal();
   },
   "release": v => { const p = S.players[v]; modal(`<h2>Libérer ${esc(p.handle)} ?</h2><p>Indemnité de rupture : <b>${money(Math.round(p.salary * 52 * p.years * 0.25))}</b>.</p><div class="actions"><button data-act="close-modal">Annuler</button><button class="danger" data-act="do-release" data-v="${v}">Libérer</button></div>`); },
   "do-release": v => { releasePlayer(v); closeModal(); render(); },
@@ -1629,15 +1630,32 @@ function showEventResult(r) {
   matchDayModal(`<div class="card md-result">${res}${fanRecap(r.fans, "📈 Fans après ce match")}${r.money ? `<p>Gains : <b class="${r.money >= 0 ? "ok" : "bad"}">${r.money >= 0 ? "+" : ""}${money(r.money)}</b></p>` : ""}</div>`);
   celebrate([r]);
 };
-ACTIONS["md-finish"] = () => playWeek();
+// offres reçues pour vos joueurs en vente : comme dans Football Manager, il faut y répondre avant de continuer
+const pendingOffers = () => allUserPlayers().filter(p => p.listed).flatMap(p => (p.offers || []).map(o => [p, o]));
+function offersModal() {
+  const list = pendingOffers();
+  if (!list.length) { UI.offerFlow = false; closeModal(); render(); return false; }
+  UI.offerFlow = true;
+  modal(`<h2>📨 Offres de transfert à traiter (${list.length})</h2>
+    <p class="muted" style="margin-top:-6px">Des clubs veulent acheter vos joueurs mis en vente. Répondez à chaque offre avant de passer à la semaine suivante.</p>
+    ${list.map(([p, o]) => `<div class="card tl-card"><div><b>${flag(p.nat)} ${esc(p.handle)}</b> ${gchip(p.game)} ${R(p.rating)} <small class="muted">· valeur ${money(playerValue(p))} · prix demandé ${money(p.askPrice || playerValue(p))}</small></div>
+      <div class="tl-offer"><span><b>${esc(S.clubs[o.club].name)}</b> propose <b class="ok">${money(o.fee)}</b>${o.final ? " <small class='warn'>(dernière offre)</small>" : ""}</span>
+      <span style="white-space:nowrap"><button class="small primary" data-act="tl-accept" data-v="${p.id}|${o.id}">Accepter</button><button class="small" data-act="tl-counter" data-v="${p.id}|${o.id}">Contre-proposition</button><button class="small danger" data-act="tl-refuse" data-v="${p.id}|${o.id}">Refuser</button></span></div></div>`).join("")}
+    <div class="actions"><button data-act="offers-later">Voir la liste des transferts</button></div>`);
+  return true;
+}
+ACTIONS["offers-back"] = () => offersModal();
+ACTIONS["offers-later"] = () => { UI.offerFlow = false; closeModal(); UI.view = "market"; UI.market.tab = "list"; render(); };
+ACTIONS["md-finish"] = () => { if (pendingOffers().length) return offersModal(); playWeek(); };
 // bouton principal : jour de match s'il reste des rencontres à lancer, sinon semaine suivante
-ACTIONS["next"] = () => { if (weekEvents().some(e => !e.done)) matchDayModal(); else playWeek(); };
+ACTIONS["next"] = () => { if (pendingOffers().length) return offersModal(); if (weekEvents().some(e => !e.done)) matchDayModal(); else playWeek(); };
 // avance jusqu'à la prochaine semaine où le club joue (les semaines vides passent d'un coup)
 ACTIONS["skip"] = () => {
+  if (pendingOffers().length) return offersModal();
   const reps = [];
   for (let i = 0; i < 20; i++) {
     const rep = advanceWeek(); reps.push(rep);
-    if (rep.events.length || rep.seasonEnd || S.over || weekEvents().length) break;
+    if (rep.events.length || rep.seasonEnd || S.over || weekEvents().length || pendingOffers().length) break;
   }
   showSummary(reps);
 };
@@ -1674,7 +1692,7 @@ function maybeAlloc() {
 }
 ACTIONS["next-event"] = () => {
   const ev = pendingEvents.shift();
-  if (!ev) { if (!maybeAlloc()) closeModal(); return; }
+  if (!ev) { if (!maybeAlloc() && !offersModal()) closeModal(); return; }
   if (ev.sponsor) return sponsorModal(ev.sponsor, ev.intro || `<b>${esc(ev.sponsor.brand)}</b> vous contacte pour un partenariat.`);
   window._ev = ev;
   modal(`<h2>${ev.title}</h2><p>${ev.body}</p><div class="actions">${ev.choices.map((c, i) => `<button class="${i ? "" : "primary"}" data-act="ev-choice" data-v="${i}">${c.label}</button>`).join("")}</div>`);
