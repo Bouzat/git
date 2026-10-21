@@ -555,3 +555,26 @@ const SMALL_EVENTS = {
 const EWC_CLUB_PRIZES = [7000000, 5000000, 4000000, 3000000, 2000000, 1500000, 1200000, 1000000,
   700000, 600000, 500000, 450000, 400000, 350000, 300000, 300000, 250000, 250000, 200000, 200000, 200000, 150000, 150000, 150000];
 const EWC_POINTS = [1000, 750, 500, 500, 250, 250, 250, 250];
+
+// ---------- périodes de mercato (semaines ISO, calées sur le vrai calendrier de chaque scène) ----------
+// [début, fin, explication]. Hors période, on ne peut pas racheter un joueur sous contrat à un club :
+// seuls les agents libres et les indépendants se signent (comme en football). « always » : pas de fenêtre réglementée,
+// les transferts sont possibles toute l'année ; les périodes listées sont alors les moments où le marché s'emballe.
+const MERCATO_WINDOWS = {
+  lol:   { w: [[2, 3, "fin de l'intersaison, avant le début des ligues"], [14, 14, "pause entre les deux splits"], [26, 27, "fenêtre d'été"], [47, 50, "intersaison : agence libre à la mi-novembre, après les Worlds"]] },
+  val:   { w: [[2, 4, "avant le Kickoff de la VCT"], [16, 17, "après le premier Masters"], [25, 27, "entre le Stage 1 et le Stage 2"], [38, 50, "intersaison après Champions"]] },
+  valgc: { w: [[2, 4, "avant la saison Game Changers"], [25, 27, "mi-saison"], [46, 50, "intersaison après le Championship"]] },
+  cs2:   { always: true, w: [[2, 3, "rentrée après la pause de fin d'année"], [27, 30, "pause estivale des joueurs"], [48, 50, "pause de fin d'année, le grand remaniement"]] },
+  dota:  { w: [[2, 3, "début de saison"], [20, 22, "mi-saison"], [38, 44, "le grand remaniement d'après The International"]] },
+  rl:    { w: [[2, 4, "avant la saison RLCS"], [14, 15, "entre deux splits"], [38, 46, "intersaison après les Worlds"]] },
+  ow:    { w: [[2, 5, "intersaison OWCS"], [22, 24, "mi-saison"], [47, 50, "intersaison OWCS"]] },
+  r6:    { w: [[8, 11, "après le Six Invitational"], [24, 27, "fenêtre de mi-saison"], [46, 50, "fin de saison"]] },
+  cod:   { w: [[10, 11, "fenêtre de mi-saison CDL"], [27, 40, "intersaison CDL après les Champs"]] },
+  mlbb:  { w: [[2, 6, "avant la saison MPL du printemps"], [22, 31, "entre les deux saisons MPL"], [46, 50, "après les M-Series"]] },
+  hok:   { w: [[2, 4, "avant la saison KPL"], [24, 27, "mi-saison"], [46, 50, "intersaison"]] },
+  cf:    { w: [[2, 4, "avant la saison CFPL"], [24, 27, "mi-saison"], [46, 50, "intersaison"]] },
+};
+// jeux sans fenêtre réglementée par défaut : battle royale, jeux en solo (contrats libres toute l'année)
+function mercatoRules(game) {
+  return MERCATO_WINDOWS[game] || { always: true, w: GAMES[game] && GAMES[game].fmt === "team" ? [[2, 3, "début de saison"], [24, 27, "mi-saison"], [46, 50, "intersaison"]] : [[2, 3, "début de saison"], [46, 50, "fin de saison"]] };
+}

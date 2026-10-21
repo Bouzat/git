@@ -733,6 +733,40 @@ function budgetCheck(game, upfront, extraWeekly = 0) {
 }
 
 // ---------- mercato ----------
+// fenêtres de transferts : voir MERCATO_WINDOWS (data.js)
+function windowAt(game, w = S.week) { return mercatoRules(game).w.find(x => w >= x[0] && w <= x[1]) || null; }
+function mercatoOpen(game, w = S.week) { return !!(mercatoRules(game).always || windowAt(game, w)); }
+// prochaine ouverture : [semaine, saison, fenêtre]
+function nextWindow(game, w = S.week) {
+  const ws = mercatoRules(game).w, n = ws.find(x => x[0] > w);
+  return n ? [n[0], S.season, n] : [ws[0][0], S.season + 1, ws[0]];
+}
+function mercatoStatus(game) {
+  const r = mercatoRules(game), cur = windowAt(game), [nw, ns, nx] = nextWindow(game);
+  const until = cur && `jusqu'au ${dayLabel(S.season, cur[1], 6)}`;
+  if (r.always) return { open: true, hot: !!cur, text: cur ? `🔥 Marché en ébullition (${cur[2]}) ${until}` : `Pas de fenêtre réglementée : transferts possibles toute l'année. Prochain pic : ${weekLabel(ns, nw)} (${nx[2]})` };
+  if (cur) return { open: true, last: S.week === cur[1], text: `🟢 Mercato ouvert ${until} — ${cur[2]}` };
+  return { open: false, text: `🔴 Mercato fermé : réouverture le ${dayLabel(ns, nw, 0)}${ns !== S.season ? " " + ns : ""} (${nx[2]}). En attendant, seuls les agents libres et les indépendants peuvent signer.` };
+}
+// hors fenêtre, un club ne peut pas céder un joueur sous contrat
+function windowCheck(p) {
+  if (!p.club || (S.clubs[p.club] && S.clubs[p.club].solo) || mercatoOpen(p.game)) return null;
+  const [nw, ns] = nextWindow(p.game);
+  return `Mercato ${GAMES[p.game].short} fermé : ${p.handle} est sous contrat et ne peut pas être transféré avant le ${dayLabel(ns, nw, 0)}${ns !== S.season ? " " + ns : ""}. Vous pouvez signer un agent libre en attendant.`;
+}
+// ouvertures de la semaine (pour l'animation « Mercato time ! ») et dernières semaines des fenêtres des sections du club
+function mercatoChanges() {
+  const u = user(), opened = [], closing = [];
+  for (const g of Object.keys(GAMES)) {
+    const cur = windowAt(g);
+    if (cur && cur[0] === S.week) opened.push([g, cur, !!u.divisions[g], !!mercatoRules(g).always]);
+    if (cur && cur[1] === S.week && u.divisions[g] && !mercatoRules(g).always) closing.push(g);
+  }
+  const mine = opened.filter(o => o[2]);
+  if (mine.length) mail(`🔁 Mercato ouvert : ${mine.map(o => GAMES[o[0]].short).join(", ")}`, mine.map(([g, cur, , al]) => `${GAMES[g].icon} <b>${GAMES[g].name}</b> : ${al ? "le marché s'emballe" : "fenêtre ouverte"} jusqu'au ${dayLabel(S.season, cur[1], 6)} (${cur[2]}).`).join("<br>") + "<br>Vous pouvez faire des offres aux clubs pour leurs joueurs sous contrat, et vos joueurs placés sur la liste des transferts recevront des offres.", "transfer");
+  if (closing.length) mail(`⏳ Dernière semaine du mercato : ${closing.map(g => GAMES[g].short).join(", ")}`, `La fenêtre de transferts se ferme dimanche pour ${closing.map(g => GAMES[g].name).join(", ")}. Ensuite, seuls les agents libres pourront signer.`, "transfer");
+  return opened.length ? { opened, closing } : null;
+}
 function askingPrice(p) {
   if (!p.club) return 0;
   const c = S.clubs[p.club];
@@ -763,6 +797,7 @@ function makeOffer(pid, fee) {
   const p = S.players[pid], u = user();
   if (!p.club || p.club === u.id) return "Offre impossible.";
   if (!u.divisions[p.game]) return `Ouvrez d'abord une division ${GAMES[p.game].name}.`;
+  const we = windowCheck(p); if (we) return we;
   if (u.budget < fee) return "Budget insuffisant.";
   const seller = S.clubs[p.club], ask = askingPrice(p);
   if (!interestCheck(p)) return `${p.handle} n'est pas intéressé par le projet : votre club manque de notoriété (${u.fame.toFixed(0)}) ou évolue trop bas.`;
@@ -781,6 +816,7 @@ function transferFeeCheck(pid, fee) {
   const p = S.players[pid], u = user();
   if (!p.club || p.club === u.id) return "Offre impossible.";
   if (!u.divisions[p.game]) return `Ouvrez d'abord une division ${GAMES[p.game].name}.`;
+  const we = windowCheck(p); if (we) return we;
   const be = budgetCheck(p.game, fee); if (be) return be;
   if (!interestCheck(p)) return `${p.handle} n'est pas intéressé par le projet : votre club manque de notoriété (${u.fame.toFixed(0)}) ou évolue trop bas.`;
   const seller = S.clubs[p.club], ask = askingPrice(p);
@@ -1042,7 +1078,7 @@ function teamTalk(game, kind) {
 // joueurs placés sur la liste des transferts : des clubs de l'IA font des offres
 function offersForListed(report) {
   for (const p of allUserPlayers().filter(x => x.listed)) {
-    if (Math.random() > 0.12) continue;
+    if (Math.random() > 0.12 || !mercatoOpen(p.game)) continue;
     const cands = Object.values(S.clubs).filter(c => c.ai && !c.solo && !c.filler && c.divisions[p.game] && c.budget > playerValue(p) * 0.6);
     if (!cands.length) continue;
     const buyer = pick(cands), fee = Math.round(playerValue(p) * rand(0.7, 1.05) / 500) * 500;
@@ -1280,7 +1316,7 @@ function acceptContract(N, offer) {
   return null;
 }
 // prix d'une clause libératoire d'un joueur IA : son club ne peut pas refuser
-function payClause(pid) { const p = S.players[pid]; return p.clause > 0 ? startNegotiation(pid, "transfer", p.clause) : { error: "Ce joueur n'a pas de clause libératoire." }; }
+function payClause(pid) { const p = S.players[pid], we = windowCheck(p); if (we) return { error: we }; return p.clause > 0 ? startNegotiation(pid, "transfer", p.clause) : { error: "Ce joueur n'a pas de clause libératoire." }; }
 // effets hebdomadaires : promesses de statut, clauses activées par d'autres clubs
 function weeklyContractEffects() {
   const u = user();
@@ -1292,7 +1328,7 @@ function weeklyContractEffects() {
       if (p.promiseBroken === 6) mail(`😠 ${p.handle} se sent trahi`, `On lui avait promis le statut « ${p.status} », mais il est sur le banc depuis 6 semaines. Son moral chute.`, "transfer", p.game);
     } else p.promiseBroken = 0;
     // un club plus prestigieux peut payer la clause
-    if (p.clause > 0 && p.rating >= 75 && p.clause <= playerValue(p) * 1.6 && Math.random() < 0.04 * WEEK_SCALE) {
+    if (p.clause > 0 && mercatoOpen(p.game) && p.rating >= 75 && p.clause <= playerValue(p) * 1.6 && Math.random() < 0.04 * WEEK_SCALE) {
       const myTier = u.divisions[p.game].tier;
       const buyers = Object.values(S.clubs).filter(c => c.ai && !c.solo && c.divisions[p.game] && c.divisions[p.game].tier <= myTier && c.fame > u.fame - 5);
       if (!buyers.length) continue;
@@ -1807,6 +1843,7 @@ function advanceWeek() {
   S.rep = null;
   if (w >= SEASON_LAST) out.seasonEnd = endSeason();
   else S.week++;
+  if (!S.over) out.mercato = mercatoChanges();
 
   if (!S.over && S.board.confidence <= 0) {
     S.over = true;

@@ -309,7 +309,7 @@ function viewRoster() {
   const open = `<div class="card" style="margin-top:20px"><h3>➕ Ouvrir une nouvelle division</h3>
     <p class="muted" style="margin-top:-6px">Le tier 3 est ouvert à tous. Acheter une place plus haut demande de la notoriété : ${TIER_FAME_REQ[1]} pour le tier 2, ${TIER_FAME_REQ[0]} pour le tier 1 (vous êtes à ${u.fame.toFixed(0)}/100).</p>
     <div class="grid g3">${others.map(g => `
-    <div class="open-div"><div><b>${GAMES[g].icon} ${GAMES[g].name}</b><div class="muted" style="font-size:12px">${FMT_LABEL[GAMES[g].fmt]} · ${GAMES[g].size} joueur(s)${GAMES[g].fmt === "br" ? " · lobbies de " + lobbyText(g) : ""}</div></div>
+    <div class="open-div"><div><b>${GAMES[g].icon} ${GAMES[g].name}</b><div class="muted" style="font-size:12px">${FMT_LABEL[GAMES[g].fmt]} · ${GAMES[g].size} joueur(s)${GAMES[g].fmt === "br" ? " · lobbies de " + lobbyText(g) : ""}</div>${!mercatoRules(g).always ? `<div style="font-size:12px" class="${mercatoOpen(g) ? "ok" : "muted"}">${mercatoOpen(g) ? "🟢 Mercato ouvert : bon moment pour lancer la section" : `🔴 Mercato fermé (agents libres seulement) jusqu'au ${dayLabel(nextWindow(g)[1], nextWindow(g)[0], 0)}`}</div>` : ""}</div>
       <div style="display:flex;gap:4px;flex-wrap:wrap">${(GAMES[g].open ? [3] : [3, 2, 1]).map(t => `<button class="small" data-act="open-div" data-v="${g}|${t}" ${canJoin(g, t) ? "disabled" : ""} title="${esc(canJoin(g, t) || tierName(g, GAMES[g].open ? 1 : t, zoneFrom(g, REGION_OF[u.country] || "EU", u.country)))}">${GAMES[g].open ? "Circuit ouvert" : "T" + t} · ${money(tierEntry(g, t))}</button>`).join("")}${franchiseZones(g).length ? `<button class="small" data-act="franchise" data-v="${g}" title="Ligue fermée : racheter la place d'un club">🔒 Franchise</button>` : ""}</div></div>`).join("")}</div></div>`;
   if (!UI.rosterGame) return `<h2>Effectifs</h2><p class="muted">Votre club n'a encore aucune division.</p>${open}`;
   const g = GAMES[UI.rosterGame], d = u.divisions[UI.rosterGame];
@@ -499,8 +499,9 @@ function viewMarket() {
   const rows = ps.map(p => {
     const c = p.club ? S.clubs[p.club] : null, d = c && c.divisions[p.game];
     const where = !c ? "<span class='ok'>Agent libre</span>" : c.solo ? `<span class="warn">Indépendant</span> <small class="muted">${tshort(p.game, d.tier)}</small>` : `${esc(c.name)} <small class="muted">${tshort(p.game, d.tier)}</small>`;
-    const keen = interestCheck(p);
+    const keen = interestCheck(p), shut = !c || c.solo ? null : windowCheck(p);
     const btn = !c ? `<button class="small primary" data-act="sign" data-v="${p.id}">Signer</button>`
+      : shut ? `<button class="small" disabled title="${esc(shut)}">🔴 Mercato fermé</button>`
       : `<button class="small" data-act="offer" data-v="${p.id}" ${keen ? "" : "disabled title='Votre club n&#39;est pas assez connu : en ${GAMES[p.game].short}, seuls les joueurs notés jusqu&#39;à ${interestMax(p.game)} acceptent de discuter (notoriété ${Math.round(u.fame)}/100)'"}>${keen ? (c.solo ? "Recruter" : "Offre") + " (~" + money(askingPrice(p)) + ")" : "🔒 Hors de portée"}</button>`;
     return `<tr><td>${flag(p.nat)} <b class="link" data-act="player-info" data-v="${p.id}">${esc(p.handle)}</b></td><td>${gchip(p.game)}</td><td>${p.role}</td><td>${ageTxt(p)}</td><td>${R(p.rating)}</td><td>${potTxt(p)}</td>
       <td>${where}</td><td>${money(playerValue(p))}</td><td>${money(salaryDemand(p, u))}/sem</td><td class="${cost(p) > u.budget ? "bad" : ""}">${money(cost(p))}</td><td>${btn}</td></tr>`;
@@ -535,6 +536,7 @@ function viewMarket() {
       <span class="muted">${total} joueur(s)${total ? ` · ${first + 1}–${Math.min(total, first + per)} · page ${m.page + 1}/${pages}` : ""}</span>
     </div>
     ${pager}
+    ${mercatoBanner(m.game)}
     <p class="interest-hint">⭐ Notoriété ${Math.round(u.fame)}/100 : ${m.game !== "all" ? `en ${GAMES[m.game].short}, les joueurs notés jusqu'à <b>${interestMax(m.game)}</b> acceptent de discuter avec vous` : `les joueurs notés jusqu'à <b>${Math.min(99, Math.floor(u.fame + 70))}</b> acceptent de discuter avec vous (plus haut dans les jeux où votre équipe est en tier 1 ou 2)`}. Au-delà, ils sont « 🔒 hors de portée ». <span class="link" data-act="explain-fame">En savoir plus</span></p>
     <p class="muted" style="font-size:12px;margin-top:-4px">Agent libre : sans contrat, signature directe. Indépendant : pro sans organisation, il demande une prime. Sous contrat : il faut payer une indemnité de transfert à son club.</p>
     <div class="card table-wrap"><table><tr>${head}</tr>${rows || `<tr><td colspan="11" class="muted">Aucun joueur ne correspond à ces filtres.</td></tr>`}</table></div>${pager}`;
@@ -684,7 +686,8 @@ function viewCalendar() {
     if (UI.calMode === "mine" && !items.length && w !== S.week) continue;
     const md = matchday(w);
     const tags = (md ? `<span class='chip'>${md <= 11 ? "Split 1" : "Split 2"} · J${md}</span>` : "") + (w >= EWC_FIRST && w <= EWC_LAST_WEEK ? "<span class='chip ewc'>🌍 EWC</span>" : "")
-      + (w === PO_SEMI || w === PO_FINAL ? "<span class='chip'>🔥 Playoffs</span>" : "") + (w === SEASON_LAST ? "<span class='chip'>🏁 Fin de saison</span>" : "");
+      + (w === PO_SEMI || w === PO_FINAL ? "<span class='chip'>🔥 Playoffs</span>" : "") + (w === SEASON_LAST ? "<span class='chip'>🏁 Fin de saison</span>" : "")
+      + (() => { const g = myGames.filter(g => !mercatoRules(g).always && windowAt(g, w)); return g.length ? `<span class='chip mw'>🔁 Mercato ${g.map(x => GAMES[x].short).join(" · ")}</span>` : ""; })();
     const mo = weekMonday(S.season, w).getUTCMonth();
     (months[mo] = months[mo] || []).push(`<div class="card cal-week ${w === S.week ? "now" : w < S.week ? "past" : ""}" ${w === S.week ? 'id="cal-now"' : ""}>
       <div class="cal-head"><b>${weekLabel(S.season, w)}</b>${w === S.week ? "<span class='chip now'>Cette semaine</span>" : ""}${tags}</div>
@@ -1403,6 +1406,40 @@ function celebrate(reps) {
   box.addEventListener("click", () => box.remove());
   setTimeout(() => box.remove(), 4500);
 }
+// ---------- mercato : état des fenêtres et animation « Mercato time ! » ----------
+function mercatoBanner(game) {
+  const u = user(), games = game !== "all" ? [game] : Object.keys(u.divisions);
+  if (!games.length) return "";
+  const rows = games.map(g => { const st = mercatoStatus(g); return `<div class="mw-row ${st.open ? (st.last ? "last" : "open") : "shut"}">${GAMES[g].icon} <b>${GAMES[g].short}</b> · ${esc(st.text)}${st.last ? " <b class='warn'>· dernière semaine !</b>" : ""}</div>`; }).join("");
+  return `<div class="card mw-banner">${rows}<span class="link" data-act="mercato-dates" style="font-size:12px">📅 Toutes les dates de mercato</span></div>`;
+}
+function mercatoDatesModal() {
+  const u = user(), list = Object.keys(GAMES).sort((a, b) => !!u.divisions[b] - !!u.divisions[a]);
+  modal(`<h2>📅 Périodes de mercato ${S.season}</h2>
+    <p class="muted" style="margin-top:-6px">Chaque scène a ses propres fenêtres, calées sur son vrai calendrier (intersaison après les championnats du monde, pauses entre deux splits…). Hors fenêtre, un club ne peut pas vous céder un joueur sous contrat : seuls les agents libres et les indépendants peuvent signer. Les jeux marqués « libre » n'ont pas de fenêtre réglementée (CS2, battle royale, jeux en solo) : les dates indiquent les moments où le marché s'emballe. Dates approximatives : les éditeurs les fixent chaque année.</p>
+    <div class="table-wrap"><table><tr><th>Jeu</th><th>Règle</th><th>Périodes</th><th>Maintenant</th></tr>${list.map(g => { const r = mercatoRules(g), st = mercatoStatus(g); return `<tr class="${u.divisions[g] ? "" : "muted"}"><td>${GAMES[g].icon} ${GAMES[g].short}${u.divisions[g] ? "" : " <small>(pas de section)</small>"}</td><td>${r.always ? "libre" : "fenêtres"}</td>
+      <td style="font-size:12px">${r.w.map(x => `${dayLabel(S.season, x[0], 0)} → ${dayLabel(S.season, x[1], 6)} <span class="muted">(${esc(x[2])})</span>`).join("<br>")}</td><td>${st.open ? (r.always && !st.hot ? "🟡 libre" : "🟢 ouvert") : "🔴 fermé"}</td></tr>`; }).join("")}</table></div>
+    <div class="actions"><button class="primary" data-act="close-modal">Fermer</button></div>`);
+}
+ACTIONS["mercato-dates"] = () => mercatoDatesModal();
+function mercatoTime(info) {
+  if (!info || !info.opened.length) return;
+  const u = user(), mine = info.opened.filter(o => o[2]), others = info.opened.filter(o => !o[2] && !o[3]);
+  const line = ([g, cur]) => `<div class="mt-g">${GAMES[g].icon} <b>${GAMES[g].name}</b> <span class="muted">jusqu'au ${dayLabel(S.season, cur[1], 6)} · ${esc(cur[2])}</span></div>`;
+  const box = document.createElement("div"); box.className = "mercato-time";
+  box.innerHTML = `<div class="mt-card"><div class="mt-title"><span>MERCATO</span> <span>TIME !</span></div>
+    ${mine.length ? `<div class="mt-h">Vos sections</div>${mine.map(line).join("")}` : ""}
+    ${others.length ? `<div class="mt-h">C'est aussi le moment d'ouvrir une nouvelle section</div>${others.slice(0, 6).map(line).join("")}${others.length > 6 ? `<div class="muted">+ ${others.length - 6} autre(s) jeu(x)</div>` : ""}` : ""}
+    <div class="actions" style="justify-content:center"><button data-mt="close">Plus tard</button>${others.length ? `<button data-mt="roster">➕ Ouvrir une section</button>` : ""}<button class="primary" data-mt="market">💱 Aller au mercato</button></div></div>`;
+  document.body.appendChild(box);
+  box.addEventListener("click", e => {
+    const b = e.target.closest("[data-mt]"); if (!b && e.target !== box) return;
+    box.remove();
+    const k = b && b.dataset.mt;
+    if (k === "market") { closeModal(); UI.market.game = mine.length === 1 ? mine[0][0] : "all"; UI.market.page = 0; UI.view = "market"; render(); window.scrollTo(0, 0); }
+    if (k === "roster") { closeModal(); UI.view = "roster"; render(); }
+  });
+}
 // jour de match : les rencontres du club cette semaine, à lancer une par une
 function matchDayModal(last) {
   const evs = weekEvents(), left = evs.filter(e => !e.done);
@@ -1518,6 +1555,8 @@ function showSummary(reps) {
   const merge = k => reps.reduce((o, r) => { for (const [c, v] of Object.entries(r[k])) o[c] = (o[c] || 0) + v; return o; }, {});
   const res = reps.map(resultsHtml).join("") || "<p class='muted'>Pas de match pour votre club.</p>";
   setTimeout(() => celebrate(reps), 50);
+  const opened = reps.map(r => r.mercato).filter(Boolean);
+  if (opened.length) setTimeout(() => mercatoTime({ opened: opened.flatMap(o => o.opened).filter((o, i, a) => a.findIndex(x => x[0] === o[0]) === i) }), 80);
   const se = last.seasonEnd;
   const title = se ? "🏁 Fin de la saison " + last.season : reps.length > 1 ? `${weekLabel(reps[0].season, reps[0].week)} → ${weekLabel(last.season, last.week, true)}` : `Semaine du ${weekLabel(last.season, last.week, true)}`;
   modal(`<h2>${title}</h2>${reps.length > 1 ? `<p class="muted" style="margin-top:-6px">${reps.length} semaines jouées.</p>` : ""}${res}
