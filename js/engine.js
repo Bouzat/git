@@ -828,8 +828,17 @@ function allocOf(game) {
   if (!S.alloc || S.alloc.season !== S.season) S.alloc = defaultAlloc();
   return S.alloc.games[game] || (S.alloc.games[game] = { transfer: 0, wages: round50(gameWages(game) + 500), spent: 0 });
 }
-const transferRoom = game => allocOf(game).transfer - allocOf(game).spent;
-const wageRoom = game => allocOf(game).wages - gameWages(game);
+// Deux façons de gérer l'argent du mercato :
+// - automatique (par défaut) : un seul budget pour tout le club ; on garde une réserve de 10 semaines de salaires,
+//   et une recrue doit pouvoir être payée 20 semaines avec l'argent restant ;
+// - manuel : une enveloppe et un plafond de salaires par jeu, à répartir soi-même (onglet Finances).
+const allocManual = () => !!S.allocManual;
+const RESERVE_WEEKS = 10, WAGE_WEEKS = 20;
+const clubWages = () => allUserPlayers().reduce((s, p) => s + p.salary, 0);
+const clubReserve = () => Math.round(clubWages() * RESERVE_WEEKS / 1000) * 1000;
+const spendable = () => Math.max(0, user().budget - clubReserve());
+const transferRoom = game => allocManual() ? allocOf(game).transfer - allocOf(game).spent : spendable();
+const wageRoom = game => allocManual() ? allocOf(game).wages - gameWages(game) : Math.floor(spendable() / WAGE_WEEKS / 50) * 50;
 // ce que le club peut réellement dépenser tout de suite dans un jeu (enveloppe restante, limitée par l'argent en caisse)
 const spendRoom = game => user().divisions[game] ? Math.max(0, Math.min(user().budget, transferRoom(game))) : 0;
 // nouvelle répartition : { jeu: { transfer, wages } } ; le total des enveloppes ne peut pas dépasser le budget disponible
@@ -859,6 +868,12 @@ function adjustAlloc(game, transfer, wages) {
 // une dépense de mercato rentre-t-elle dans le budget total, l'enveloppe du jeu et sa masse salariale ?
 function budgetCheck(game, upfront, extraWeekly = 0) {
   if (upfront > user().budget) return `Budget insuffisant : il faut ${money(upfront)} tout de suite.`;
+  if (!allocManual()) {
+    const free = spendable();
+    if (upfront > free) return `Pas assez d'argent disponible : ${money(free)} (budget ${money(user().budget)} moins une réserve de ${money(clubReserve())} pour payer ${RESERVE_WEEKS} semaines de salaires). Il faudrait ${money(upfront)}.`;
+    if (extraWeekly > 0 && extraWeekly * WAGE_WEEKS > free - upfront) return `Salaire trop lourd : ${WAGE_WEEKS} semaines de ${money(extraWeekly)}/sem (${money(extraWeekly * WAGE_WEEKS)}) dépassent l'argent qui resterait après l'opération (${money(Math.max(0, free - upfront))}). Vendez un joueur ou trouvez des sponsors.`;
+    return null;
+  }
   if (upfront > transferRoom(game)) return `Enveloppe mercato ${GAMES[game].short} dépassée : il reste ${money(Math.max(0, transferRoom(game)))} sur ${money(allocOf(game).transfer)}. Ajustez la répartition (ci-dessous ou dans l'onglet Finances).`;
   if (extraWeekly > 0 && extraWeekly > wageRoom(game)) return `Masse salariale ${GAMES[game].short} dépassée : ${money(gameWages(game))}/sem sur ${money(allocOf(game).wages)}/sem autorisés (il faudrait ${money(extraWeekly)}/sem de plus). Ajustez la répartition (ci-dessous ou dans l'onglet Finances).`;
   return null;

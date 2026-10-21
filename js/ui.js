@@ -564,12 +564,16 @@ const sellBtn = p => p.listed ? `<button class="small" data-act="sell" data-v="$
 function marketSummary(game) {
   const u = user(), games = game !== "all" ? [game] : Object.keys(u.divisions);
   if (!games.length) return "🔁 État du mercato et budget";
+  if (!allocManual()) return `🔁 Mercato : ${games.filter(g => u.divisions[g]).slice(0, 8).map(g => `${GAMES[g].icon} ${mercatoStatus(g).open ? "🟢" : "🔴"}`).join(" ")} · 💰 <b>${money(spendable())}</b> disponibles <span class="muted">(détails)</span>`;
   const parts = games.filter(g => u.divisions[g]).slice(0, 6).map(g => { const st = mercatoStatus(g); return `${GAMES[g].icon} ${st.open ? "🟢" : "🔴"} ${money(spendRoom(g))}`; });
   return `🔁 Mercato et budget : ${parts.join(" · ")}${games.length > 6 ? " …" : ""} <span class="muted">(détails)</span>`;
 }
 function mercatoMoney(game) {
   const u = user(), games = game !== "all" ? [game] : Object.keys(u.divisions);
   if (!games.length) return "";
+  if (!allocManual()) return `<div class="card mm-card"><div class="mm-h"><b>💰 Ce que vous pouvez dépenser</b><button class="small" data-act="alloc">⚙️ Mode automatique</button></div>
+    <p style="margin:6px 0"><b class="${spendable() > 0 ? "ok" : "bad"}" style="font-size:18px">${money(spendable())}</b> pour les indemnités, primes et commissions · salaire max d'une recrue : <b>${money(wageRoom(game))}/sem</b></p>
+    <p class="muted" style="font-size:12px;margin:0">Budget ${money(u.budget)} moins une réserve de ${money(clubReserve())} (${RESERVE_WEEKS} semaines de salaires du club, ${money(clubWages())}/sem). Une recrue doit pouvoir être payée ${WAGE_WEEKS} semaines avec l'argent restant. Un seul budget pour tous vos jeux.</p></div>`;
   const rows = games.map(g => {
     if (!u.divisions[g]) return `<tr><td>${gchip(g)}</td><td colspan="3" class="muted">Pas de section dans ce jeu : ouvrez une division (onglet Effectifs) pour recruter.</td></tr>`;
     const a = allocOf(g), room = spendRoom(g), wr = wageRoom(g), lim = transferRoom(g) > u.budget;
@@ -580,7 +584,7 @@ function mercatoMoney(game) {
   return `<div class="card mm-card"><div class="mm-h"><b>💰 Ce que vous pouvez dépenser</b><button class="small" data-act="alloc">⚖️ Changer la répartition</button></div>
     <div class="table-wrap"><table class="mm-t"><tr><th>Jeu</th><th>Achat max (indemnité, prime, commission)</th><th>Salaire max à offrir</th><th></th></tr>${rows}</table></div></div>`;
 }
-const affordTxt = p => { if (!user().divisions[p.game]) return ""; const room = spendRoom(p.game), wr = wageRoom(p.game) + (isMine(p.club) ? p.salary : 0); return `Vous pouvez dépenser jusqu'à <b>${money(room)}</b> en ${GAMES[p.game].short} (indemnité + prime + commission) et offrir jusqu'à <b>${money(Math.max(0, wr))}/sem</b> de salaire.`; };
+const affordTxt = p => { if (!user().divisions[p.game]) return ""; const room = spendRoom(p.game), wr = wageRoom(p.game) + (isMine(p.club) ? p.salary : 0); return `Vous pouvez dépenser jusqu'à <b>${money(room)}</b>${allocManual() ? " en " + GAMES[p.game].short : ""} (indemnité + prime + commission) et offrir jusqu'à <b>${money(Math.max(0, wr))}/sem</b> de salaire.`; };
 function viewTransferList() {
   const u = user(), m = UI.market, now = rankNow();
   const mine = allUserPlayers().filter(p => p.listed && (m.game === "all" || p.game === m.game));
@@ -1015,7 +1019,7 @@ function viewFinance() {
     const e = led.filter(x => x[4] === g), plus = e.filter(x => x[3] > 0).reduce((s, x) => s + x[3], 0), minus = e.filter(x => x[3] < 0).reduce((s, x) => s + x[3], 0);
     const a = allocOf(g), room = transferRoom(g), wages = gameWages(g);
     return `<tr><td>${gchip(g)}</td><td class="ok" style="text-align:right">${money(plus)}</td><td class="bad" style="text-align:right">${money(minus)}</td><td style="text-align:right" class="${plus + minus >= 0 ? "ok" : "bad"}"><b>${money(plus + minus)}</b></td>
-      <td style="text-align:right">${money(a.transfer)}</td><td style="text-align:right" class="${room < 0 ? "bad" : ""}">${money(room)}</td><td style="text-align:right" class="${wages > a.wages ? "bad" : ""}">${money(wages)} / ${money(a.wages)}</td></tr>`;
+      ${allocManual() ? `<td style="text-align:right">${money(a.transfer)}</td><td style="text-align:right" class="${room < 0 ? "bad" : ""}">${money(room)}</td><td style="text-align:right" class="${wages > a.wages ? "bad" : ""}">${money(wages)} / ${money(a.wages)}</td>` : `<td style="text-align:right">${money(wages)}/sem</td>`}</tr>`;
   }).join("");
   const F = S.finance.slice(-52);
   let chart = "<p class='muted'>Jouez quelques semaines pour voir l'évolution.</p>";
@@ -1041,9 +1045,9 @@ function viewFinance() {
   <div class="card" style="margin-top:16px"><h3>Évolution du budget</h3>${chart}</div>
   ${forecastCard()}
   ${financeCharts(season, inc, exp)}
-  <div class="card" style="margin-top:16px"><div class="toolbar"><h3 style="margin:0;flex:1">Budget par section</h3><button class="small primary" data-act="alloc">⚖️ Répartir le budget mercato</button></div>
-    <p class="muted" style="margin-top:-4px;font-size:13px">Chaque section dispose d'une enveloppe mercato (indemnités, primes à la signature, commissions d'agents ; les ventes la renflouent) et d'un plafond de masse salariale. Les signatures qui les dépassent sont refusées : vous respectez ainsi votre budget total.</p>
-    <div class="table-wrap"><table><tr><th>Jeu</th><th style="text-align:right">Recettes</th><th style="text-align:right">Dépenses</th><th style="text-align:right">Résultat</th><th style="text-align:right">Enveloppe mercato</th><th style="text-align:right">Reste</th><th style="text-align:right">Salaires / plafond (sem.)</th></tr>${gameRows || "<tr><td colspan='7' class='muted'>Aucune section.</td></tr>"}</table></div></div>
+  <div class="card" style="margin-top:16px"><div class="toolbar"><h3 style="margin:0;flex:1">${allocManual() ? "Budget par section" : "Résultat par section"}</h3><button class="small ${allocManual() ? "primary" : ""}" data-act="alloc">${allocManual() ? "⚖️ Répartir le budget mercato" : "⚙️ Argent du mercato : automatique"}</button></div>
+    <p class="muted" style="margin-top:-4px;font-size:13px">${allocManual() ? "Mode manuel : chaque section dispose d'une enveloppe mercato (indemnités, primes à la signature, commissions d'agents ; les ventes la renflouent) et d'un plafond de masse salariale. Les signatures qui les dépassent sont refusées." : `Mode automatique : un seul budget pour tout le club. Disponible pour le mercato : <b>${money(spendable())}</b> (budget moins ${RESERVE_WEEKS} semaines de salaires en réserve). Ce que chaque jeu rapporte et coûte cette saison :`}</p>
+    <div class="table-wrap"><table><tr><th>Jeu</th><th style="text-align:right">Recettes</th><th style="text-align:right">Dépenses</th><th style="text-align:right">Résultat</th>${allocManual() ? `<th style="text-align:right">Enveloppe mercato</th><th style="text-align:right">Reste</th><th style="text-align:right">Salaires / plafond (sem.)</th>` : `<th style="text-align:right">Salaires</th>`}</tr>${gameRows || "<tr><td colspan='7' class='muted'>Aucune section.</td></tr>"}</table></div></div>
   <div class="grid g2" style="margin-top:16px">
     <div class="card"><h3>Recettes de la saison <span class="ok">${money(tot(inc))}</span></h3><table>${catRows(inc)}</table></div>
     <div class="card"><h3>Dépenses de la saison <span class="bad">${money(tot(exp))}</span></h3><table>${catRows(exp)}</table></div>
@@ -1124,7 +1128,20 @@ function allocSum() {
   const total = Object.keys(user().divisions).reduce((s, g) => s + (+document.getElementById("al-t-" + g).value || 0), 0);
   el.innerHTML = `Total réparti : <b class="${total > user().budget ? "bad" : "ok"}">${money(total)}</b> sur ${money(user().budget)}.`;
 }
-ACTIONS["alloc"] = () => allocModal();
+ACTIONS["alloc"] = () => allocManual() ? allocModal() : modeModal();
+// mode de gestion de l'argent du mercato : automatique (un budget pour tout le club) ou manuel (enveloppes par jeu)
+function modeModal() {
+  const m = allocManual();
+  modal(`<h2>💰 Gestion de l'argent du mercato</h2>
+    <div class="help-steps">
+      <div class="help-step"><div class="help-i">⚙️</div><div><b>Automatique ${!m ? "<span class='ok'>(actuel)</span>" : "(recommandé)"}</b><p>Un seul budget pour tout le club. Vous pouvez dépenser votre budget moins une réserve de ${RESERVE_WEEKS} semaines de salaires ; une recrue doit pouvoir être payée ${WAGE_WEEKS} semaines avec l'argent restant. Aujourd'hui : <b>${money(spendable())}</b> disponibles.</p></div></div>
+      <div class="help-step"><div class="help-i">⚖️</div><div><b>Manuel ${m ? "<span class='ok'>(actuel)</span>" : ""}</b><p>Vous fixez vous-même, pour chaque jeu, une enveloppe mercato et un plafond de salaires, à la manière de Football Manager. Plus de contrôle, mais il faut répartir l'argent à chaque saison.</p></div></div>
+    </div>
+    <div class="actions"><button data-act="close-modal">Fermer</button>${m ? `<button class="primary" data-act="mode-auto">Passer en automatique</button><button data-act="mode-alloc">⚖️ Modifier la répartition</button>` : `<button data-act="mode-manual">Passer en manuel</button>`}</div>`);
+}
+ACTIONS["mode-auto"] = () => { S.allocManual = false; closeModal(); toast("Mode automatique : un seul budget pour tout le club."); scheduleSave(); render(); };
+ACTIONS["mode-manual"] = () => { S.allocManual = true; if (S.alloc) S.alloc.set = false; allocModal("Mode manuel : répartissez l'argent du mercato entre vos jeux."); scheduleSave(); render(); };
+ACTIONS["mode-alloc"] = () => allocModal();
 ACTIONS["alloc-auto"] = () => { const d = defaultAlloc(); for (const g of Object.keys(d.games)) { document.getElementById("al-t-" + g).value = d.games[g].transfer; document.getElementById("al-w-" + g).value = d.games[g].wages; } allocSum(); };
 ACTIONS["alloc-save"] = () => {
   const map = {}; for (const g of Object.keys(user().divisions)) map[g] = { transfer: +document.getElementById("al-t-" + g).value || 0, wages: +document.getElementById("al-w-" + g).value || 0 };
@@ -1348,6 +1365,7 @@ Object.assign(ACTIONS, {
 // encadré pour ajuster tout de suite l'enveloppe et le plafond salarial d'une section quand une offre les dépasse
 // back : écran à réafficher après l'ajustement ("nego" ou "offer:<id du joueur>")
 function allocFix(game, upfront, weekly, back) {
+  if (!allocManual()) return "";
   const a = allocOf(game), lack = Math.max(0, upfront - transferRoom(game)), wlack = Math.max(0, weekly - wageRoom(game));
   if (!lack && !wlack) return "";
   const u = user(), games = Object.keys(u.divisions), left = g => Math.max(0, allocOf(g).transfer - Math.max(0, allocOf(g).spent));
@@ -1589,10 +1607,11 @@ function budgetModal() {
     <ul class="explain">
       <li><b>Le budget</b>, c'est l'argent du club aujourd'hui. Chaque semaine, il monte avec les sponsors, le merch et les cashprizes, et il baisse avec les salaires (${money(wages)}/sem), les frais des équipes, les entraîneurs et l'entretien des infrastructures.</li>
       <li><b>Solde par semaine</b> : ${fc.weekly >= 0 ? `sans compter les matchs, le club gagne environ ${money(fc.weekly)} par semaine.` : `sans compter les cashprizes, le club perd environ ${money(-fc.weekly)} par semaine : il faut gagner des tournois, trouver des sponsors ou réduire les salaires.`}</li>
-      <li><b>Enveloppes mercato</b> : en début de saison, vous réservez une partie du budget aux transferts de chaque jeu. Il reste : ${games.map(g => `${GAMES[g].icon} ${GAMES[g].short} <b>${money(Math.max(0, transferRoom(g)))}</b>`).join(" · ") || "—"}. Une signature qui dépasse l'enveloppe du jeu est refusée.</li>
+      ${allocManual() ? `<li><b>Enveloppes mercato (mode manuel)</b> : en début de saison, vous réservez une partie du budget aux transferts de chaque jeu. Il reste : ${games.map(g => `${GAMES[g].icon} ${GAMES[g].short} <b>${money(Math.max(0, transferRoom(g)))}</b>`).join(" · ") || "—"}. Une signature qui dépasse l'enveloppe du jeu est refusée.</li>`
+        : `<li><b>Argent du mercato (mode automatique)</b> : vous pouvez dépenser <b>${money(spendable())}</b>, c'est-à-dire le budget moins une réserve de ${money(clubReserve())} (${RESERVE_WEEKS} semaines de salaires). Une recrue doit pouvoir être payée ${WAGE_WEEKS} semaines avec l'argent restant. Un seul budget pour tous vos jeux.</li>`}
       <li><b>Dans le rouge</b> : un budget négatif coûte des intérêts chaque semaine. Sous ${money(limit)}, un administrateur judiciaire vend vos meilleurs joueurs, et au bout de 16 semaines le club fait faillite.</li>
     </ul>
-    <div class="actions"><button data-act="close-modal">Fermer</button><button data-act="alloc">⚖️ Répartir le budget mercato</button><button class="primary" data-act="explain-go-fin">Voir les finances</button></div>`);
+    <div class="actions"><button data-act="close-modal">Fermer</button><button data-act="alloc">${allocManual() ? "⚖️ Répartir le budget mercato" : "⚙️ Mode de gestion du mercato"}</button><button class="primary" data-act="explain-go-fin">Voir les finances</button></div>`);
 }
 // confiance du conseil : ce qui la fait bouger et comment la remonter
 function boardModal() {
@@ -2033,7 +2052,7 @@ const HELP_STEPS = [
   ["📋", "Savoir quoi faire", "Le <b>Tableau de bord</b> résume la semaine : vos matchs (les finales et les grands tournois en or), ce qui demande une action (effectif incomplet, contrats, sponsors) et les grands rendez-vous à venir."],
   ["👥", "Gérer ses équipes", "Dans <b>Effectifs</b>, choisissez vos titulaires (⭐), suivez la progression (colonne Évol.) et prolongez les contrats. <b>⚡ Composition auto</b> aligne les meilleurs."],
   ["💱", "Recruter", "Au <b>Mercato</b>, les boutons rapides (agents libres, dans mon budget, jeunes talents) trouvent vite un joueur. Cliquez sur un club pour voir tout son effectif. Hors période de mercato, seuls les agents libres signent."],
-  ["💰", "Tenir le budget", "Chaque jeu a une enveloppe mercato et un plafond de salaires (onglet <b>Finances</b>). Les <b>Sponsors</b> paient chaque semaine et versent des primes si leurs objectifs sont atteints."],
+  ["💰", "Tenir le budget", "Par défaut, un seul budget pour tout le club : vous dépensez votre argent en gardant une réserve pour les salaires (le mode manuel, avec une enveloppe par jeu, se règle dans <b>Finances</b>). Les <b>Sponsors</b> paient chaque semaine et versent des primes si leurs objectifs sont atteints."],
   ["🏆", "Gagner", "Finissez dans les 2 premiers d'un tier pour monter, visez l'objectif du <b>conseil</b> (ⓘ en haut) et jouez les tournois (onglet <b>Tournois</b> : un seul par semaine et par jeu)."],
 ];
 function helpModal() {
@@ -2104,6 +2123,7 @@ function showSummary(reps) {
 }
 // nouvelle saison : le CEO répartit d'abord son budget mercato entre ses sections
 function maybeAlloc() {
+  if (!allocManual()) return false;
   if (S.over || !Object.keys(user().divisions).length) return false;
   allocOf(Object.keys(user().divisions)[0]);
   if (S.alloc.set || S.alloc.asked) return false;
