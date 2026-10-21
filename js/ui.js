@@ -958,7 +958,8 @@ function viewWorld() {
 function clubInfo(id) {
   const c = S.clubs[id];
   const divs = Object.entries(c.divisions).map(([g, d]) => `<h3 style="margin-top:12px">${GAMES[g].icon} ${GAMES[g].name}${d.label ? ` — ${esc(d.label)}` : ""} · ${esc(divName(id, g))} · ${GAMES[g].open ? "statut " : ""}${tierLabel(g, d.tier)} ${d.generated ? "<span class='warn' title='Le club a bien une équipe dans ce jeu, mais son effectif réel est introuvable'>* joueurs inventés</span>" : d.verified ? "<span class='ok' title='Effectif recoupé dans des sources 2026'>✓ 2026</span>" : c.filler ? "" : "<span class='muted' title='Effectif établi de mémoire, peut être dépassé'>≈ non vérifié</span>"}</h3><div class="table-wrap"><table>${clubPlayers(id, g).sort((a, b) => b.starter - a.starter || b.rating - a.rating).map(p => `<tr><td>${p.starter ? "⭐" : ""}</td><td>${flag(p.nat)} ${esc(p.handle)}</td><td class="muted">${p.role}</td><td>${ageTxt(p)} ans</td><td>${R(p.rating)}</td><td>${potTxt(p)}</td></tr>`).join("")}</table></div>`).join("");
-  modal(`<div style="display:flex;gap:12px;align-items:center">${badge(c)}<div><h2 style="margin:0">${esc(c.name)} ${flag(c.country)}</h2><span class="muted">${c.solo ? "Pro indépendant · " : ""}Notoriété ${c.fame.toFixed(1)} · ${c.fans.toLocaleString("fr-FR")} fans${c.titles.length ? " · 🏆 " + c.titles.map(esc).join(", ") : ""}</span></div></div>${divs}<div class="actions"><button data-act="close-modal">Fermer</button></div>`);
+  const coachLine = Object.keys(c.divisions).map(g => [g, id === S.userId ? coachOf(g) : aiCoachOf(id, g)]).filter(([, co]) => co).map(([g, co]) => `${GAMES[g].icon} ${esc(co.name)} (${coachLevel(co).toFixed(1)})`).join(" · ");
+  modal(`<div style="display:flex;gap:12px;align-items:center">${badge(c)}<div><h2 style="margin:0">${esc(c.name)} ${flag(c.country)}</h2>${coachLine ? `<div class="muted" style="font-size:12px">🧑‍🏫 Entraîneurs : ${coachLine}</div>` : ""}<span class="muted">${c.solo ? "Pro indépendant · " : ""}Notoriété ${c.fame.toFixed(1)} · ${c.fans.toLocaleString("fr-FR")} fans${c.titles.length ? " · 🏆 " + c.titles.map(esc).join(", ") : ""}</span></div></div>${divs}<div class="actions"><button data-act="close-modal">Fermer</button></div>`);
 }
 
 // =====================================================================
@@ -1213,8 +1214,41 @@ function viewStaff() {
     <td><button class="small primary" data-act="coach-hire" data-v="${c.id}" ${u.budget < c.wage * 6 ? "disabled" : ""}>Engager</button></td></tr>`).join("");
   return `<h2>🧑‍🏫 Staff</h2><div class="tabs">${tabs}</div>${card}
     <div class="card" style="margin-top:16px"><h3>Entraîneurs disponibles (${GAMES[g].short})</h3><p class="muted" style="margin-top:-6px;font-size:13px">Notes sur 20, comme dans FM. Les meilleurs joueurs qui prennent leur retraite deviennent parfois entraîneurs : leur tactique vient de leur niveau, leur motivation et leur gestion des egos de leur caractère.</p>
-    <div class="table-wrap"><table><tr><th>Entraîneur</th><th>Âge</th>${Object.values(COACH_ATTRS).map(l => `<th>${l}</th>`).join("")}<th>Niveau</th><th>Salaire</th><th>Prime d'arrivée</th><th></th></tr>${rows || "<tr><td colspan='10' class='muted'>Aucun entraîneur libre.</td></tr>"}</table></div></div>`;
+    <div class="table-wrap"><table><tr><th>Entraîneur</th><th>Âge</th>${Object.values(COACH_ATTRS).map(l => `<th>${l}</th>`).join("")}<th>Niveau</th><th>Salaire</th><th>Prime d'arrivée</th><th></th></tr>${rows || "<tr><td colspan='10' class='muted'>Aucun entraîneur libre.</td></tr>"}</table></div></div>
+    ${employedCoaches(g)}`;
 }
+// entraîneurs en poste dans les autres clubs : on peut tenter de les recruter (indemnité au club, puis il accepte ou non)
+function employedCoaches(g) {
+  const list = Object.values(S.coaches || {}).filter(c => c.game === g && c.club && c.club !== S.userId && S.clubs[c.club]).sort((a, b) => coachLevel(b) - coachLevel(a));
+  const rows = list.map(c => { const cl = S.clubs[c.club], d = cl.divisions[g];
+    return `<tr><td>${flag(c.nat)} <b>${esc(c.name)}</b>${c.ex ? ` <span class="chip">ex-joueur</span>` : ""}</td><td><span style="color:${cl.color}">■</span> <span class="link" data-act="club-info" data-v="${cl.id}">${esc(cl.name)}</span> ${d ? tchip(d.tier) : ""}</td>
+      ${Object.keys(COACH_ATTRS).map(k => `<td>${attrBar(c.attrs[k])}</td>`).join("")}<td><b>${coachLevel(c).toFixed(1)}</b></td><td>${money(c.wage)}/sem</td><td>${c.years || 1} an(s)</td><td>${money(coachRelease(c))}</td>
+      <td><button class="small" data-act="coach-poach" data-v="${c.id}">Faire une offre</button></td></tr>`; }).join("");
+  return `<div class="card" style="margin-top:16px"><h3>Entraîneurs en poste dans d'autres clubs (${GAMES[g].short})</h3>
+    <p class="muted" style="margin-top:-6px;font-size:13px">Vous payez une indemnité à son club, puis l'entraîneur décide : il regarde le prestige de votre club face au sien, le tier où vous jouez, le salaire et la durée proposés, et son attachement à son club actuel.</p>
+    <div class="table-wrap" style="max-height:480px;overflow:auto"><table><tr><th>Entraîneur</th><th>Club</th>${Object.values(COACH_ATTRS).map(l => `<th>${l}</th>`).join("")}<th>Niveau</th><th>Salaire</th><th>Contrat</th><th>Indemnité</th><th></th></tr>${rows || "<tr><td colspan='11' class='muted'>Aucun.</td></tr>"}</table></div></div>`;
+}
+function poachModal(id, reply) {
+  const c = S.coaches[id]; if (!c) return;
+  const cl = S.clubs[c.club], fee = c.club ? coachRelease(c) : 0;
+  modal(`<h2>🧑‍🏫 Offre à ${flag(c.nat)} ${esc(c.name)}</h2>
+    <p class="muted" style="margin-top:-6px">Entraîneur ${GAMES[c.game].name} de ${cl ? esc(cl.name) : "—"} · ${c.age} ans · niveau ${coachLevel(c).toFixed(1)}/20 · ${money(c.wage)}/sem · encore ${c.years || 1} an(s) de contrat</p>
+    <div class="coach-attrs">${Object.entries(COACH_ATTRS).map(([k, l]) => `<div><span class="muted">${l}</span>${attrBar(c.attrs[k])}</div>`).join("")}</div>
+    ${reply ? `<div class="reply ${reply.ok ? "" : "bad"}">${esc(reply.msg)}</div>` : ""}
+    <div style="display:flex;gap:12px;flex-wrap:wrap">
+      <div class="form-row" style="flex:1;min-width:160px"><label for="co-wage">Salaire proposé (€/semaine)</label><input id="co-wage" type="number" step="50" min="0" value="${round50(c.wage * 1.3)}"></div>
+      <div class="form-row"><label for="co-years">Durée</label><select id="co-years">${[1, 2, 3, 4].map(y => `<option value="${y}" ${y === 2 ? "selected" : ""}>${y} an${y > 1 ? "s" : ""}</option>`).join("")}</select></div>
+    </div>
+    <p>Indemnité à verser à ${cl ? esc(cl.name) : "son club"} : <b>${money(fee)}</b> · prime d'arrivée : 6 semaines du salaire proposé.</p>
+    <div class="actions"><button data-act="close-modal">Annuler</button><button class="primary" data-act="coach-poach-send" data-v="${c.id}">Envoyer l'offre</button></div>`);
+}
+ACTIONS["coach-poach"] = v => poachModal(v);
+ACTIONS["coach-poach-send"] = v => {
+  const r = poachCoach(v, Math.max(0, +document.getElementById("co-wage").value || 0), +document.getElementById("co-years").value);
+  if (r.error) return toast(r.error);
+  if (r.ok) { closeModal(); toast("🧑‍🏫 " + r.msg); scheduleSave(); return render(); }
+  scheduleSave(); render(); poachModal(v, r);
+};
 ACTIONS["staff-game"] = v => { UI.staffGame = v; render(); };
 ACTIONS["coach-hire"] = v => { const e = hireCoach(v); toast(e || "🧑‍🏫 Entraîneur engagé !"); scheduleSave(); render(); };
 ACTIONS["coach-fire"] = v => { fireCoach(v); toast("Entraîneur licencié."); scheduleSave(); render(); };

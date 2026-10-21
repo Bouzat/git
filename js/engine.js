@@ -1369,7 +1369,7 @@ const coachLevel = c => Object.values(c.attrs).reduce((a, b) => a + b, 0) / 4;
 const coachOf = game => { const id = S.userId && S.clubs[S.userId] && S.clubs[S.userId].coaches && S.clubs[S.userId].coaches[game]; return id && S.coaches && S.coaches[id] ? S.coaches[id] : null; };
 function coachWage(c) { const l = coachLevel(c); return round50((250 + l * l * 9) * (0.5 + 0.5 * GAMES[c.game].mult)); }
 function makeCoach(game, o = {}) {
-  const lvl = o.lvl ?? randi(5, 15), a = () => clamp(Math.round(lvl + rand(-4, 4)), 1, 20);
+  const lvl = o.lvl ?? randi(5, 13), a = () => clamp(Math.round(lvl + rand(-3, 3)), 1, 20);
   const c = { id: uid("co"), name: o.name || `${pick(COACH_FIRST)} ${pick(COACH_LAST)}`, nat: o.nat || pick(Object.keys(COUNTRIES)), age: o.age || randi(28, 55), game,
     attrs: { tactique: a(), motivation: a(), jeunes: a(), discipline: a(), ...(o.attrs || {}) }, club: null, ex: o.ex || null, won: o.won || [] };
   c.wage = coachWage(c);
@@ -1383,8 +1383,55 @@ function coachFromPlayer(p) {
     attrs: { tactique: clamp(Math.round(base + rand(-2, 3)), 1, 20), motivation: clamp(Math.round(base + ({ Loyal: 3, Calme: 2, Exigeant: -2, Mercenaire: -3 }[pers] || 0) + rand(-3, 3)), 1, 20),
       jeunes: clamp(Math.round(base - 2 + (traitOf(p) === "Mentor" ? 6 : 0) + rand(-3, 3)), 1, 20), discipline: clamp(Math.round(base + (traitOf(p) === "Leader" ? 4 : traitOf(p) === "Toxique" ? -6 : 0) + rand(-3, 3)), 1, 20) } });
 }
+// entraîneurs fictifs : libres (surtout moyens, un seul vraiment bon par jeu) et en poste dans les clubs des tiers 1 et 2
 function seedCoaches() {
-  for (const game of Object.keys(GAMES)) for (let i = 0; i < 7; i++) makeCoach(game, { lvl: i === 0 ? randi(15, 18) : i < 3 ? randi(11, 15) : randi(5, 11) });
+  for (const game of Object.keys(GAMES)) {
+    for (let i = 0; i < 7; i++) makeCoach(game, { lvl: i === 0 ? randi(12, 14) : i < 3 ? randi(9, 12) : randi(5, 9) });
+    for (const c of Object.values(S.clubs)) {
+      const d = c.divisions[game];
+      if (!d || c.filler || c.solo || c.parent || c.id === S.userId || d.tier > 2) continue;
+      if (Math.random() > (d.tier === 1 ? 0.9 : 0.5)) continue;
+      // le niveau suit le prestige du club, sans excès : 4 à 17 sur 20
+      const co = makeCoach(game, { lvl: clamp(Math.round(4 + c.fame / 8 + rand(-2, 2)), 4, 16) });
+      employCoach(co, c.id, randi(1, 3));
+    }
+  }
+}
+function employCoach(co, clubId, years) {
+  const c = S.clubs[clubId]; if (!c) return;
+  co.club = clubId; co.years = years;
+  if (clubId === S.userId) { (c.coaches = c.coaches || {})[co.game] = co.id; return; }
+  (c.coachIds = c.coachIds || {})[co.game] = co.id;
+}
+// entraîneur d'un club de l'IA dans un jeu
+const aiCoachOf = (clubId, game) => { const c = S.clubs[clubId], id = c && c.coachIds && c.coachIds[game]; return id && S.coaches && S.coaches[id] ? S.coaches[id] : null; };
+// recruter l'entraîneur d'un autre club : indemnité au club, puis l'entraîneur décide selon le projet (prestige, tier, salaire, durée, attachement)
+function coachRelease(co) { const c = S.clubs[co.club]; return Math.round(co.wage * 18 * Math.max(1, co.years || 1) * (0.6 + (c ? c.fame : 30) / 150) / 1000) * 1000; }
+function poachCoach(id, wage, years) {
+  const u = user(), co = S.coaches[id], club = co && S.clubs[co.club];
+  if (!co || !club || club.id === u.id) return { error: "Cet entraîneur n'est pas en poste dans un autre club." };
+  if (!u.divisions[co.game]) return { error: `Ouvrez d'abord une division ${GAMES[co.game].name}.` };
+  const fee = coachRelease(co), prime = wage * 6;
+  if (u.budget < fee + prime) return { error: `Budget insuffisant : il faut ${money(fee)} d'indemnité pour ${club.name} et ${money(prime)} de prime d'arrivée.` };
+  if (co.refusedAt && nowIndex() - co.refusedAt < 6) return { error: `${co.name} a déjà refusé votre offre récemment.` };
+  const ud = u.divisions[co.game], cd = club.divisions[co.game];
+  const loyal = (hashOf(co.id + "loyal") % 100) / 100;          // attachement à son club
+  const reasons = [];
+  let score = (u.fame - club.fame) / 25 + (wage / co.wage - 1) * 2.2 + (cd && ud ? (cd.tier - ud.tier) * 0.6 : 0) + (years >= 2 ? 0.15 : -0.1) - loyal * 0.8 + rand(-0.25, 0.25);
+  if (u.fame < club.fame - 10) reasons.push(`${club.name} est plus prestigieux que votre club`);
+  if (wage < co.wage * 1.1) reasons.push(`le salaire proposé n'est pas assez supérieur à son salaire actuel (${money(co.wage)}/sem)`);
+  if (cd && ud && ud.tier > cd.tier) reasons.push(`il entraîne en tier ${cd.tier} et vous jouez en tier ${ud.tier}`);
+  if (loyal > 0.7) reasons.push(`il est très attaché à ${club.name}`);
+  if (score < 0.5) { co.refusedAt = nowIndex(); return { ok: false, msg: `${co.name} refuse : ${reasons.slice(0, 2).join(", ") || "il préfère finir son contrat"}.` }; }
+  book("coaches", -fee, co.game, `Indemnité à ${club.name} pour ${co.name}`); club.budget += fee;
+  book("coaches", -prime, co.game, `Prime d'arrivée : ${co.name}`);
+  delete club.coachIds[co.game];
+  // le club remplace son entraîneur par un autre, un peu moins bon
+  employCoach(makeCoach(co.game, { lvl: clamp(Math.round(coachLevel(co) - randi(1, 4)), 3, 16) }), club.id, randi(1, 3));
+  if (u.coaches && u.coaches[co.game]) fireCoach(co.game, true);
+  co.wage = wage; employCoach(co, u.id, years);
+  mail(`🧑‍🏫 ${co.name} rejoint le club`, `${co.name} quitte ${club.name} (indemnité ${money(fee)}) et devient l'entraîneur ${GAMES[co.game].name} pour ${money(wage)}/sem pendant ${years} an(s).`, "transfer", co.game);
+  return { ok: true, msg: `${co.name} accepte votre projet !` };
 }
 function hireCoach(id) {
   const u = user(), c = S.coaches[id];
@@ -1395,7 +1442,7 @@ function hireCoach(id) {
   u.coaches = u.coaches || {};
   if (u.coaches[c.game]) fireCoach(c.game, true);
   book("coaches", -prime, c.game, `Prime d'arrivée : ${c.name}`);
-  c.club = u.id; u.coaches[c.game] = c.id;
+  c.club = u.id; c.years = 2; u.coaches[c.game] = c.id;
   mail(`🧑‍🏫 Nouvel entraîneur ${GAMES[c.game].short} : ${c.name}`, `${c.name}${c.ex ? " (ancien joueur pro)" : ""} prend en main l'équipe ${GAMES[c.game].name} pour ${money(c.wage)}/sem. Tactique ${c.attrs.tactique}, motivation ${c.attrs.motivation}, formation des jeunes ${c.attrs.jeunes}, gestion des egos ${c.attrs.discipline}.`, "transfer", c.game);
   return null;
 }
@@ -1414,7 +1461,7 @@ function teamStrength(clubId, game) {
   if (st.length < g.size) st = st.concat(ps.filter(p => !p.starter).sort((a, b) => b.rating - a.rating));
   st = st.slice(0, g.size);
   const sum = st.reduce((s, p) => s + effRating(p), 0) + (g.size - st.length) * 30;
-  const co = isMine(clubId) ? coachOf(game) : null;
+  const co = isMine(clubId) ? coachOf(game) : aiCoachOf(clubId, game);
   const bonus = facOf(c).coaching * 0.6 + facOf(c).analytics * 0.4 + (co ? co.attrs.tactique * 0.15 : 0);
   // entente entre les joueurs : jusqu'à ±3 %
   const chem = chemistry(st, co);
@@ -2078,7 +2125,21 @@ function endSeason() {
     else if (!p.club && p.age >= 24 && p.rating < 62 && Math.random() < 0.5) delete S.players[p.id];
   }
   if (retired.length) mail("👋 Retraites", `Ont pris leur retraite : <b>${retired.join(", ")}</b>. Certains anciens joueurs se reconvertissent en entraîneurs (onglet Staff).`, "transfer");
-  for (const c of Object.values(S.coaches || {})) { c.age++; if (!c.club && c.age > 64) delete S.coaches[c.id]; }
+  for (const c of Object.values(S.coaches || {})) {
+    c.age++;
+    // contrats des entraîneurs de l'IA : la plupart sont prolongés, les autres deviennent libres
+    if (c.club && c.club !== S.userId && --c.years <= 0) {
+      const cl = S.clubs[c.club];
+      if (cl && Math.random() < 0.7) c.years = randi(1, 3); else { if (cl && cl.coachIds) delete cl.coachIds[c.game]; c.club = null; }
+    }
+    if (!c.club && c.age > 64) delete S.coaches[c.id];
+  }
+  // un club de l'IA sans entraîneur en engage un libre
+  for (const cl of Object.values(S.clubs)) if (cl.ai && !cl.filler && !cl.solo) for (const [g, d] of Object.entries(cl.divisions)) {
+    if (d.tier > 2 || aiCoachOf(cl.id, g) || Math.random() > 0.5) continue;
+    const free = Object.values(S.coaches).filter(c => !c.club && c.game === g).sort((a, b) => coachLevel(b) - coachLevel(a))[randi(0, 2)];
+    if (free) employCoach(free, cl.id, randi(1, 3));
+  }
   for (const game of Object.keys(GAMES)) if (Math.random() < 0.6) makeCoach(game);
   if (leaving.length) mail("Fins de contrat", `Ont quitté le club (contrat expiré) : <b>${leaving.join(", ")}</b>.`, "transfer");
 
