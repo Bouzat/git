@@ -1240,6 +1240,23 @@ const RANKED_GAMES = ["cs2"];
 const rankNow = () => S.season * 52 + S.week;
 function rankAdd(game, id, pts, t = rankNow()) { if (!S.clubs[id]) return; ((S.rankLog = S.rankLog || {})[game] = S.rankLog[game] || []).push([t, id, Math.round(pts)]); }
 function rankLeagueWin(game, id) { const d = divOf(id, game); if (d) rankAdd(game, id, [12, 5, 2][d.tier - 1]); }
+// points du classement de chaque équipe, recalculés une fois par semaine (assez précis pour les face-à-face)
+function rankPtsMap(game) {
+  const c = (rankPtsMap.cache = rankPtsMap.cache || {});
+  if (!c[game] || c[game].t !== rankNow() || c[game].season !== S.season) { const m = {}; rankingOf(game).forEach(x => m[x.id] = x.pts); c[game] = { t: rankNow(), season: S.season, m }; }
+  return c[game].m;
+}
+// Face-à-face façon Elo (comme la VRS de Valve) : le vainqueur prend des points au perdant. Battre une équipe bien mieux
+// classée rapporte gros ; perdre contre une équipe bien moins classée en coûte beaucoup ; un résultat attendu change peu.
+// Plus l'enjeu est grand (grand tournoi, phase finale), plus le match compte.
+function rankMatch(game, winner, loser, stake = 1) {
+  const m = rankPtsMap(game), ra = (m[winner] || 0) / 4, rb = (m[loser] || 0) / 4;
+  const expected = 1 / (1 + Math.pow(10, (rb - ra) / 400));
+  const k = 50 + 25 * Math.min(2, stake), delta = Math.round(k * (1 - expected));
+  const d = divOf(winner, game), bonus = d ? [12, 5, 2][d.tier - 1] : 0;
+  rankAdd(game, winner, bonus + delta); rankAdd(game, loser, -delta);
+  return { win: bonus + delta, loss: -delta };
+}
 function rankTournament(game, order, prize) {
   const base = clamp(60 + prize / 2500, 60, 1000);
   order.forEach((id, i) => rankAdd(game, id, base * (i < 1 ? 1 : i < 2 ? 0.7 : i < 4 ? 0.5 : i < 8 ? 0.3 : i < 16 ? 0.15 : 0.07)));
@@ -1697,11 +1714,12 @@ function playSeries(game, a, b, bestOf, stake = 1, stage = "") {
   if (mvp) mvp.stats.mvp++;
   const mine = isMine(a) || isMine(b);
   const notesA = rateLineup(A.lineup, B.str, winner === a, mvp, mine), notesB = rateLineup(B.lineup, A.str, winner === b, mvp, mine);
-  if (RANKED_GAMES.includes(game)) rankLeagueWin(game, winner, stake);
+  const rk = RANKED_GAMES.includes(game) ? rankMatch(game, winner, loser, stake) : null;
   const nm = id => { const c = S.clubs[id]; return c.solo ? soloName(c, game) : (c.divisions[game] && c.divisions[game].label) || c.name; };
   clubResult(winner, true, stake, isMine(winner) ? `${g.short} · victoire ${Math.max(wa, wb)}-${Math.min(wa, wb)} contre ${nm(loser)}${stage ? " (" + stage + ")" : ""}` : null);
   clubResult(loser, false, stake, isMine(loser) ? `${g.short} · défaite ${Math.min(wa, wb)}-${Math.max(wa, wb)} contre ${nm(winner)}${stage ? " (" + stage + ")" : ""}` : null);
   const r = { a, b, sa: wa, sb: wb, winner, loser, maps, mvp: mvp ? mvp.handle : null, bestOf };
+  if (rk) r.rk = rk;
   if (mine) { r.seq = seq; r.notesA = notesA; r.notesB = notesB; }
   return r;
 }
