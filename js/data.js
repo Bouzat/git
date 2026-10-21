@@ -7,7 +7,7 @@
 // =====================================================================
 
 // version de js/data_live.js attendue (voir LIVE_FORMAT dans tools/build_live.py)
-const LIVE_EXPECTED = 4;
+const LIVE_EXPECTED = 5;
 
 // fmt : "team" (séries BO3/BO5), "br" (battle royale en lobby), "duel" (1 contre 1)
 const GAMES = {
@@ -423,7 +423,9 @@ const GAME_ZONES = {
   lol: { zones: ["EU", "KR", "CN", "NA", "SA", "PAC"], map: { EU: "EU", MENA: "EU", NA: "NA", SA: "SA", OCE: "PAC", ASIA: cc => cc === "KR" ? "KR" : cc === "CN" ? "CN" : "PAC" },
     sizes: [10, 10], names: [{ EU: "LEC", KR: "LCK", CN: "LPL", NA: "LCS", SA: "CBLOL", PAC: "LCP" },
       { EU: "EMEA Masters · ligues régionales (LFL, Prime League…)", KR: "LCK Challengers League", CN: "LDL", NA: "NACL", SA: "Circuito Desafiante", PAC: "Ligues nationales du Pacifique (VCS, PCS, LJL)" },
-      "Open Tour {z}"] },
+      { KR: "LCK Academy Series", CN: "LDL Development · académies", EU: "Divisions 2 et académies EMEA", NA: "Ligues amateurs et universitaires (Amérique du Nord)", SA: "Ligues amateurs (Amérique du Sud)", PAC: "Ligues amateurs du Pacifique" }],
+    // tier 2 découpé en ligues nationales (ERL d'Europe, NACL et Liga Regional Norte, Desafiante et Liga Regional Sur, VCS / PCS / LJL / LTS)
+    subs: { 2: { EU: ["LFL", "PRM", "LVP", "UL", "TCL", "EBL", "ES", "HM", "GLL", "LIT", "LPLOL", "NLC", "AL"], NA: ["NACL", "LRN"], SA: ["CD", "LRS"], PAC: ["VCS", "PCS", "LJL", "LTS"] } } },
   val: { zones: ["EMEA", "AMER", "PAC", "CN"], map: { EU: "EMEA", MENA: "EMEA", NA: "AMER", SA: "AMER", OCE: "PAC", ASIA: cc => cc === "CN" ? "CN" : "PAC" },
     sizes: [12, 16], names: [{ EMEA: "VCT EMEA", AMER: "VCT Americas", PAC: "VCT Pacific", CN: "VCT China" }, "VCT Challengers {z}", "Premier {z}"] },
   valgc: { zones: ["EMEA", "NA", "SA", "PAC"], map: { EU: "EMEA", MENA: "EMEA", NA: "NA", SA: "SA", OCE: "PAC", ASIA: "PAC" },
@@ -446,6 +448,19 @@ const FRANCHISES = {
 };
 // région de jeu correspondant à une zone (pour une équipe qui rachète une franchise à l'étranger)
 const ZONE_REGION = { EU: "EU", EMEA: "EU", NA: "NA", AMER: "NA", SA: "SA", MENA: "MENA", KR: "ASIA", CN: "ASIA", PAC: "ASIA", ASIA: "ASIA", OCE: "OCE" };
+// sous-ligues (ligues nationales d'un même tier) : nom et pays
+const SUB_NAMES = { LFL: "LFL", PRM: "Prime League", LVP: "LVP SuperLiga", UL: "Rift Legends (Ultraliga)", TCL: "TCL", EBL: "Esports Balkan League", ES: "Road of Legends (Elite Series)",
+  HM: "Hitpoint Masters", GLL: "Hellenic Legends League", LIT: "LIT", LPLOL: "LPLOL", NLC: "NLC", AL: "Arabian League", NACL: "NACL", LRN: "Liga Regional Norte",
+  CD: "Circuito Desafiante", LRS: "Liga Regional Sur", VCS: "VCS", PCS: "PCS", LJL: "LJL", LTS: "LTS" };
+const SUB_CC = { LFL: "FR MC", PRM: "DE AT CH", LVP: "ES AD", UL: "PL EE LV LT UA IL GE BY MD AZ RU", TCL: "TR", EBL: "RS HR BA ME HU RO BG MK AL SI", ES: "NL BE LU", HM: "CZ SK",
+  GLL: "GR CY", LIT: "IT SM MT", LPLOL: "PT", NLC: "GB IE SE NO DK FI IS FO", AL: "SA AE EG MA DZ TN JO KW LB IQ SY PS IR QA BH OM", NACL: "US CA",
+  LRN: "MX CR GT HN SV PA CU DO PR TT NI CO VE", CD: "BR", LRS: "AR CL PE UY PY BO EC", VCS: "VN", PCS: "TW HK MO PH SG MY ID AU NZ PF", LJL: "JP", LTS: "TH KH LA MM" };
+const subsOf = (game, tier, zone) => (GAME_ZONES[game] && GAME_ZONES[game].subs && GAME_ZONES[game].subs[tier] && GAME_ZONES[game].subs[tier][zone]) || null;
+// sous-ligue d'un pays (la NLC accueille les pays d'Europe sans ligue propre)
+function subFor(game, tier, zone, cc) {
+  const subs = subsOf(game, tier, zone); if (!subs) return null;
+  return subs.find(s => SUB_CC[s] && SUB_CC[s].split(" ").includes(cc)) || (subs.includes("NLC") ? "NLC" : subs[0]);
+}
 // zone d'une équipe dans un jeu, d'après sa région (et le pays de son organisation pour l'Asie)
 function zoneFrom(game, region, cc) {
   const Z = GAME_ZONES[game]; if (!Z) return "W";

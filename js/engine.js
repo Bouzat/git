@@ -57,8 +57,8 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const shuffle = arr => { const a = arr.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 const uid = (() => { let n = 0; return p => p + "_" + Date.now().toString(36) + "_" + (n++).toString(36); })();
 // une ligue par jeu, tier et zone (LEC, LCK…) ; une seule ligue par zone pour les circuits ouverts (Fortnite), quel que soit le statut du club
-const lkey = (game, tier, zone = "W") => `${game}:${GAMES[game] && GAMES[game].open ? 1 : tier}:${zone}`;
-const leagueOf = (clubId, game) => { const d = divOf(clubId, game); return d ? S.leagues[lkey(game, d.tier, d.zone || "W")] : null; };
+const lkey = (game, tier, zone = "W", sub) => `${game}:${GAMES[game] && GAMES[game].open ? 1 : tier}:${zone}${sub ? ":" + sub : ""}`;
+const leagueOf = (clubId, game) => { const d = divOf(clubId, game); return d ? S.leagues[lkey(game, d.tier, d.zone || "W", d.sub)] : null; };
 const leaguesOf = game => Object.values(S.leagues).filter(L => L.game === game);
 const MIN_LEAGUE = 8;
 // progression : points d'expérience par semaine (≈ +4 de note par saison pour un titulaire de 18 ans qui joue bien)
@@ -88,15 +88,16 @@ function genHandle() {
 function tierPrize(game, tier) { return Math.round(GAMES[game].prize * TIER_PRIZE[tier - 1]); }
 function tierEntry(game, tier) { return Math.round(GAMES[game].prize * [0.3, 0.04, 0.004][tier - 1] / 1000) * 1000; }
 // nom réel de la ligue : « LEC », « VCT Pacific », « FNCS Europe »…
-function tierName(game, tier, zone) {
+function tierName(game, tier, zone, sub) {
+  if (sub && SUB_NAMES[sub]) return SUB_NAMES[sub];
   const Z = GAME_ZONES[game];
   if (!Z || !zone || zone === "W") return GAMES[game].tiers[tier - 1];
   const n = Z.names[tier - 1], v = typeof n === "string" ? n : n[zone] || GAMES[game].tiers[tier - 1];
   return v.replace("{z}", ZONE_NAMES[zone]);
 }
-function leagueName(L) { return tierName(L.game, L.tier, L.zone); }
+function leagueName(L) { return tierName(L.game, L.tier, L.zone, L.sub); }
 // ligue d'un club dans un jeu (nom)
-const divName = (clubId, game) => { const d = divOf(clubId, game); return d ? tierName(game, GAMES[game].open ? 1 : d.tier, d.zone) : ""; };
+const divName = (clubId, game) => { const d = divOf(clubId, game); return d ? tierName(game, GAMES[game].open ? 1 : d.tier, d.zone, d.sub) : ""; };
 // tailles des ligues tier 1 et tier 2 d'une zone
 const zoneSizes = game => GAME_ZONES[game] && GAME_ZONES[game].sizes ? GAME_ZONES[game].sizes : GAMES[game].tierSizes && !GAMES[game].open ? GAMES[game].tierSizes : [LEAGUE_SIZE, LEAGUE_SIZE];
 // zone d'une équipe des données réelles, avant la création du monde (même règle que clubRegion)
@@ -125,10 +126,15 @@ function planTiers(game) {
   const solos = (SOLOS[game] || []).map(x => typeof x[0] === "string" && Array.isArray(x[1]) && Array.isArray(x[1][0]) ? { orgId: x[0], roster: x[1] } : { roster: Array.isArray(x[0]) ? x : [x] })
     .map(e => ({ ...e, avg: e.roster.reduce((s, p) => s + p[2], 0) / e.roster.length })).sort((a, b) => b.avg - a.avg);
   const all = entries.concat(solos);
+  const fixed = typeof LIVE_LEAGUES !== "undefined" && LIVE_LEAGUES[game] || {};
   for (const e of all) {
+    // ligue donnée par les sources (LEC, LFL, LCK CL…) ; sinon d'après le rang de l'équipe dans sa zone
+    const f = e.orgId && fixed[e.orgId];
+    if (f) { [e.zone, e.tier] = f; e.sub = f[2] || null; continue; }
     e.zone = entryZone(game, e.orgId, e.roster);
     const n = count[e.zone] = (count[e.zone] || 0) + 1;
     e.tier = g.open ? 1 : n <= sizes[0] ? 1 : n <= sizes[0] + sizes[1] ? 2 : 3;
+    if (!g.open && subsOf(game, e.tier, e.zone)) e.sub = subFor(game, e.tier, e.zone, e.orgId && ORGS[e.orgId] ? ORGS[e.orgId][2] : e.roster[0] && e.roster[0][1]);
   }
   return all;
 }
@@ -295,8 +301,9 @@ function orgClub(id) {
   const [name, tag, cc, color, fame] = ORGS[id];
   return (S.clubs[id] = baseClub(id, name, tag, cc, color, fame, true));
 }
-function addDivision(club, game, tier, roster, zone = "W") {
+function addDivision(club, game, tier, roster, zone = "W", sub = null) {
   club.divisions[game] = { tier, zone, players: [] };
+  if (sub) club.divisions[game].sub = sub;
   roster.forEach(([h, n, r, a], i) => {
     const p = makePlayer(h, n, r, a, game, i, club.id);
     p.starter = i < GAMES[game].size; addPlayer(p); club.divisions[game].players.push(p.id);
@@ -314,23 +321,23 @@ function sisterClub(orgId, game) {
   return (S.clubs[c.id] = c);
 }
 // club indépendant : un joueur (ou un duo) qui joue sous son propre nom
-function soloClub(game, tier, roster, zone) {
+function soloClub(game, tier, roster, zone, sub) {
   const id = uid("solo");
   const avg = roster.reduce((s, p) => s + p[2], 0) / roster.length;
   const c = baseClub(id, roster.map(p => p[0]).join(" & "), roster[0][0].slice(0, 4).toUpperCase(), roster[0][1],
     `hsl(${randi(0, 359)} 55% 55%)`, clamp(Math.round((avg - 55) * 1.5), 5, 70), true);
   c.solo = true;
-  addDivision(c, game, tier, roster, zone);
+  addDivision(c, game, tier, roster, zone, sub);
   S.clubs[id] = c;
   return c;
 }
 // club fictif : réutilise un nom libre pour ce jeu (un même club fictif peut avoir plusieurs divisions)
-function fillerClub(game, tier, zone = "W") {
+function fillerClub(game, tier, zone = "W", sub = null, range = null) {
   const g = GAMES[game];
-  const [lo, hi] = TIER_RATING[tier - 1], ccs = zoneCountries(game, zone);
+  const [lo, hi] = range || TIER_RATING[tier - 1], sccs = sub && SUB_CC[sub] ? SUB_CC[sub].split(" ") : null, ccs = sccs || zoneCountries(game, zone);
   if (g.fmt === "duel" || (g.fmt === "br" && g.size <= 2)) {
     const roster = Array.from({ length: g.size }, () => [genHandle(), pick(ccs), randi(lo, hi), randi(16, 27)]);
-    const c = soloClub(game, tier, roster, zone); c.filler = true; return c;
+    const c = soloClub(game, tier, roster, zone, sub); c.filler = true; return c;
   }
   // un nom de club de la zone (« Seoul Phantoms » en Corée), libre dans ce jeu
   let cand = shuffle(FILLER_NAMES).find(([n, tag, col, cc]) => { const c = S.clubs["f_" + tag]; return ccs.includes(cc) && (!c || !c.divisions[game]); });
@@ -345,7 +352,7 @@ function fillerClub(game, tier, zone = "W") {
   }
   c.filler = true;
   const roster = Array.from({ length: g.size }, () => [genHandle(), Math.random() < 0.7 && ccs.includes(c.country) ? c.country : pick(ccs), randi(lo, hi), randi(17, 29)]);
-  addDivision(c, game, tier, roster, zone);
+  addDivision(c, game, tier, roster, zone, sub);
   return c;
 }
 
@@ -366,8 +373,8 @@ function newWorld(opts) {
       // une org peut aligner plusieurs duos/joueurs dans un jeu solo : les suivants jouent dans une équipe « sœur » à ses couleurs
       let c = e.orgId ? orgClub(e.orgId) : null;
       if (c && c.divisions[game]) c = g.size <= 2 ? sisterClub(e.orgId, game) : null;
-      if (c) { addDivision(c, game, e.tier, e.roster, e.zone); c.divisions[game].verified = e.verified || !!SOLOS[game]; if (e.label) c.divisions[game].label = e.label; }
-      const club = c || soloClub(game, e.tier, e.roster, e.zone);
+      if (c) { addDivision(c, game, e.tier, e.roster, e.zone, e.sub); c.divisions[game].verified = e.verified || !!SOLOS[game]; if (e.label) c.divisions[game].label = e.label; }
+      const club = c || soloClub(game, e.tier, e.roster, e.zone, e.sub);
       slot(e.zone)[e.tier - 1].push(club.id);
     }
     // divisions réelles sans effectif connu : joueurs inventés au niveau du club
@@ -377,10 +384,10 @@ function newWorld(opts) {
       if (c.divisions[game]) continue;
       const zone = entryZone(game, orgId, [[null, c.country]]), b = slot(zone);
       // équipe aux joueurs inventés : en tier 1 seulement si les vraies équipes de sa zone ne suffisent pas à le remplir
-      const tier = open ? 1 : c.fame >= 70 && b[0].length < sizes[0] ? 1 : b[1].length < sizes[1] ? 2 : 3;
+      const tier = open ? 1 : c.fame >= 70 && b[0].length < sizes[0] && !isClosed(game, 1, zone) ? 1 : b[1].length < sizes[1] ? 2 : 3;
       const [lo, hi] = TIER_RATING[tier - 1];
       const roster = Array.from({ length: g.size }, () => [genHandle(), c.country, randi(lo + 2, hi), randi(18, 26)]);
-      addDivision(c, game, tier, roster, zone);
+      addDivision(c, game, tier, roster, zone, subFor(game, tier, zone, c.country));
       c.divisions[game].generated = true;
       b[tier - 1].push(c.id);
     }
@@ -388,10 +395,17 @@ function newWorld(opts) {
       const b = slot(zone);
       for (let t = 1; t <= 3; t++) {
         if (open && t > 1) break;
-        const key = lkey(game, t, zone);
-        const L = S.leagues[key] = { key, game, tier: t, zone, teams: b[t - 1], schedule: [], table: {}, results: [], playoffs: null, champion: null };
-        const min = zone === "W" ? LEAGUE_SIZE : open ? 12 : MIN_LEAGUE;
-        while (L.teams.length < min) L.teams.push(fillerClub(game, t, zone).id);
+        // une ligue par sous-ligue nationale quand le tier en a (LFL, Prime League…), sinon une seule
+        for (const sub of subsOf(game, t, zone) || [null]) {
+          const key = lkey(game, t, zone, sub);
+          const teams = b[t - 1].filter(id => (divOf(id, game).sub || null) === sub);
+          const L = S.leagues[key] = { key, game, tier: t, zone, sub, teams, schedule: [], table: {}, results: [], playoffs: null, champion: null };
+          const min = zone === "W" ? LEAGUE_SIZE : open ? 12 : MIN_LEAGUE;
+          // clubs fictifs au niveau des vraies équipes de la ligue (une petite ligue nationale reste une petite ligue)
+          const rs = teams.flatMap(id => clubPlayers(id, game).map(p => p.rating)), avg = rs.length ? rs.reduce((a, b) => a + b, 0) / rs.length : 0;
+          const range = avg ? [Math.round(avg - 5), Math.round(avg + 1)] : null;
+          while (L.teams.length < min) L.teams.push(fillerClub(game, t, zone, sub, range).id);
+        }
       }
       // circuit ouvert : statut Élite / Pro / Open d'après le niveau, dans la région
       if (open) {
@@ -605,14 +619,14 @@ function applyFranchise(game, zone, sellerId, price) {
   const myD = u.divisions[game];
   if (myD) {
     // échange des places : le vendeur prend la place actuelle du club
-    const myL = leagueOf(u.id, game), old = { tier: myD.tier, zone: myD.zone };
+    const myL = leagueOf(u.id, game), old = { tier: myD.tier, zone: myD.zone, sub: myD.sub };
     swapInLeague(L, sellerId, "__swap"); swapInLeague(myL, u.id, sellerId); swapInLeague(L, "__swap", u.id);
-    myD.tier = 1; myD.zone = zone; sd.tier = old.tier; sd.zone = old.zone;
+    myD.tier = 1; myD.zone = zone; delete myD.sub; sd.tier = old.tier; sd.zone = old.zone; if (old.sub) sd.sub = old.sub; else delete sd.sub;
   } else {
     u.divisions[game] = { tier: 1, zone, players: [] };
     swapInLeague(L, sellerId, u.id);
     if (seller.filler) dissolveDivision(sellerId, game);
-    else { const L2 = S.leagues[lkey(game, 2, zone)]; L2.teams.push(sellerId); L2.table[sellerId] = emptyRow(GAMES[game].fmt); sd.tier = 2; }
+    else { const sub = subFor(game, 2, zone, seller.country), L2 = S.leagues[lkey(game, 2, zone, sub)]; L2.teams.push(sellerId); L2.table[sellerId] = emptyRow(GAMES[game].fmt); sd.tier = 2; if (sub) sd.sub = sub; }
   }
   // une franchise à l'étranger : le club y est inscrit (règle des régions des joueurs, tournois régionaux)
   const reg = ZONE_REGION[zone];
@@ -622,8 +636,9 @@ function applyFranchise(game, zone, sellerId, price) {
 }
 // place le club du joueur dans un circuit, en prenant si possible la place d'un club fictif
 function joinLeague(game, tier) {
-  const u = user(), zone = zoneFrom(game, clubRegion(u, game), u.country), L = S.leagues[lkey(game, tier, zone)];
+  const u = user(), zone = zoneFrom(game, clubRegion(u, game), u.country), sub = subFor(game, tier, zone, u.country), L = S.leagues[lkey(game, tier, zone, sub)];
   u.divisions[game] = { tier, zone, players: [] };
+  if (sub) u.divisions[game].sub = sub;
   const fid = L.teams.find(id => S.clubs[id].filler);
   if (fid) {
     swapInLeague(L, fid, u.id);
@@ -650,7 +665,7 @@ function closeDivision(game) {
   for (const id of userTeams(game).filter(id => id !== u.id && S.clubs[id].unitOf)) { for (const p of clubPlayers(id, game)) releasePlayer(p.id, true); removeUnit(id, game); }
   for (const p of clubPlayers(u.id, game)) releasePlayer(p.id, true);
   const L = leagueOf(u.id, game);
-  const f = fillerClub(game, GAMES[game].open ? 3 : tier, zone);
+  const f = fillerClub(game, GAMES[game].open ? 3 : tier, zone, u.divisions[game].sub);
   swapInLeague(L, u.id, f.id);
   delete u.divisions[game];
   u.fame = Math.max(1, u.fame - 2);
@@ -1706,9 +1721,9 @@ const invitational = tiers => tiers === "1" || tiers === "123";
 function inRegion(clubId, game, region) {
   if (!region) return true;
   const c = S.clubs[clubId], r = clubRegion(c, game), cn = r === "ASIA" && c.country === "CN";
-  return region.split("|").some(x => x === "CN" ? cn : x === "PAC" ? r === "ASIA" && !cn : x === r);
+  return region.split("|").some(x => x === "CN" ? cn : x === "KR" ? r === "ASIA" && c.country === "KR" : x === "PAC" ? r === "ASIA" && !cn : x === r);
 }
-const REGION_LABEL = r => r ? r.split("|").map(x => ({ CN: "Chine", PAC: "Pacifique" })[x] || REGIONS[x]).join(" / ") : "Monde";
+const REGION_LABEL = r => r ? r.split("|").map(x => ({ CN: "Chine", PAC: "Pacifique", KR: "Corée" })[x] || REGIONS[x]).join(" / ") : "Monde";
 function tournamentPool(game, tiers, region) {
   const ids = leaguesOf(game).filter(L => GAMES[game].open || tiers.includes(String(L.tier))).flatMap(L => L.teams);
   return ids.filter(id => S.clubs[id] && divOf(id, game) && tiers.includes(String(S.clubs[id].divisions[game].tier)) && inRegion(id, game, region));
@@ -1795,6 +1810,42 @@ function finalOrder(L) {
   return head.concat(st.filter(id => !head.includes(id)));
 }
 
+// montées et descentes quand un tier est découpé en ligues nationales : les 2 derniers de chaque ligue descendent,
+// les meilleurs du tier inférieur montent dans la ligue de leur pays (ou dans une ligue qui a une place libre)
+function promoteSubs(game, t, zone, moves) {
+  const u = user(), ups = (subsOf(game, t, zone) || [null]).map(sub => S.leagues[lkey(game, t, zone, sub)]).filter(Boolean);
+  const lows = (subsOf(game, t + 1, zone) || [null]).map(sub => S.leagues[lkey(game, t + 1, zone, sub)]).filter(Boolean);
+  const blocked = id => { const c = S.clubs[id]; return c && c.parent && S.clubs[c.parent] && S.clubs[c.parent].divisions[game] && S.clubs[c.parent].divisions[game].tier <= t; };
+  const vac = {}, downs = [];
+  // beaucoup de ligues nationales : un seul relégué par ligue
+  const nDown = ups.length > 2 ? 1 : 2;
+  for (const L of ups) { const d = finalOrder(L).slice(-nDown); vac[L.key] = d.length; downs.push(...d.map(id => [id, L])); }
+  const lowOrder = lows.flatMap(L => finalOrder(L).slice(0, 2).map(id => [id, L])).filter(([id]) => !blocked(id));
+  // les meilleurs des ligues du tier inférieur, à la place des relégués
+  const promos = lowOrder.sort((a, b) => teamStrength(b[0], game).str - teamStrength(a[0], game).str).slice(0, downs.length);
+  for (const [id, L] of downs) {
+    const c = S.clubs[id], d = c.divisions[game], sub = subFor(game, t + 1, zone, c.country), low = lows.find(x => x.sub === sub) || lows[0];
+    L.teams = L.teams.filter(x => x !== id); low.teams.push(id); d.tier = t + 1; if (low.sub) d.sub = low.sub; else delete d.sub;
+    if (isMine(id) && id === u.id) moves.push(`⬇️ ${GAMES[game].short} : relégation en ${TIER_LABEL[t]} (${leagueName(low)})`);
+  }
+  for (const [id, L] of promos) {
+    const c = S.clubs[id], d = c.divisions[game], want = subFor(game, t, zone, c.country);
+    const up = ups.find(x => x.sub === want && vac[x.key] > 0) || ups.find(x => vac[x.key] > 0);
+    if (!up) break;
+    vac[up.key]--; L.teams = L.teams.filter(x => x !== id); up.teams.push(id); d.tier = t; if (up.sub) d.sub = up.sub; else delete d.sub;
+    if (id === u.id) moves.push(`⬆️ ${GAMES[game].short} : MONTÉE en ${TIER_LABEL[t - 1]} (${leagueName(up)}) !`);
+  }
+  // une place restée vide : le meilleur club du tier inférieur restant la prend
+  for (const up of ups) while (vac[up.key] > 0) {
+    // de préférence un club du pays de la ligue
+    const fit = id => subFor(game, t, zone, S.clubs[id].country) === up.sub ? 1 : 0;
+    const cand = lows.flatMap(L => L.teams.map(id => [id, L])).filter(([id]) => !blocked(id) && !up.teams.includes(id) && !S.clubs[id].filler)
+      .sort((a, b) => fit(b[0]) - fit(a[0]) || teamStrength(b[0], game).str - teamStrength(a[0], game).str)[0];
+    if (!cand) break;
+    const [id, L] = cand, d = divOf(id, game);
+    vac[up.key]--; L.teams = L.teams.filter(x => x !== id); up.teams.push(id); d.tier = t; if (up.sub) d.sub = up.sub; else delete d.sub;
+  }
+}
 function endSeason() {
   const u = user();
   const o = S.board.objective;
@@ -1841,6 +1892,7 @@ function endSeason() {
     for (const zone of gameZones(game)) for (let t = 1; t <= 2; t++) {
       // ligue fermée (franchise) : ni relégation, ni montée depuis le tier inférieur
       if (isClosed(game, t, zone)) continue;
+      if (subsOf(game, t, zone) || subsOf(game, t + 1, zone)) { promoteSubs(game, t, zone, moves); continue; }
       const up = S.leagues[lkey(game, t, zone)], low = S.leagues[lkey(game, t + 1, zone)];
       // une académie ne monte jamais dans la division de son équipe première
       const blocked = id => { const c = S.clubs[id]; return c && c.parent && S.clubs[c.parent] && S.clubs[c.parent].divisions[game] && S.clubs[c.parent].divisions[game].tier <= t; };

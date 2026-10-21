@@ -8,7 +8,7 @@ def iso_week(year, doy):
     import datetime as _dt
     return max(SEASON_FIRST, min(SEASON_LAST, (_dt.date(year, 1, 1) + _dt.timedelta(days=doy - 1)).isocalendar()[1]))
 SRC, OUT = sys.argv[1], sys.argv[2]
-LIVE_FORMAT = 4   # à incrémenter avec LIVE_EXPECTED (js/data.js) quand le contenu change de façon importante
+LIVE_FORMAT = 5   # à incrémenter avec LIVE_EXPECTED (js/data.js) quand le contenu change de façon importante
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # données actuelles du jeu (orgs, notes connues des joueurs)
@@ -700,6 +700,186 @@ if os.path.exists(rl_csv):
                           if row["year"] <= 2025 and "2026" not in row["name"] and not SKIP.search(row["name"]) and row["win"] not in ("", "TBD", "Cancelled")]
     print("Rocket League : %d tournois au calendrier, %d résultats historiques" % (len(cal), len(live_history["rl"])), file=sys.stderr)
 
+# ---------- League of Legends (Google Sheet de l'utilisateur, d'après Liquipedia) ----------
+# teams.csv : ligues -> équipes (avec ou sans effectif) ; players.csv : portail des joueurs par pays (ID, nom réel, équipe) ;
+# tournois.csv : tournois S/A/B/C/D-Tier 2026. Chaque équipe reçoit sa ligue : [zone, tier, sous-ligue].
+LOL_DIR = os.path.join(ROOT, "tools/sources/lol")
+live_leagues = {}
+if os.path.isdir(LOL_DIR):
+    # en-tête de ligue du fichier -> (zone, tier, sous-ligue, note de base des joueurs)
+    LOL_LEAGUE = {
+        "LCS": ("NA", 1, "", 77), "North American Challengers League": ("NA", 2, "NACL", 68), "Liga Regional Norte": ("NA", 2, "LRN", 63),
+        "Collegiate Teams": ("NA", 3, "", 60), "North America": ("NA", 3, "", 59),
+        "CBLOL": ("SA", 1, "", 74), "Circuito Desafiante": ("SA", 2, "CD", 67), "Liga Regional Sud": ("SA", 2, "LRS", 63), "Brazil": ("SA", 3, "", 59),
+        "LCP Teams": ("PAC", 1, "", 75), "VCS Teams": ("PAC", 2, "VCS", 68), "PCS Teams": ("PAC", 2, "PCS", 67), "LJL Teams": ("PAC", 2, "LJL", 65), "LTS Teams": ("PAC", 2, "LTS", 60),
+        "LPL Teams": ("CN", 1, "", 83), "LDL Teams": ("CN", 2, "", 72),
+        "LEC": ("EU", 1, "", 80), "LFL": ("EU", 2, "LFL", 71), "Prime League": ("EU", 2, "PRM", 71), "LVP": ("EU", 2, "LVP", 71), "Ultraliga": ("EU", 2, "UL", 67),
+        "TCL": ("EU", 2, "TCL", 67), "EBL": ("EU", 2, "EBL", 66), "Elite Series": ("EU", 2, "ES", 66), "Hitpoint Masters": ("EU", 2, "HM", 65), "GLL": ("EU", 2, "GLL", 64),
+        "LIT": ("EU", 2, "LIT", 65), "LPLOL": ("EU", 2, "LPLOL", 64), "NLC": ("EU", 2, "NLC", 66), "Arabian League": ("EU", 2, "AL", 63),
+        "LCK Teams": ("KR", 1, "", 84), "LCK Challenger Teams": ("KR", 2, "", 73), "LCK Academy Teams": ("KR", 3, "", 66), "Other Teams": None,
+    }
+    # pays d'une sous-ligue (équipes du portail sans ligue connue, montées depuis le tier 3)
+    LOL_SUB_CC = {"LFL": "FR MC", "PRM": "DE AT CH", "LVP": "ES AD", "UL": "PL EE LV LT UA IL GE BY MD AZ RU", "TCL": "TR", "EBL": "RS HR BA ME HU RO BG MK AL SI",
+                  "ES": "NL BE LU", "HM": "CZ SK", "GLL": "GR CY", "LIT": "IT SM MT", "LPLOL": "PT", "NLC": "GB IE SE NO DK FI IS FO",
+                  "AL": "SA AE EG MA DZ TN JO KW LB IQ SY PS IR QA BH OM", "NACL": "US CA", "LRN": "MX CR GT HN SV PA CU DO PR TT NI CO VE",
+                  "CD": "BR", "LRS": "AR CL PE UY PY BO EC", "VCS": "VN", "PCS": "TW HK MO PH SG MY ID AU NZ PF", "LJL": "JP", "LTS": "TH KH LA MM"}
+    SUB_OF_CC = {cc: sub for sub, ccs in LOL_SUB_CC.items() for cc in ccs.split()}
+    CC_MORE = {"Andorra": "AD", "Faroe Islands": "FO", "Cyprus": "CY", "Israel": "IL", "Montenegro": "ME", "Bolivia": "BO", "Costa Rica": "CR", "El Salvador": "SV",
+               "Guatemala": "GT", "Honduras": "HN", "Panama": "PA", "Trinidad and Tobago": "TT", "South Korea": "KR", "China": "CN", "Afghanistan": "AF",
+               "Bangladesh": "BD", "Cambodia": "KH", "Hong Kong": "HK", "Indonesia": "ID", "Iran": "IR", "Japan": "JP", "Jordan": "JO", "Kuwait": "KW",
+               "Laos": "LA", "Lebanon": "LB", "Macau": "MO", "Malaysia": "MY", "Mongolia": "MN", "Palestine": "PS", "Philippines": "PH", "Singapore": "SG",
+               "Sri Lanka": "LK", "Syria": "SY", "Taiwan": "TW", "Thailand": "TH", "United Arab Emirates": "AE", "Vietnam": "VN", "French Polynesia": "PF",
+               "Azerbaijan": "AZ", "Estonia": "EE", "Georgia": "GE", "Moldova": "MD", "Algeria": "DZ", "Mauritius": "MU", "Tunisia": "TN"}
+    ISO = {**COUNTRY_ISO, **CC_MORE}
+    # portail : pays et équipe de chaque joueur (les sections « Staff & Talents » sont ignorées)
+    portal, cc, sec = [], None, None
+    rows = list(csv.reader(open(os.path.join(LOL_DIR, "players.csv"), encoding="utf-8")))
+    for i, r in enumerate(rows):
+        r = (r + [""] * 4)[:4]
+        if i + 1 < len(rows) and rows[i + 1][:1] == ["Players"]: cc = ISO.get(r[0].strip()); continue
+        if r[0] == "Players": sec = "p"; continue
+        if r[0].startswith("Staff"): sec = "s"; continue
+        if r[0] in ("ID", "") or sec != "p" or not cc: continue
+        portal.append((r[0].strip(), cc, r[2].strip()))
+    cc_of, by_team = {}, {}
+    for h, c, t in portal:
+        cc_of.setdefault(norm(h), []).append((c, norm(t)))
+        if t: by_team.setdefault(norm(t), []).append(h)
+    def lcc(h, team=""):
+        l = cc_of.get(norm(h), [])
+        m = [c for c, t in l if t and t == norm(team)]
+        return m[0] if m else (l[0][0] if l else "")
+    # fichier des équipes : en-tête de ligue, puis des blocs « équipe / ID / joueurs » ou une simple liste d'équipes
+    rows = [(r + ["", ""])[:2] for r in csv.reader(open(os.path.join(LOL_DIR, "teams.csv"), encoding="utf-8"))]
+    teams, league, i = {}, None, 0
+    while i < len(rows):
+        a = rows[i][0].strip()
+        nxt = rows[i + 1][0].strip() if i + 1 < len(rows) else ""
+        if a in LOL_LEAGUE: league = LOL_LEAGUE[a]; i += 1; continue
+        if not a or a == "ID" or not league: i += 1; continue
+        if nxt == "ID":                                   # bloc : équipe puis ses joueurs
+            ps, j = [], i + 2
+            while j < len(rows) and rows[j][0].strip() and rows[j][0].strip() not in LOL_LEAGUE and not (j + 1 < len(rows) and rows[j + 1][0].strip() == "ID"):
+                ps.append(rows[j][0].strip()); j += 1
+            teams[a] = {"lg": league, "ps": ps}; i = j; continue
+        teams[a] = {"lg": league, "ps": []}; i += 1       # liste : l'effectif vient du portail
+    for t, x in teams.items():
+        if not x["ps"]: x["ps"] = by_team.get(norm(t), [])
+    # équipes du portail absentes du fichier : divisions 2 et équipes amateurs (tier 3 de leur zone, ou une sous-ligue incomplète)
+    known = {norm(t) for t in teams}
+    extra = {}
+    for h, c, t in portal:
+        if t and norm(t) not in known and t.lower() not in ("retired", "inactive"): extra.setdefault(t, []).append(h)
+    sub_count = {}
+    for t, x in teams.items():
+        if x["lg"] and x["lg"][2]: sub_count[x["lg"][2]] = sub_count.get(x["lg"][2], 0) + 1
+    zone_of_cc = lambda c: {"KR": "KR", "CN": "CN"}.get(c) or ("PAC" if SUB_OF_CC.get(c) in ("VCS", "PCS", "LJL", "LTS") or c in ("OCE",) else
+                            "NA" if SUB_OF_CC.get(c) in ("NACL", "LRN") else "SA" if SUB_OF_CC.get(c) in ("CD", "LRS") else "EU")
+    for t in sorted(extra, key=lambda t: -len(extra[t])):
+        hs = extra[t]
+        if len(hs) < 4: continue
+        ccs = [lcc(h, t) for h in hs if lcc(h, t)]
+        main = max(set(ccs), key=ccs.count) if ccs else ""
+        sub = SUB_OF_CC.get(main)
+        if sub and sub_count.get(sub, 0) < 8 and not COLLEGE_RE.search(t):
+            z = zone_of_cc(main); teams[t] = {"lg": (z, 2, sub, 62), "ps": hs}; sub_count[sub] = sub_count.get(sub, 0) + 1
+        else:
+            teams[t] = {"lg": (zone_of_cc(main), 3, "", 58), "ps": hs}
+    # effectifs : ceux de data.js (vérifiés) sont gardés, les autres viennent des fichiers
+    lol_orgs_by = {norm(v[0]): k for k, v in live_orgs.items()}
+    existing = {x[0]: list(x) for x in cur["ROSTERS"].get("lol", [])}
+    used = {norm(p[0]) for x in existing.values() for p in x[1]}
+    out, taken = [], set()
+    LOL_ALIAS = {"soopers": "dnsoop", "anyoneslegend": "al", "dplus": "dk", "gengesports": "geng", "hanwhalifeesports": "hle"}
+    order = sorted(teams.items(), key=lambda kv: (kv[1]["lg"][1], -kv[1]["lg"][3]))
+    for t, x in order:
+        z, tier, sub, base = x["lg"]
+        nt = norm(t)
+        org = LOL_ALIAS.get(nt) or org_for(t) or lol_orgs_by.get(nt)
+        if org in taken: org = None                        # une organisation, une équipe par jeu
+        if org in existing:
+            out.append(existing.pop(org)); taken.add(org); live_leagues.setdefault("lol", {})[org] = [z, tier, sub]; continue
+        hs = []
+        for h in x["ps"]:
+            if norm(h) not in used and norm(h) not in NOT_PLAYERS and norm(h) not in {norm(y) for y in hs}: hs.append(h)
+        # une équipe du fichier des ligues est gardée dès qu'un joueur est connu (le jeu complète l'effectif) ; une équipe du portail seul en demande 4
+        if len(hs) < (1 if t not in extra else 4): continue
+        ps = []
+        for h in hs[:7]:
+            used.add(norm(h))
+            r = known_rating.get(("lol", norm(h))) or base + (zlib.crc32(h.encode()) % 7) - 3
+            ps.append([h, lcc(h, t), r, age_of("lol", h)])
+        if not org:
+            org = "lol_%s" % nt[:22]
+            ccs = [p[1] for p in ps if p[1]]
+            occ = max(set(ccs), key=ccs.count) if ccs else {"EU": "FR", "NA": "US", "SA": "BR", "KR": "KR", "CN": "CN", "PAC": "TW"}[z]
+            # une équipe d'une ligue d'Asie ou des Amériques garde le pays de sa ligue (imports coréens en LCS…)
+            if z in ("KR", "CN") : occ = z
+            fame = {1: 62, 2: 28, 3: 12}[tier] + (8 if z in ("KR", "CN") and tier == 1 else 0)
+            live_orgs.setdefault(org, [t, make_tag(t), occ, hcolor(t), fame])
+        taken.add(org)
+        out.append([org, ps, 1]); live_leagues.setdefault("lol", {})[org] = [z, tier, sub]
+    out += list(existing.values())                         # équipes de data.js absentes des fichiers
+    rosters["lol"] = out
+    # agents libres réels : joueurs du portail sans équipe
+    free_agents["lol"] = [[h, c, 55 + zlib.crc32(h.encode()) % 12, age_of("lol", h)] for h, c, t in portal if not t and norm(h) not in used][:900]
+    from collections import Counter
+    cnt = Counter((v[0], v[1], v[2]) for v in live_leagues["lol"].values())
+    print("LoL : %d équipes, %d joueurs, %d agents libres ; ligues : %s" % (len(out), sum(len(x[1]) for x in out), len(free_agents["lol"]),
+          ", ".join("%s%d%s=%d" % (z, t, ("-" + s) if s else "", n) for (z, t, s), n in sorted(cnt.items()))), file=sys.stderr)
+
+    # tournois : les événements internationaux et les coupes ; les ligues (LEC, LFL…) sont simulées par le jeu
+    LSKIP = re.compile(r"\b(LEC|LCS|LCK|LPL|LCP|CBLOL|Circuito|NACL|Liga Regional|PCS|VCS|LJL|LFL|Prime League|Ultraliga|Rift Legends|LIT|Arabian League|Road of Legends|NLC|"
+                       r"Hellenic|LPLOL|TCL|EBL|LES|Hitpoint|Elite Series|Liga Galactica|Nexus League|Benelux|4 Nations|Komplettligaen|Finnish|Ligaen|Aegis|Hextech|"
+                       r"Academy|Showmatch|Tyler1|SoloQ|Twitch Rivals|College|Collegiate|Varsity|PlayVS|CELOL|Ligue Corpo|k4sen|Regional Finals|Promotion|Glory League|"
+                       r"Challengers League|Challenger League|Division|DMV|Go4LoL|Central American|Cross Regional|Unified|Midwest|Comic Con|Syrian|ESClub|THE DIFF|Major Six|"
+                       r"Bóng|Game Master|Legends Academy|Oceanic|Kupa|Baron|FLASH|Rising)\b", re.I)
+    MON = {m: k + 1 for k, m in enumerate("jan feb mar apr may jun jul aug sep oct nov dec".split())}
+    def ldate(txt):
+        y = re.search(r"(20\d\d)", txt)
+        parts = re.findall(r"([A-Za-z]{3})[a-z.]*\s+(\d{1,2})(?:\s*[–-]\s*(\d{1,2}))?", txt)
+        if not y or not parts or parts[0][0].lower() not in MON: return None, None
+        year = int(y.group(1)); m1, d1, d1b = parts[0]
+        start = datetime.date(year, MON[m1.lower()], int(d1))
+        end = datetime.date(year, MON[parts[1][0].lower()], int(parts[1][1])) if len(parts) > 1 and parts[1][0].lower() in MON else datetime.date(year, MON[m1.lower()], int(d1b or d1))
+        if end < start: end = start
+        return year, (start + (end - start) / 2).timetuple().tm_yday
+    def lregion(name, loc):
+        if re.search(r"World Championship|Mid-Season|First Stand|Esports World Cup|World Star", name): return ""   # événements internationaux
+        s = name + " " + loc
+        if re.search(r"Demacia|LPL", s): return "CN"
+        if re.search(r"KeSPA|Korea|Daejeon", s): return "KR"
+        if re.search(r"Americas Cup", s): return "NA|SA"
+        if re.search(r"Asia Masters|Asia-Pacific|Kaohsiung|Taipei|Vietnam|Jakarta|Tokyo|Asia\b", s): return "PAC|KR|CN"
+        if re.search(r"EMEA|Europe|France|Spain|Germany|Italy|Poland|Bulgaria|Montpellier|Poitiers|Eaubonne|Madrid|Cologne|Hungary|Serbia", s): return "EU|MENA"
+        if re.search(r"North America|United States|Canada|Montréal", s): return "NA"
+        if re.search(r"Brazil|São Paulo", s): return "SA"
+        return ""
+    cal, sec = [], None
+    for r in csv.reader(open(os.path.join(LOL_DIR, "tournois.csv"), encoding="utf-8")):
+        r = (r + [""] * 8)[:8]
+        m = re.match(r"([SABCD])-Tier", r[0])
+        if m: sec = m.group(1); continue
+        name = r[1].strip()
+        if not name or not sec or LSKIP.search(name) and not re.search(r"World Championship|Mid-Season|First Stand|Esports World Cup|EMEA Masters|Asia Masters|KeSPA", name): continue
+        year, doy = ldate(r[2])
+        if year is None or year < 2026: continue
+        usd = float(re.sub(r"[^\d.]", "", r[3]) or 0)
+        eur = round(usd * 0.92 / 1000) * 1000 or {"S": 500000, "A": 60000, "B": 10000, "C": 3000, "D": 1000}[sec]
+        n = int(re.sub(r"\D", "", r[5]) or 16)
+        reg = lregion(name, r[4])
+        tiers = "1" if sec == "S" and not reg else "123" if sec == "S" else "2" if re.search(r"EMEA Masters|Asia Masters|World Star", name) else "123" if re.search(r"KeSPA|Demacia", name) else "23" if sec in ("A", "B", "C") else "3"
+        clean = re.sub(r"\s*\b20\d\d\b\s*", " ", name).replace("  ", " ").strip()
+        if clean in ("Nexus Tour", "Esports Series Madrid Split 1"): continue      # le classement général d'un circuit dont les étapes sont déjà au calendrier
+        if clean.startswith("Esports World Cup"): clean = "EWC — League of Legends"
+        if clean == "World Championship": clean = "Worlds (Championnat du monde)"
+        t = [clean, iso_week(year, doy), eur, tiers, max(4, min(16, n))]
+        if reg: t.append(reg)
+        cal.append(t)
+    cal.sort(key=lambda t: (t[1], -t[2]))
+    live_tours["lol"] = cal
+    print("LoL : %d tournois au calendrier" % len(cal), file=sys.stderr)
+
 with open(OUT, "w", encoding="utf-8") as f:
     f.write("// Généré par tools/build_live.py — effectifs récupérés sur les sites de données (VLR…).\n")
     # numéro de version attendu par data.js (LIVE_EXPECTED) : l'interface prévient si le navigateur sert un fichier périmé
@@ -715,6 +895,8 @@ with open(OUT, "w", encoding="utf-8") as f:
     f.write("const LIVE_HISTORY = " + json.dumps(live_history, ensure_ascii=False) + ";\n")
     f.write("// vrais joueurs sans équipe, ajoutés comme agents libres : jeu -> [pseudo, pays, note, âge]\n")
     f.write("const LIVE_FREE_AGENTS = " + json.dumps(free_agents, ensure_ascii=False) + ";\n")
+    f.write("// ligue de chaque équipe quand les sources la donnent : jeu -> org -> [zone, tier, sous-ligue]\n")
+    f.write("const LIVE_LEAGUES = " + json.dumps(live_leagues, ensure_ascii=False) + ";\n")
     f.write("""Object.assign(TOURNAMENTS, LIVE_TOURNAMENTS);
 Object.assign(ORGS, LIVE_ORGS);
 for (const [g, l] of Object.entries(LIVE_ROSTERS)) ROSTERS[g] = l;

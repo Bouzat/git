@@ -32,6 +32,16 @@ Pour les jeux ajoutés, les échecs (Carlsen, Nakamura, Firouzja, Gukesh…), Te
 
 Les 2 premiers de chaque ligue montent dans le tier au-dessus de leur région, les 2 derniers descendent.
 
+**League of Legends** utilise les fichiers de l'utilisateur (Google Sheet d'après Liquipedia, dans `tools/sources/lol/`) : 313 équipes et 1 450 joueurs, avec leur pays, venus du portail des joueurs. Les tiers par région :
+- **Europe** : LEC en tier 1. En tier 2, chaque ligue nationale (ERL) joue séparément : LFL, Prime League, LVP SuperLiga, Rift Legends (Ultraliga), TCL, Esports Balkan League, Road of Legends (Elite Series), Hitpoint Masters, Hellenic Legends League, LIT, LPLOL, NLC, Arabian League. Les deuxièmes divisions et les académies sont en tier 3.
+- **Corée** : LCK, LCK CL, LCK Academy.
+- **Chine** : LPL, LDL.
+- **Amérique du Nord** : LCS ; NACL et Liga Regional Norte ; ligues universitaires et amateurs.
+- **Amérique du Sud** : CBLOL ; Circuito Desafiante et Liga Regional Sur.
+- **Pacifique** : LCP ; VCS, PCS, LJL et LTS.
+
+Dans une ligue nationale, le dernier descend, et les meilleurs du tier 3 montent, de préférence dans la ligue de leur pays. Le calendrier LoL suit le vrai : First Stand, MSI, EWC, Worlds, EMEA Masters, Asia Masters, KeSPA Cup, Demacia Cup, Americas Cup, et des coupes comme Nexus Tour, Gamers Assembly ou Kanji Cup. Environ 900 vrais joueurs sans équipe sont agents libres.
+
 **Ligues fermées (franchises)** : LEC, LCK, LPL, LCS, CBLOL et LCP en LoL, les quatre ligues VCT en Valorant et la CDL en Call of Duty n'ont ni montée ni relégation. Pour y entrer, il faut racheter la place d'un club (bouton « 🔒 Franchise » dans les Effectifs ou dans le classement de la ligue). Seuls les clubs modestes vendent, de 2,5 M€ (CBLOL) à 12 M€ (LEC) et 25 M€ (CDL) selon la ligue et le prestige du vendeur. Pendant la saison de ligue, la place change de mains à la fin de la saison ; sinon tout de suite. Votre équipe monte avec ses joueurs et le vendeur prend votre ancienne place. On peut aussi acheter une place plus haut quand le club est assez connu.
 
 **Fortnite est un circuit ouvert**, joué par région : chaque région a sa FNCS, sans divisions. Chaque équipe a un statut recalculé en fin de saison d'après son classement dans sa région : **Élite** (top 10 %), **Pro** (top 40 %) ou **Open**. Ce statut fixe les invitations aux grands tournois, l'accès aux cash cups, les sponsors et les frais. Un nouveau club entre en statut Open. Comme la vraie FNCS, le format alterne : **duos les années paires (2026), trios les années impaires (2027)**. Dans les classements, un duo d'organisation s'affiche avec le nom du club, par exemple « XSET (Clix & Rapid) ».

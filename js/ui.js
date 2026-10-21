@@ -490,14 +490,18 @@ function viewComp() {
   if (!UI.compZone || !zones.includes(UI.compZone)) UI.compZone = ud && ud.zone ? ud.zone : zones[0];
   const g = GAMES[UI.compGame], br = g.fmt === "br";
   if (g.open) UI.compTier = 1;
-  const L = S.leagues[lkey(UI.compGame, UI.compTier, UI.compZone)];
+  // tier découpé en ligues nationales (LFL, Prime League…) : un onglet par ligue
+  const subs = subsOf(UI.compGame, UI.compTier, UI.compZone);
+  if (subs && !subs.includes(UI.compSub)) UI.compSub = ud && ud.tier === UI.compTier && ud.zone === UI.compZone && ud.sub ? ud.sub : subs[0];
+  const L = S.leagues[lkey(UI.compGame, UI.compTier, UI.compZone, subs ? UI.compSub : null)];
+  const stabs = subs ? subs.map(x => `<button class="tab small ${UI.compSub === x ? "active" : ""}" data-act="comp-sub" data-v="${x}">${esc(SUB_NAMES[x] || x)}${S.leagues[lkey(UI.compGame, UI.compTier, UI.compZone, x)].teams.some(isMine) ? " ★" : ""}</button>`).join("") : "";
   const mineIn = (t, z) => leaguesOf(UI.compGame).some(x => x.tier === t && x.zone === z && x.teams.some(isMine));
   const tabs = Object.keys(GAMES).map(k => `<button class="tab small ${UI.compGame === k ? "active" : ""}" data-act="comp-game" data-v="${k}">${GAMES[k].icon} ${GAMES[k].short}${u.divisions[k] ? " ★" : ""}</button>`).join("");
   const ztabs = zones.length < 2 ? "" : zones.map(z => `<button class="tab small ${UI.compZone === z ? "active" : ""}" data-act="comp-zone" data-v="${z}">${ZONE_NAMES[z]}${leaguesOf(UI.compGame).some(x => x.zone === z && x.teams.some(isMine)) ? " ★" : ""}</button>`).join("");
   const ttabs = g.open ? "" : [1, 2, 3].map(t => `<button class="tab small ${UI.compTier === t ? "active" : ""}" data-act="comp-tier" data-v="${t}">${TIER_LABEL[t - 1]} · ${esc(tierName(UI.compGame, t, UI.compZone))}${mineIn(t, UI.compZone) ? " ★" : ""}</button>`).join("");
   const st = standings(L.key), n = st.length;
   const cut = g.open ? statusCuts(n) : null;
-  const zone = i => cut ? (i < 8 ? "<span class='ok' title='Grande finale'>●</span>" : i === cut[0] - 1 ? "<span class='ok' title='Dernière place Élite'>▲</span>" : i === cut[1] - 1 ? "<span class='warn' title='Dernière place Pro'>▲</span>" : "") : i < 2 && UI.compTier > 1 && !isClosed(UI.compGame, UI.compTier - 1, UI.compZone) ? "<span class='ok' title='Montée'>▲</span>" : i >= n - 2 && UI.compTier < 3 && !isClosed(UI.compGame, UI.compTier, UI.compZone) ? "<span class='bad' title='Relégation'>▼</span>" : (br ? i < 8 : i < 4) ? "<span class='ok'>●</span>" : "";
+  const zone = i => cut ? (i < 8 ? "<span class='ok' title='Grande finale'>●</span>" : i === cut[0] - 1 ? "<span class='ok' title='Dernière place Élite'>▲</span>" : i === cut[1] - 1 ? "<span class='warn' title='Dernière place Pro'>▲</span>" : "") : i < 2 && UI.compTier > 1 && !isClosed(UI.compGame, UI.compTier - 1, UI.compZone) ? "<span class='ok' title='Montée'>▲</span>" : i >= n - (subs && subs.length > 2 ? 1 : 2) && UI.compTier < 3 && !isClosed(UI.compGame, UI.compTier, UI.compZone) ? "<span class='bad' title='Relégation'>▼</span>" : (br ? i < 8 : i < 4) ? "<span class='ok'>●</span>" : "";
   const name = id => `<span style="color:${S.clubs[id].color}">■</span> <b data-act="club-info" data-v="${id}" style="cursor:pointer">${displayName(id, UI.compGame)}</b>`;
   const table = br
     ? `<tr><th>#</th><th>${g.unit === "duo" ? "Duo" : "Équipe"}</th><th>Pts</th><th>Top 1</th><th>Élims</th><th>Place moy.</th><th>Force</th></tr>` + st.map((r, i) => `<tr class="${r.id === u.id ? "me" : ""}"><td>${i + 1} ${zone(i)}</td><td>${name(r.id)}</td><td><b>${r.pts}</b></td><td>${r.top1}</td><td>${r.kills}</td><td>${r.games ? (r.place / r.games).toFixed(1) : "-"}</td><td>${R(Math.round(teamStrength(r.id, UI.compGame).str))}</td></tr>`).join("")
@@ -518,7 +522,7 @@ function viewComp() {
     side = `<h3>${nd ? `Journée ${nd} — ${weekLabel(S.season, nw)}` : "Affiches"}</h3>${fixtures}<h3 style="margin-top:16px">Derniers résultats</h3>${L.results.slice(-6).reverse().map(matchRow).join("") || "<p class='muted'>Aucun résultat.</p>"}`;
   }
   const closed = isClosed(L.game, L.tier, L.zone);
-  return `<h2>${g.icon} ${esc(leagueName(L))} <small class="muted">${g.open ? "circuit ouvert" : TIER_LABEL[L.tier - 1]}${L.zone !== "W" ? " · " + ZONE_NAMES[L.zone] : ""}</small>${closed ? ` <span class="chip warn" title="Ni montée ni relégation">🔒 Ligue fermée</span>${L.teams.some(isMine) ? "" : ` <button class="small" data-act="franchise" data-v="${L.game}|${L.zone}">Racheter une place</button>`}` : ""}</h2><div class="tabs">${tabs}</div>${ztabs ? `<div class="tabs">${ztabs}</div>` : ""}<div class="tabs">${ttabs}</div>
+  return `<h2>${g.icon} ${esc(leagueName(L))} <small class="muted">${g.open ? "circuit ouvert" : TIER_LABEL[L.tier - 1]}${L.zone !== "W" ? " · " + ZONE_NAMES[L.zone] : ""}</small>${closed ? ` <span class="chip warn" title="Ni montée ni relégation">🔒 Ligue fermée</span>${L.teams.some(isMine) ? "" : ` <button class="small" data-act="franchise" data-v="${L.game}|${L.zone}">Racheter une place</button>`}` : ""}</h2><div class="tabs">${tabs}</div>${ztabs ? `<div class="tabs">${ztabs}</div>` : ""}<div class="tabs">${ttabs}</div>${stabs ? `<div class="tabs">${stabs}</div>` : ""}
     ${RANKED_GAMES.includes(UI.compGame) ? rankCard(UI.compGame) : ""}
     <div class="grid g2">
       <div class="card"><h3>Classement · ${FMT_LABEL[g.fmt]}</h3><div class="table-wrap"><table>${table}</table></div>
@@ -868,9 +872,10 @@ Object.assign(ACTIONS, {
   "quit": () => { save(); S = null; UI.screen = "home"; UI.compGame = UI.compTier = UI.rosterGame = null; renderHome(); },
   "view": v => { UI.view = v; render(); window.scrollTo(0, 0); },
   "roster-game": v => { UI.rosterGame = v; render(); },
-  "comp-game": v => { UI.compGame = v; const d = user().divisions[v]; UI.compTier = d ? d.tier : 1; UI.compZone = d ? d.zone : null; render(); },
+  "comp-game": v => { UI.compGame = v; const d = user().divisions[v]; UI.compTier = d ? d.tier : 1; UI.compZone = d ? d.zone : null; UI.compSub = d ? d.sub : null; render(); },
   "comp-tier": v => { UI.compTier = +v; render(); },
   "comp-zone": v => { UI.compZone = v; render(); },
+  "comp-sub": v => { UI.compSub = v; render(); },
   "tour-game": v => { UI.tourGame = v; render(); },
   "tour-size": v => { UI.tourSize = v; render(); },
   "cal-mode": v => { UI.calMode = v; render(); },
