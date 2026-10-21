@@ -2370,6 +2370,8 @@ function negotiateSponsor(o, ask, weeks, level = o.level) {
   return { status: "counter", weekly: o.weekly, weeks, last: o.round >= o.patience };
 }
 function signSponsor(o, weekly, weeks) {
+  // les primes des clauses suivent le montant et la durée finalement signés
+  o.weekly = weekly; o.weeks = weeks; o.clauses = sponsorClauses(o);
   const u = user(), C = o.clauses || { levels: [], extra: [] }, lv = C.levels[o.level ?? 1];
   const clauses = (lv ? [{ kind: "rank", game: C.game, target: lv.target, bonus: lv.bonus, label: `Finir ${lv.target === 1 ? "1er" : "dans le top " + lv.target} de ${divName(S.userId, C.game)}`, status: "pending", main: true }] : [])
     .concat(C.extra.map(x => ({ ...x, status: "pending" })));

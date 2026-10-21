@@ -1133,23 +1133,42 @@ const brandLogo = (name, big) => { const h = [...name].reduce((a, c) => (a * 31 
 const clauseIcon = c => c.status === "met" ? "✅" : c.status === "failed" ? "❌" : "⏳";
 function sponsorModal(o, intro) {
   SP = o;
-  const total = o.weekly * o.weeks, e = ETHIC[o.ethic || "neutre"], C = o.clauses || { levels: [], extra: [] };
+  o.clauses = sponsorClauses(o);
+  const e = ETHIC[o.ethic || "neutre"], C = o.clauses, last = o.history[o.history.length - 1];
   const hist = o.history.map((h, i) => `<li>Tour ${i + 1} : vous demandez ${money(h.ask)}/sem sur ${h.weeks} sem.</li>`).join("");
-  const lv = C.levels.map((l, i) => `<label class="clause-opt ${i === (o.level ?? 1) ? "sel" : ""}"><input type="radio" name="sp-level" value="${i}" ${i === (o.level ?? 1) ? "checked" : ""} data-change="sp-level"> <b>${l.label}</b> : finir ${l.target === 1 ? "1er" : "dans le top " + l.target} · prime <b>${money(l.bonus)}</b></label>`).join("");
-  modal(`<div class="brand-head">${brandLogo(o.brand, true)}<div><h2 style="margin:0">${esc(o.brand)}</h2><div class="muted">${esc(o.sector || "")} · marque ${(BRAND_SIZE[o.size] || "").toLowerCase()} · <span class="${e[2]}">${e[0]} ${e[1]}</span></div></div></div>
+  const lv = C.levels.map((l, i) => `<label class="clause-opt ${i === (o.level ?? 1) ? "sel" : ""}"><input type="radio" name="sp-level" value="${i}" ${i === (o.level ?? 1) ? "checked" : ""} data-change="sp-level"> <b>${l.label}</b> : finir ${l.target === 1 ? "1er" : "dans le top " + l.target} · prime <b data-bonus="${[0.12, 0.25, 0.5][i]}">${money(l.bonus)}</b></label>`).join("");
+  modal(`<div class="brand-head">${brandLogo(o.brand, true)}<div><h2 style="margin:0">${esc(o.brand)}</h2><div class="muted">${esc(o.sector || "")} · marque ${(BRAND_SIZE[o.size] || "").toLowerCase()}e · <span class="${e[2]}">${e[0]} ${e[1]}</span></div></div></div>
     <p>${intro}</p>
     <p class="${e[2]}" style="font-size:13px">${o.ethic === "controverse" ? "Très bien payé, mais l'image du club va se dégrader : vos victoires rapporteront moins de fans, vos défaites en feront partir plus, et des fans partiront chaque semaine." : o.ethic === "ethique" ? "Un peu moins payé, mais l'image du club s'améliore : vos victoires attireront plus de fans." : "Sans effet sur l'image du club."}</p>
-    <div class="offer"><div><span class="muted">Offre actuelle</span><b>${money(o.weekly)}/sem</b></div><div><span class="muted">Durée</span><b>${o.weeks} semaines</b></div><div><span class="muted">Total garanti</span><b>${money(total)}</b></div></div>
-    ${lv ? `<h3 style="margin:14px 0 6px">Clause d'objectif (${GAMES[C.game].icon} ${esc(divName(S.userId, C.game))})</h3><div class="clause-list">${lv}</div><p class="muted" style="font-size:12px;margin-top:4px">Plus l'objectif est ambitieux, plus la prime est grosse et plus la marque accepte de payer cher. Objectif atteint : prime versée et proposition de renouvellement. Objectif manqué : pas de prime, et la marque ne renouvelle pas.</p>` : ""}
-    ${C.extra.length ? `<div class="clause-list">${C.extra.map(x => `<div class="clause-opt">➕ ${esc(x.label)} · prime <b>${money(x.bonus)}</b></div>`).join("")}</div>` : ""}
+    <div class="offer"><div><span class="muted">Offre de la marque</span><b>${money(o.weekly)}/sem</b></div><div><span class="muted">Durée proposée</span><b>${o.weeks} semaines</b></div><div><span class="muted">Total de son offre</span><b>${money(o.weekly * o.weeks)}</b></div>${last ? `<div><span class="muted">Votre dernière demande</span><b>${money(last.ask)}/sem</b></div>` : ""}</div>
+    ${lv ? `<h3 style="margin:14px 0 6px">Clause d'objectif (${GAMES[C.game].icon} ${esc(divName(S.userId, C.game))})</h3><div class="clause-list">${lv}</div><p class="muted" style="font-size:12px;margin-top:4px">Les primes dépendent du montant et de la durée du contrat (elles suivent votre proposition ci-dessous). Plus l'objectif est ambitieux, plus la prime est grosse et plus la marque accepte de payer cher. Objectif atteint : prime versée et proposition de renouvellement. Objectif manqué : pas de prime, pas de renouvellement.</p>` : ""}
+    ${C.extra.length ? `<div class="clause-list">${C.extra.map(x => `<div class="clause-opt">➕ ${esc(x.label)} · prime <b data-xbonus="${x.kind === "title" ? 6 : 4}">${money(x.bonus)}</b></div>`).join("")}</div>` : ""}
     ${hist ? `<ul class="muted" style="font-size:13px">${hist}</ul>` : ""}
     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:10px">
-      <div class="form-row" style="flex:1;min-width:140px"><label for="sp-ask">Votre demande (€/semaine)</label><input id="sp-ask" type="number" step="50" min="0" value="${round50(o.weekly * 1.25)}"></div>
-      <div class="form-row"><label for="sp-weeks">Durée</label><select id="sp-weeks">${[13, 20, 26, 39, 52].map(w => `<option value="${w}" ${Math.abs(w - o.weeks) < 5 ? "selected" : ""}>${w} semaines</option>`).join("")}</select></div>
+      <div class="form-row" style="flex:1;min-width:140px"><label for="sp-ask">Montant par semaine (€)</label><input id="sp-ask" type="number" step="50" min="0" value="${o.weekly}" data-input="sp-preview"></div>
+      <div class="form-row"><label for="sp-weeks">Durée</label><select id="sp-weeks" data-change="sp-preview">${[...new Set([13, 20, 26, 39, 52, o.weeks])].sort((a, b) => a - b).map(w => `<option value="${w}" ${w === o.weeks ? "selected" : ""}>${w} semaines</option>`).join("")}</select></div>
     </div>
-    <p class="muted" style="font-size:12px">Demander trop peut faire fuir la marque. Un contrat plus long rapporte plus au total, mais la marque paiera un peu moins par semaine.</p>
-    <div class="actions"><button data-act="sp-refuse">Refuser</button><button data-act="sp-counter">Contre-proposer</button><button class="primary" data-act="sp-accept">Accepter ${money(o.weekly)}/sem</button></div>`);
+    <p id="sp-sum" style="margin:4px 0"></p>
+    <p class="muted" style="font-size:12px">Gardez le montant et la durée de la marque pour accepter son offre, ou changez-les pour faire une contre-proposition. Demander trop peut la faire fuir ; un contrat plus long rapporte plus au total, mais la marque paiera un peu moins par semaine.</p>
+    <div class="actions"><button data-act="sp-refuse">Refuser</button><button class="primary" id="sp-main" data-act="sp-main">Accepter ${money(o.weekly)}/sem</button></div>`);
+  spPreview();
 }
+// tout reste raccord avec ce qui est tapé : bouton, total et primes
+function spPreview() {
+  if (!SP) return;
+  const ask = Math.max(0, +document.getElementById("sp-ask").value || 0), weeks = +document.getElementById("sp-weeks").value, same = ask === SP.weekly && weeks === SP.weeks;
+  const btn = document.getElementById("sp-main"); if (!btn) return;
+  btn.textContent = same ? `Accepter ${money(ask)}/sem` : `Proposer ${money(ask)}/sem sur ${weeks} sem.`;
+  document.getElementById("sp-sum").innerHTML = `${same ? "Offre de la marque" : "Votre proposition"} : <b>${money(ask)}/sem × ${weeks} semaines = ${money(ask * weeks)}</b>`;
+  document.querySelectorAll("[data-bonus]").forEach(el => el.textContent = money(round50(ask * weeks * +el.dataset.bonus)));
+  document.querySelectorAll("[data-xbonus]").forEach(el => el.textContent = money(round50(ask * +el.dataset.xbonus)));
+}
+ACTIONS["sp-main"] = () => {
+  const ask = Math.max(0, +document.getElementById("sp-ask").value || 0), weeks = +document.getElementById("sp-weeks").value;
+  if (ask === SP.weekly && weeks === SP.weeks) return ACTIONS["sp-accept"]();
+  ACTIONS["sp-counter"]();
+};
+document.addEventListener("input", e => { if (e.target.dataset && e.target.dataset.input === "sp-preview") spPreview(); });
 const spLevel = () => { const el = document.querySelector('input[name="sp-level"]:checked'); return el ? +el.value : (SP.level ?? 1); };
 ACTIONS["sp-accept"] = () => { SP.level = spLevel(); signSponsor(SP, SP.weekly, SP.weeks); toast(`Contrat ${SP.brand} signé !`); SP = null; save(); render(); ACTIONS["next-event"](); };
 ACTIONS["sp-refuse"] = () => { mail(`Offre déclinée : ${SP.brand}`, `Vous avez refusé l'offre de ${SP.brand} (${money(SP.weekly)}/sem).`, "sponsor"); SP = null; save(); render(); ACTIONS["next-event"](); };
@@ -1574,6 +1593,7 @@ document.addEventListener("change", e => {
   if (k === "sp-f-ethic") { UI.spFilter.ethic = e.target.value; return render(); }
   if (k === "sp-f-size") { UI.spFilter.size = e.target.value; return render(); }
   if (k === "sp-level") { document.querySelectorAll(".clause-opt").forEach(x => x.classList.toggle("sel", x.contains(e.target))); return; }
+  if (k === "sp-preview") return spPreview();
   if (k === "mail-q") { UI.inbox.q = e.target.value; UI.mailOpen = null; return render(); }
   const m = UI.market;
   if (k === "m-game") { m.game = e.target.value; m.role = "all"; }
