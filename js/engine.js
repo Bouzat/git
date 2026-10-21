@@ -715,6 +715,8 @@ function allocOf(game) {
 }
 const transferRoom = game => allocOf(game).transfer - allocOf(game).spent;
 const wageRoom = game => allocOf(game).wages - gameWages(game);
+// ce que le club peut réellement dépenser tout de suite dans un jeu (enveloppe restante, limitée par l'argent en caisse)
+const spendRoom = game => user().divisions[game] ? Math.max(0, Math.min(user().budget, transferRoom(game))) : 0;
 // nouvelle répartition : { jeu: { transfer, wages } } ; le total des enveloppes ne peut pas dépasser le budget disponible
 function setAlloc(map) {
   const u = user();

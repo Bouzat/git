@@ -281,3 +281,6 @@ th.sorted-asc::after { content: " ▲"; color: var(--accent2); } th.sorted-desc:
 .tl-offer { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; padding: 4px 0; border-bottom: 1px dashed var(--line); font-size: 13px; }
 .tl-offer:last-child { border-bottom: 0; }
 .tl-int { font-size: 12px; font-weight: 700; } .tl-int.i0 { color: var(--bad); } .tl-int.i1 { color: #ffd166; } .tl-int.i2 { color: var(--accent2); } .tl-int.i3 { color: var(--ok); }
+.mm-card { padding: 10px 14px; } .mm-h { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.mm-t td, .mm-t th { padding: 6px 8px; } .mm-t td b { font-size: 16px; }
+.afford { background: var(--panel2); border-radius: 10px; padding: 8px 12px; font-size: 13px; }

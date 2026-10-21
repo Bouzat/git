@@ -462,6 +462,21 @@ function marketTabs() {
 }
 ACTIONS["m-tab"] = v => { UI.market.tab = v; render(); };
 const sellBtn = p => p.listed ? `<button class="small" data-act="sell" data-v="${p.id}" title="Sur la liste des transferts">📋 En vente${(p.offers || []).length ? ` (${p.offers.length})` : ""}</button>` : `<button class="small" data-act="sell" data-v="${p.id}">Vendre</button>`;
+// ce que le club peut payer : indemnité / prime (enveloppe du jeu) et salaire (marge sur la masse salariale du jeu)
+function mercatoMoney(game) {
+  const u = user(), games = game !== "all" ? [game] : Object.keys(u.divisions);
+  if (!games.length) return "";
+  const rows = games.map(g => {
+    if (!u.divisions[g]) return `<tr><td>${gchip(g)}</td><td colspan="3" class="muted">Pas de section dans ce jeu : ouvrez une division (onglet Effectifs) pour recruter.</td></tr>`;
+    const a = allocOf(g), room = spendRoom(g), wr = wageRoom(g), lim = transferRoom(g) > u.budget;
+    return `<tr><td>${gchip(g)}</td><td><b class="${room > 0 ? "ok" : "bad"}">${money(room)}</b><br><small class="muted">enveloppe ${money(Math.max(0, transferRoom(g)))} restante sur ${money(a.transfer)}${lim ? ` · limité par l'argent en caisse (${money(u.budget)})` : ""}</small></td>
+      <td><b class="${wr > 0 ? "ok" : "bad"}">${money(Math.max(0, wr))}/sem</b><br><small class="muted">masse salariale ${money(gameWages(g))} sur ${money(a.wages)}/sem</small></td>
+      <td><small class="muted">${room > 0 || wr > 0 ? `Une recrue doit tenir dans les deux : son indemnité (ou sa prime) dans la 1re colonne, son salaire dans la 2e.` : "Plus de marge : vendez, ou changez la répartition."}</small></td></tr>`;
+  }).join("");
+  return `<div class="card mm-card"><div class="mm-h"><b>💰 Ce que vous pouvez dépenser</b><button class="small" data-act="alloc">⚖️ Changer la répartition</button></div>
+    <div class="table-wrap"><table class="mm-t"><tr><th>Jeu</th><th>Achat max (indemnité, prime, commission)</th><th>Salaire max à offrir</th><th></th></tr>${rows}</table></div></div>`;
+}
+const affordTxt = p => { if (!user().divisions[p.game]) return ""; const room = spendRoom(p.game), wr = wageRoom(p.game) + (isMine(p.club) ? p.salary : 0); return `Vous pouvez dépenser jusqu'à <b>${money(room)}</b> en ${GAMES[p.game].short} (indemnité + prime + commission) et offrir jusqu'à <b>${money(Math.max(0, wr))}/sem</b> de salaire.`; };
 function viewTransferList() {
   const u = user(), m = UI.market, now = rankNow();
   const mine = allUserPlayers().filter(p => p.listed && (m.game === "all" || p.game === m.game));
@@ -478,7 +493,7 @@ function viewTransferList() {
   const gameOpts = `<option value="all">Tous les jeux</option>` + Object.entries(GAMES).map(([k, g]) => `<option value="${k}" ${m.game === k ? "selected" : ""}>${g.icon} ${g.name}</option>`).join("");
   return `<h2>Mercato</h2>${marketTabs()}
     <div class="toolbar"><select data-change="m-game" aria-label="Jeu">${gameOpts}</select></div>
-    ${mercatoBanner(m.game)}
+    ${mercatoBanner(m.game)}${mercatoMoney(m.game)}
     <h3>Mes joueurs à vendre</h3>
     <p class="muted" style="margin-top:-6px;font-size:13px">Mettre un joueur en vente ne garantit pas qu'il partira : les clubs ne font une offre que si le joueur les renforce, s'ils ont le budget et si le prix demandé est raisonnable. Les offres n'arrivent que pendant le mercato du jeu. Pour mettre un joueur en vente : bouton « Vendre » dans l'onglet Effectifs.</p>
     <div class="card table-wrap"><table><tr><th>Joueur</th><th>Jeu</th><th>Âge</th><th>Note</th><th>Valeur</th><th>Prix demandé</th><th>En vente depuis</th><th>Intérêt</th><th>Offres reçues</th><th></th></tr>${mineRows || `<tr><td colspan="10" class="muted">Aucun joueur de votre club n'est sur la liste des transferts.</td></tr>`}</table></div>
@@ -526,7 +541,7 @@ function viewMarket() {
   if (m.tier !== "all") ps = ps.filter(p => { const c = S.clubs[p.club]; return m.tier === "0" ? !c : c && !c.solo && c.divisions[p.game] && c.divisions[p.game].tier === +m.tier; });
   const cost = p => askingPrice(p) + (p.club ? 0 : salaryDemand(p, u) * 4);   // indemnité ou prime de signature
   if (m.maxPrice) ps = ps.filter(p => cost(p) <= m.maxPrice);
-  if (m.budgetOnly) ps = ps.filter(p => cost(p) <= u.budget);
+  if (m.budgetOnly) ps = ps.filter(p => cost(p) <= spendRoom(p.game) && salaryDemand(p, u) <= wageRoom(p.game));
   if (m.keenOnly) ps = ps.filter(p => !p.club || interestCheck(p));
   const where = p => { const c = S.clubs[p.club]; return !c ? "" : c.solo ? "~" : c.name.toLowerCase(); };
   const sorters = { rating: (a, b) => b.rating - a.rating, age: (a, b) => a.age - b.age, value: (a, b) => playerValue(a) - playerValue(b), pot: (a, b) => b.pot - a.pot, salary: (a, b) => salaryDemand(a, u) - salaryDemand(b, u),
@@ -553,7 +568,7 @@ function viewMarket() {
       : shut ? `<button class="small" disabled title="${esc(shut)}">🔴 Mercato fermé</button>`
       : `<button class="small" data-act="offer" data-v="${p.id}" ${keen ? "" : "disabled title='Votre club n&#39;est pas assez connu : en ${GAMES[p.game].short}, seuls les joueurs notés jusqu&#39;à ${interestMax(p.game)} acceptent de discuter (notoriété ${Math.round(u.fame)}/100)'"}>${keen ? (c.solo ? "Recruter" : "Offre") + " (~" + money(askingPrice(p)) + ")" : "🔒 Hors de portée"}</button>`;
     return `<tr><td>${flag(p.nat)} <b class="link" data-act="player-info" data-v="${p.id}">${esc(p.handle)}</b></td><td>${gchip(p.game)}</td><td>${p.role}</td><td>${ageTxt(p)}</td><td>${R(p.rating)}</td><td>${potTxt(p)}</td>
-      <td>${where}${p.listed ? ` <span class="chip warn" title="Son club veut le vendre : prix ${money(p.askPrice)}">📋 en vente</span>` : ""}</td><td>${money(playerValue(p))}</td><td>${money(salaryDemand(p, u))}/sem</td><td class="${cost(p) > u.budget ? "bad" : ""}">${money(cost(p))}</td><td>${btn}</td></tr>`;
+      <td>${where}${p.listed ? ` <span class="chip warn" title="Son club veut le vendre : prix ${money(p.askPrice)}">📋 en vente</span>` : ""}</td><td>${money(playerValue(p))}</td><td class="${salaryDemand(p, u) > wageRoom(p.game) ? "bad" : ""}" title="${u.divisions[p.game] ? `Marge salariale ${GAMES[p.game].short} : ${money(Math.max(0, wageRoom(p.game)))}/sem` : "Pas de section dans ce jeu"}">${money(salaryDemand(p, u))}/sem</td><td class="${cost(p) > spendRoom(p.game) ? "bad" : ""}" title="${u.divisions[p.game] ? `Vous pouvez dépenser ${money(spendRoom(p.game))} en ${GAMES[p.game].short}` : "Pas de section dans ce jeu"}">${money(cost(p))}</td><td>${btn}</td></tr>`;
   }).join("");
   const head = [["name", "Joueur"], ["game", "Jeu"], ["role", "Rôle"], ["age", "Âge"], ["rating", "Note"], ["pot", "Potentiel"], ["club", "Statut"], ["value", "Valeur"], ["salary", "Salaire demandé"], ["price", "Coût"]]
     .map(([k, l]) => `<th class="sortable" data-act="m-sort-col" data-v="${k}" title="Trier (cliquer à nouveau pour inverser)">${l}${m.sort === k ? (m.dir === 1 ? " ▼" : " ▲") : ""}</th>`).join("") + "<th></th>";
@@ -585,7 +600,7 @@ function viewMarket() {
       <span class="muted">${total} joueur(s)${total ? ` · ${first + 1}–${Math.min(total, first + per)} · page ${m.page + 1}/${pages}` : ""}</span>
     </div>
     ${pager}
-    ${mercatoBanner(m.game)}
+    ${mercatoBanner(m.game)}${mercatoMoney(m.game)}
     <p class="interest-hint">⭐ Notoriété ${Math.round(u.fame)}/100 : ${m.game !== "all" ? `en ${GAMES[m.game].short}, les joueurs notés jusqu'à <b>${interestMax(m.game)}</b> acceptent de discuter avec vous` : `les joueurs notés jusqu'à <b>${Math.min(99, Math.floor(u.fame + 70))}</b> acceptent de discuter avec vous (plus haut dans les jeux où votre équipe est en tier 1 ou 2)`}. Au-delà, ils sont « 🔒 hors de portée ». <span class="link" data-act="explain-fame">En savoir plus</span></p>
     <p class="muted" style="font-size:12px;margin-top:-4px">Agent libre : sans contrat, signature directe. Indépendant : pro sans organisation, il demande une prime. Sous contrat : il faut payer une indemnité de transfert à son club.</p>
     <div class="card table-wrap"><table><tr>${head}</tr>${rows || `<tr><td colspan="11" class="muted">Aucun joueur ne correspond à ces filtres.</td></tr>`}</table></div>${pager}`;
@@ -1105,6 +1120,7 @@ Object.assign(ACTIONS, {
     modal(`<h2>${c.solo ? "Recruter" : "Offre pour"} ${flag(p.nat)} ${esc(p.handle)}</h2><p>${c.solo ? "Pro indépendant" : esc(c.name)} · ${GAMES[p.game].name} · ${p.role} · ${ageTxt(p)} ans · ${R(p.rating)} · potentiel ${potTxt(p)}</p>
       <p>Valeur estimée : ${money(playerValue(p))} · ${c.solo ? "Prime demandée" : "Le club en attend"} environ <b>${money(ask)}</b>.${p.clause ? `<br>Clause libératoire : <b>${money(p.clause)}</b> (le club ne peut pas refuser si vous la payez).` : ""}</p>
       <div class="form-row"><label for="f-fee">${c.solo ? "Prime de recrutement" : "Indemnité de transfert"} (€)</label><input id="f-fee" type="number" step="500" value="${ask}"></div>
+      <p class="afford">💰 ${affordTxt(p)}<br><small class="muted">Il demande environ ${money(salaryDemand(p, u))}/sem. L'indemnité, la prime de signature et la commission de l'agent sont prises sur la même enveloppe.</small></p>
       <p class="muted" style="font-size:12px">Si l'offre est acceptée, vous négocierez ensuite le contrat avec le joueur et son agent.</p>
       <div class="actions"><button data-act="close-modal">Annuler</button>${p.clause ? `<button data-act="pay-clause" data-v="${v}">Payer la clause</button>` : ""}<button class="primary" data-act="do-offer" data-v="${v}">Envoyer l'offre</button></div>`);
   },
@@ -1142,6 +1158,7 @@ function negoModal(reply, tone) {
     <p class="muted" style="margin-top:-6px">${GAMES[p.game].icon} ${GAMES[p.game].short} · ${p.role} · ${ageTxt(p)} ans · note ${R(p.rating)} · potentiel ${potTxt(p)}${N.ctx === "transfer" ? ` · indemnité ${money(N.fee)}` : ""}</p>
     <div class="nego-head"><div><span class="muted">Personnalité</span><b>${pers}</b><small class="muted">${PERSONALITIES[pers].desc}</small></div>
       <div><span class="muted">Patience</span><b>${moodTxt}</b>${bar(mood * 100)}</div></div>
+    <p class="afford">💰 ${affordTxt(p)}${N.ctx === "transfer" ? ` <small class="muted">(l'indemnité de ${money(N.fee)} sera prise sur cette somme)</small>` : ""}</p>
     ${reply ? `<div class="reply ${tone || ""}">${reply}</div>` : ""}
     <div class="nego-grid">
       <div class="form-row nego-f"><label for="n-region">Région de jeu</label><select id="n-region">${Object.entries(REGIONS).map(([k, l]) => `<option value="${k}" ${k === (o.region || d.region) ? "selected" : ""}>${l}</option>`).join("")}</select><small class="muted">Originaire de : ${REGIONS[homeRegion(p)]}${d.region !== homeRegion(p) ? ` · joue en ${REGIONS[d.region]}` : ""}</small></div>
