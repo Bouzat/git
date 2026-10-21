@@ -312,10 +312,10 @@ function lobbyRow(l) {
 function subPicker(game, d) {
   const zone = d.zone || "W", subs = !GAMES[game].open && d.tier >= 2 && subsOf(game, 2, zone);
   if (!subs || subs.length < 2) return "";
-  const want = userSub(game, 2, zone), now = d.tier === 2 && d.sub;
-  const hint = d.tier === 2 ? (want !== now ? "transfert à la fin de la saison" : "changer pour la saison prochaine") : "en cas de montée en tier 2";
+  const u = user(), want = (u.subPref && subs.includes(u.subPref[game]) && u.subPref[game]) || (d.tier === 2 && d.sub) || subFor(game, 2, zone, u.country);
+  const hint = d.tier > 2 ? "à la montée en tier 2" : want === d.sub ? (canSwitchSub(game) ? "changement immédiat" : "changement en fin de saison") : "transfert en fin de saison";
   return `<label class="muted" style="font-size:12px">Ligue nationale visée (${hint}) :
-    <select class="small-sel" data-change="want-sub" data-game="${game}" aria-label="Ligue nationale visée">${subs.map(s => `<option value="${s}" ${s === want ? "selected" : ""}>${esc(tierName(game, 2, zone, s))}</option>`).join("")}</select></label>`;
+    <select class="small-sel" data-change="sub-pick" data-game="${game}" aria-label="Ligue nationale visée">${subs.map(s => `<option value="${s}" ${s === want ? "selected" : ""}>${esc(tierName(game, 2, zone, s))}</option>`).join("")}</select></label>`;
 }
 function viewRoster() {
   const u = user(), divs = Object.keys(u.divisions);
@@ -638,6 +638,21 @@ function viewComp() {
   if (subs && !subs.includes(UI.compSub)) UI.compSub = ud && ud.tier === UI.compTier && ud.zone === UI.compZone && ud.sub ? ud.sub : subs[0];
   const L = S.leagues[lkey(UI.compGame, UI.compTier, UI.compZone, subs ? UI.compSub : null)];
   const stabs = subs ? subs.map(x => `<button class="tab small ${UI.compSub === x ? "active" : ""}" data-act="comp-sub" data-v="${x}">${esc(SUB_NAMES[x] || x)}${S.leagues[lkey(UI.compGame, UI.compTier, UI.compZone, x)].teams.some(isMine) ? " ★" : ""}</button>`).join("") : "";
+  // choix de la ligue nationale du club (LFL, Prime League…) : tout de suite en D2, sinon pour la prochaine montée
+  let subBar = "";
+  if (subs && ud && !g.open && ud.zone === UI.compZone) {
+    const pref = u.subPref && u.subPref[UI.compGame], nm = esc(SUB_NAMES[UI.compSub] || UI.compSub);
+    if (ud.tier === UI.compTier && ud.sub === UI.compSub)
+      subBar = `<p class="muted">✅ Votre club joue dans cette ligue.</p>`;
+    else if (ud.tier === UI.compTier && pref === UI.compSub)
+      subBar = `<p class="muted">🔁 Vous rejoindrez la <b>${nm}</b> à la fin de la saison.</p>`;
+    else if (ud.tier === UI.compTier)
+      subBar = `<p><button class="small" data-act="sub-change" data-v="${UI.compSub}">🔁 Rejoindre la ${nm}</button> <span class="muted" style="font-size:12px">${canSwitchSub(UI.compGame) ? "Votre saison n'a pas commencé : le changement est immédiat (vous prenez la place du club le plus faible)." : "Saison entamée : le changement se fera à la fin de la saison."}</span></p>`;
+    else if (pref === UI.compSub)
+      subBar = `<p class="muted">🎯 Ligue visée à votre prochaine montée ou descente en ${TIER_LABEL[UI.compTier - 1]}. <span class="link" data-act="sub-unpref">Annuler</span></p>`;
+    else
+      subBar = `<p><button class="small" data-act="sub-change" data-v="${UI.compSub}">🎯 Viser la ${nm}</button> <span class="muted" style="font-size:12px">À votre montée (ou descente) en ${TIER_LABEL[UI.compTier - 1]}, votre club ira dans cette ligue.</span></p>`;
+  }
   const mineIn = (t, z) => leaguesOf(UI.compGame).some(x => x.tier === t && x.zone === z && x.teams.some(isMine));
   const tabs = Object.keys(GAMES).map(k => `<button class="tab small ${UI.compGame === k ? "active" : ""}" data-act="comp-game" data-v="${k}">${GAMES[k].icon} ${GAMES[k].short}${u.divisions[k] ? " ★" : ""}</button>`).join("");
   const ztabs = zones.length < 2 ? "" : zones.map(z => `<button class="tab small ${UI.compZone === z ? "active" : ""}" data-act="comp-zone" data-v="${z}">${ZONE_NAMES[z]}${leaguesOf(UI.compGame).some(x => x.zone === z && x.teams.some(isMine)) ? " ★" : ""}</button>`).join("");
@@ -665,7 +680,7 @@ function viewComp() {
     side = `<h3>${nd ? `Journée ${nd} — ${weekLabel(S.season, nw)}` : "Affiches"}</h3>${fixtures}<h3 style="margin-top:16px">Derniers résultats</h3>${L.results.slice(-6).reverse().map(matchRow).join("") || "<p class='muted'>Aucun résultat.</p>"}`;
   }
   const closed = isClosed(L.game, L.tier, L.zone);
-  return `<h2>${g.icon} ${esc(leagueName(L))} <small class="muted">${g.open ? "circuit ouvert" : TIER_LABEL[L.tier - 1]}${L.zone !== "W" ? " · " + ZONE_NAMES[L.zone] : ""}</small>${closed ? ` <span class="chip warn" title="Ni montée ni relégation">🔒 Ligue fermée</span>${L.teams.some(isMine) ? "" : ` <button class="small" data-act="franchise" data-v="${L.game}|${L.zone}">Racheter une place</button>`}` : ""}</h2><div class="tabs">${tabs}</div>${ztabs ? `<div class="tabs">${ztabs}</div>` : ""}<div class="tabs">${ttabs}</div>${stabs ? `<div class="tabs">${stabs}</div>` : ""}
+  return `<h2>${g.icon} ${esc(leagueName(L))} <small class="muted">${g.open ? "circuit ouvert" : TIER_LABEL[L.tier - 1]}${L.zone !== "W" ? " · " + ZONE_NAMES[L.zone] : ""}</small>${closed ? ` <span class="chip warn" title="Ni montée ni relégation">🔒 Ligue fermée</span>${L.teams.some(isMine) ? "" : ` <button class="small" data-act="franchise" data-v="${L.game}|${L.zone}">Racheter une place</button>`}` : ""}</h2><div class="tabs">${tabs}</div>${ztabs ? `<div class="tabs">${ztabs}</div>` : ""}<div class="tabs">${ttabs}</div>${stabs ? `<div class="tabs">${stabs}</div>` : ""}${subBar}
     ${RANKED_GAMES.includes(UI.compGame) ? rankCard(UI.compGame) : ""}
     <div class="grid g2">
       <div class="card"><h3>Classement · ${FMT_LABEL[g.fmt]}</h3><div class="table-wrap"><table>${table}</table></div>
@@ -1074,6 +1089,12 @@ Object.assign(ACTIONS, {
   "comp-tier": v => { UI.compTier = +v; render(); },
   "comp-zone": v => { UI.compZone = v; render(); },
   "comp-sub": v => { UI.compSub = v; render(); },
+  "sub-change": v => {
+    const r = changeSub(UI.compGame, v), nm = SUB_NAMES[v] || v;
+    toast(r.err || (r.now ? `✅ Votre club joue désormais en ${nm}.` : r.later ? `🔁 Vous rejoindrez la ${nm} à la fin de la saison.` : `🎯 À votre montée, votre club ira en ${nm}.`));
+    save(); render();
+  },
+  "sub-unpref": () => { const u = user(); if (u.subPref) delete u.subPref[UI.compGame]; toast("Choix annulé : ligue de votre pays par défaut."); save(); render(); },
   "tour-game": v => { UI.tourGame = v; render(); },
   "tour-size": v => { UI.tourSize = v; render(); },
   "cal-mode": v => { UI.calMode = v; render(); },
@@ -1081,8 +1102,8 @@ Object.assign(ACTIONS, {
   "open-div": v => {
     const [game, t] = v.split("|"), tier = +t, g = GAMES[game];
     const z = zoneFrom(game, REGION_OF[user().country] || "EU", user().country);
-    const subs = !g.open && subsOf(game, tier, z), pick = subs && subs.length > 1
-      ? `<p>Ligue nationale : <select id="open-sub" aria-label="Ligue nationale">${subs.map(s => `<option value="${s}" ${s === userSub(game, tier, z) ? "selected" : ""}>${esc(tierName(game, tier, z, s))}</option>`).join("")}</select></p>` : "";
+    const subs = !g.open && subsOf(game, tier, z), pref = user().subPref && user().subPref[game], pick = subs && subs.length > 1
+      ? `<p>Ligue nationale : <select id="open-sub" aria-label="Ligue nationale">${subs.map(s => `<option value="${s}" ${s === (subs.includes(pref) ? pref : subFor(game, tier, z, user().country)) ? "selected" : ""}>${esc(tierName(game, tier, z, s))}</option>`).join("")}</select></p>` : "";
     modal(`<h2>${g.icon} ${g.name} · ${tierLabel(game, tier)}</h2><p>Entrée dans le <b>${esc(tierName(game, g.open ? 1 : tier, z))}</b> (${ZONE_NAMES[z]}) : <b>${money(tierEntry(game, tier))}</b>.<br>
       Il vous faudra ${g.size} joueur(s) titulaire(s). Frais de fonctionnement : ${money(TIER_OP[tier - 1] * g.size * g.mult)}/sem. Cashprize du circuit : ${money(tierPrize(game, tier))}.</p>${pick}
       <div class="actions"><button data-act="close-modal">Annuler</button><button class="primary" data-act="confirm-open" data-v="${v}">Confirmer</button></div>`);
@@ -1804,7 +1825,11 @@ document.addEventListener("click", e => {
 });
 document.addEventListener("change", e => {
   const k = e.target.dataset.change; if (!k) return;
-  if (k === "want-sub") { setWantSub(e.target.dataset.game, e.target.value); toast(`Ligue visée : ${tierName(e.target.dataset.game, 2, divOf(S.userId, e.target.dataset.game).zone || "W", e.target.value)}`); scheduleSave(); return render(); }
+  if (k === "sub-pick") {
+    const r = changeSub(e.target.dataset.game, e.target.value), nm = SUB_NAMES[e.target.value] || e.target.value;
+    toast(r.err || (r.now ? `✅ Votre club joue désormais en ${nm}.` : r.later ? `🔁 Vous rejoindrez la ${nm} à la fin de la saison.` : `🎯 À votre montée, votre club ira en ${nm}.`));
+    save(); return render();
+  }
   if (k === "unit-move") { if (e.target.value) { const err = assignUnit(e.target.dataset.pid, e.target.value); if (err) toast(err); scheduleSave(); } return render(); }
   if (k.startsWith("al-")) return allocSum();
   if (k === "fin-game") { UI.finGame = e.target.value; return render(); }
