@@ -811,7 +811,11 @@ function tourState(game, t) {
     if (invitational(tiers) && !cands.some(x => x[0] === name)) return { st: "noinv", html: "<span class='warn'>Hors invitations</span>" };
     return { st: "other", html: `<span class="muted" title="Une équipe ne joue qu'un tournoi par semaine">Autre tournoi choisi</span>${past ? "" : ` <button class="small" data-act="tour-pick" data-v="${esc(game + "|" + week + "|" + name)}">Choisir celui-ci</button>`}` };
   }
-  if (invitational(tiers) && !tournamentField(game, tiers, size, region, name, week).some(isMine)) return { st: "noinv", html: "<span class='warn'>Hors invitations</span>" };
+  if (invitational(tiers) && !tournamentField(game, tiers, size, region, name, week).some(isMine)) {
+    const sp = qualSpec(game, name);
+    if (sp) return { st: "noinv", html: (sp.from && !(S.tourOrder || {})[game + "|" + sp.from]) || (sp.worlds && !Object.keys(S.tourOrder || {}).some(k => k.endsWith(" — Grande finale"))) ? "<span class='muted'>Qualification à venir</span>" : "<span class='warn'>Non qualifié</span>" };
+    return { st: "noinv", html: "<span class='warn'>Hors invitations</span>" };
+  }
   return { st: "in", html: `<span class="ok">${cands.length > 1 ? "✅ Choisi" : invitational(tiers) ? "Invité" : "Inscrit"}</span>${past ? "" : ` <button class="small" data-act="tour-toggle" data-v="${esc(game + "|" + name)}" title="Ne pas participer : pas de frais de déplacement, les joueurs se reposent">Décliner</button>`}` };
 }
 function viewCalendar() {

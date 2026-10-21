@@ -531,7 +531,7 @@ function newSeasonSetup(first) {
     L.results = []; L.playoffs = null; L.champion = null;
   }
   S.week = SEASON_FIRST;
-  S.rep = null; S.tourChoice = {};
+  S.rep = null; S.tourChoice = {}; S.tourOrder = {};
   S.smallTours = genSmallEvents();
   S.ewc = {};
   S.board.objective = pickObjective(first);
@@ -1038,11 +1038,18 @@ function refreshMates(id, game) {
   const own = clubPlayers(id, game), need = Math.max(0, g.size - own.length);
   const taken = new Set(userTeams(game).filter(x => x !== id).flatMap(x => (divOf(x, game).mates || [])));
   const ok = pid => { const p = S.players[pid]; return p && !p.club && p.game === game && playerZone(p) === d.zone && !taken.has(pid); };
-  d.mates = (d.mates || []).filter(ok).slice(0, need);
   if (!own.length) { d.mates = []; return; }
   const level = own.reduce((s, p) => s + p.rating, 0) / own.length;
-  const cand = Object.values(S.players).filter(p => ok(p.id) && !d.mates.includes(p.id) && p.rating <= level + 2).sort((a, b) => Math.abs(a.rating - level + 3) - Math.abs(b.rating - level + 3));
-  while (d.mates.length < need && cand.length) d.mates.push(cand.shift().id);
+  // un partenaire extérieur a à peu près le niveau du joueur : un partenaire trop faible est remplacé
+  d.mates = (d.mates || []).filter(pid => ok(pid) && S.players[pid].rating >= level - 6).slice(0, need);
+  const cand = Object.values(S.players).filter(p => ok(p.id) && !d.mates.includes(p.id) && p.rating <= level + 3 && p.rating >= level - 6).sort((a, b) => Math.abs(a.rating - level + 2) - Math.abs(b.rating - level + 2));
+  while (d.mates.length < need) {
+    if (cand.length) { d.mates.push(cand.shift().id); continue; }
+    // personne de ce niveau sans équipe dans la région : un joueur de la scène accepte de jouer avec lui
+    const p = genPlayer(game, Math.round(level - 5), Math.round(level), 17, 26); p.years = 0; p.club = null; p.starter = false;
+    const reg = ZONE_REGION[d.zone]; if (reg && zoneFrom(game, homeRegion(p), p.nat) !== d.zone) p.region = reg;
+    addPlayer(p); d.mates.push(p.id);
+  }
 }
 // range les joueurs Fortnite du club : pas plus de joueurs que la taille d'une équipe, tous de la région de leur équipe ;
 // l'équipe principale (le club) n'est jamais vide s'il reste des joueurs
@@ -1925,6 +1932,7 @@ function crown(L, winner, runnerUp, detail) {
 }
 // niveau d'un tournoi façon Liquipedia (S, A, B, C) : selon l'accès (invitation des meilleurs ou open) et la dotation
 function tourTier(t) {
+  if (t[6] && t[6].tier) return t[6].tier;
   const prize = t[2] || 0, tiers = t[3] || "";
   if (prize >= 500000 || (tiers === "1" && prize >= 250000)) return "S";
   if (tiers === "1" || tiers === "12" || tiers === "123" || prize >= 100000) return "A";
@@ -1932,6 +1940,43 @@ function tourTier(t) {
   return "C";
 }
 const TIER_IMP = { S: "gold", A: "silver", B: "normal", C: "minor" };
+// FNCS : chaque Major se joue par région en trois étapes (qualifications ouvertes, demi-finales, grande finale) ;
+// les meilleurs de chaque région aux grandes finales vont au Global Championship (quotas par région, comme en vrai).
+// t[6] : { tier, from (étape précédente), top (qualifiés), worlds }
+const FNCS_SHARE = { EU: 0.3, NA: 0.25, SA: 0.12, MENA: 0.11, ASIA: 0.11, OCE: 0.11 };
+const FNCS_QUOTA = { EU: 12, NA: 9, SA: 4, MENA: 3, ASIA: 2, OCE: 2 };
+(function fncsCircuit() {
+  const T = TOURNAMENTS.fn; if (!T || T.some(t => t[6])) return;
+  const out = [];
+  for (const t of T) {
+    const m = /^FNCS Major \((\d)\)$/.exec(t[0]);
+    if (t[0] === "FNCS Global Championship") { out.push([t[0], t[1], t[2], "123", 32, "", { tier: "S", worlds: true }]); continue; }
+    if (!m) { out.push(t); continue; }
+    for (const z of gameZones("fn")) {
+      const base = `FNCS Major ${m[1]} ${ZONE_NAMES[z] || z}`;
+      out.push([`${base} — Qualifications`, t[1] - 2, 0, "1230", 200, z, { tier: "B" }]);
+      out.push([`${base} — Demi-finales`, t[1] - 1, 0, "123", 100, z, { tier: "A", from: `${base} — Qualifications`, top: 0.6 }]);
+      out.push([`${base} — Grande finale`, t[1], Math.round(t[2] * (FNCS_SHARE[z] || 0.1) / 1000) * 1000, "123", 50, z, { tier: "S", from: `${base} — Demi-finales`, top: 0.5 }]);
+    }
+  }
+  TOURNAMENTS.fn = out;
+})();
+// nombre de qualifiés : une part du plateau de l'étape précédente (au plus un lobby complet)
+const qualTop = (spec, n, game) => Math.min(GAMES[game].lobby * 2, Math.max(2, spec.top <= 1 ? Math.ceil(n * spec.top) : spec.top));
+const qualSpec = (game, name) => { const t = (TOURNAMENTS[game] || []).find(x => x[0] === name); return t && t[6] ? t[6] : null; };
+// plateau d'une étape qualificative : les mieux classés de l'étape précédente (null si elle n'a pas encore été jouée)
+function qualField(game, spec, name, week, raw) {
+  const O = S.tourOrder || {}, g = GAMES[game];
+  const keep = id => S.clubs[id] && divOf(id, game) && (raw || !(isMine(id) && declinedFor(id, game, name, week)));
+  if (spec.from) { const o = O[game + "|" + spec.from]; if (!o) return null; const ok = o.filter(id => S.clubs[id] && divOf(id, game)); return ok.slice(0, qualTop(spec, ok.length, game)).filter(keep); }
+  if (spec.worlds) {
+    const finals = Object.keys(O).filter(k => k.startsWith(game + "|") && k.endsWith(" — Grande finale"));
+    if (!finals.length) return null;
+    const pts = {}; for (const k of finals) O[k].forEach((id, i) => pts[id] = (pts[id] || 0) + Math.max(1, 60 - i));
+    return Object.entries(FNCS_QUOTA).flatMap(([z, q]) => Object.keys(pts).filter(id => S.clubs[id] && divOf(id, game) && (divOf(id, game).zone || "W") === z).sort((a, b) => pts[b] - pts[a]).slice(0, q)).filter(keep);
+  }
+  return null;
+}
 // tournois de la semaine : [jeu, tournoi]
 function weekTournaments(w = S.week) {
   const out = [];
@@ -2184,7 +2229,9 @@ function tournamentPool(game, tiers, region) {
 // plateau d'un tournoi (open : tous les clubs des tiers admis peuvent s'inscrire ; invitation : les mieux classés).
 // Les équipes du club du joueur qui ont décliné le tournoi n'y sont pas.
 function tournamentField(game, tiers, size, region, name, week, raw) {
-  const g = GAMES[game];
+  const g = GAMES[game], spec = name && qualSpec(game, name);
+  // étape qualificative : seulement les qualifiés de l'étape précédente (personne tant qu'elle n'a pas été jouée)
+  if (spec && (spec.from || spec.worlds)) return qualField(game, spec, name, week, raw) || [];
   // jeux à classement mondial (CS2) : les invitations suivent les points du classement
   const rp = {}; if (RANKED_GAMES.includes(game)) rankingOf(game).forEach(x => rp[x.id] = x.pts);
   const ranked = tournamentPool(game, tiers, region).filter(id => raw || !(isMine(id) && name && declinedFor(id, game, name, week)))
@@ -2269,6 +2316,13 @@ function playTournament(game, t) {
     }
     order = round.concat(out.flat());
   }
+  // classement complet gardé pour les étapes suivantes (qualifications FNCS…) et messages de qualification
+  (S.tourOrder = S.tourOrder || {})[game + "|" + name] = order.slice(0, 250);
+  const next = (TOURNAMENTS[game] || []).find(x => x[6] && x[6].from === name);
+  if (next) { const top = qualTop(next[6], order.length, game);
+    for (const id of order.filter(isMine)) { const i = order.indexOf(id) + 1;
+      mail(i <= top ? `✅ Qualifié : ${next[0]}` : `❌ Éliminé : ${name}`, `${clubLabel(id, game)} termine <b>${i}e</b> de ${name}${i <= top ? ` et se qualifie pour <b>${next[0]}</b> (${weekLabel(S.season, next[1])}).` : ` : il fallait finir dans les ${top} premiers pour aller en ${next[0]}.`}`, "info", game); } }
+  else if (/ — Grande finale$/.test(name)) for (const id of order.filter(isMine)) mail(`🌍 Global Championship : ${clubLabel(id, game)}`, `${clubLabel(id, game)} termine <b>${order.indexOf(id) + 1}e</b> de ${name}. Les meilleurs de chaque région aux grandes finales des Majors (${Object.entries(FNCS_QUOTA).map(([z, q]) => `${ZONE_NAMES[z]} ${q}`).join(", ")}) jouent le FNCS Global Championship.`, "info", game);
   // les grands tournois se jouent en LAN : billets d'avion et hôtel pour les joueurs
   const mineIn = field.filter(isMine);
   if (prize >= 100000 && mineIn.length) book("travel", -mineIn.length * g.size * (t[5] ? 900 : 2200), game, name);
