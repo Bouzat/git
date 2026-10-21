@@ -16,7 +16,13 @@ const LEAGUE_SIZE = 12;          // équipes (ou joueurs) par circuit
 const START_BUDGET = 250000;     // budget d'un club créé de zéro
 const TIER_LABEL = ["Tier 1", "Tier 2", "Tier 3"];
 const TIER_PRIZE = [1, 0.08, 0.012];        // part du cashprize du jeu
-const TIER_FAME_REQ = [65, 30, 0];          // notoriété requise pour acheter une place
+const TIER_FAME_REQ = [65, 30, 0];          // notoriété de référence (jeu moyen) ; voir fameReq pour chaque jeu
+// notoriété requise pour acheter une place : plus le jeu est suivi, plus il en faut (tier 1 de LoL ≈ 75, de Trackmania ≈ 40)
+function fameReq(game, tier) {
+  if (tier >= 3) return 0;
+  const v = Math.sqrt((GAME_ECO[game] ? GAME_ECO[game].view : 10) / 100);
+  return Math.round((tier === 1 ? 35 + 40 * v : 15 + 20 * v) / 5) * 5;
+}
 const TIER_OP = [3500, 700, 100];            // frais hebdo par joueur
 const TIER_SPONSOR = [6000, 2000, 500];    // revenus sponsors liés à la division
 const TIER_RATING = [[80, 88], [70, 80], [61, 74]]; // niveau des joueurs générés
@@ -596,7 +602,7 @@ function canJoin(game, tier) {
   if (u.divisions[game]) return "Division déjà ouverte.";
   if (tier === 1 && isClosed(game, 1, zoneFrom(game, REGION_OF[u.country] || "EU", u.country))) return `${tierName(game, 1, zoneFrom(game, REGION_OF[u.country] || "EU", u.country))} est une ligue fermée : il faut racheter la place (franchise) d'un club.`;
   if (GAMES[game].open && tier < 3) return `${GAMES[game].name} est un circuit ouvert : tout le monde y entre en statut ${tierLabel(game, 3)}, le statut ${tierLabel(game, tier)} se gagne au classement.`;
-  if (u.fame < TIER_FAME_REQ[tier - 1]) return `Notoriété ${TIER_FAME_REQ[tier - 1]} requise pour acheter une place en ${TIER_LABEL[tier - 1]}.`;
+  if (u.fame < fameReq(game, tier)) return `Notoriété ${fameReq(game, tier)} requise pour acheter une place en ${TIER_LABEL[tier - 1]} de ${GAMES[game].short} (vous êtes à ${Math.round(u.fame)}).`;
   if (u.budget < tierEntry(game, tier)) return "Budget insuffisant.";
   return null;
 }
@@ -614,7 +620,7 @@ function tierChangeCheck(game, t) {
   if (t === d.tier) return "Votre équipe joue déjà dans ce tier.";
   if (isClosed(game, d.tier, d.zone || "W")) return `${tierName(game, d.tier, d.zone)} est une ligue fermée : il faut revendre votre franchise.`;
   if (isClosed(game, t, d.zone || "W")) return `${tierName(game, t, d.zone)} est une ligue fermée : il faut racheter une franchise.`;
-  if (t < d.tier && u.fame < TIER_FAME_REQ[t - 1]) return `Notoriété ${TIER_FAME_REQ[t - 1]} requise pour acheter une place en ${TIER_LABEL[t - 1]} (vous êtes à ${Math.round(u.fame)}).`;
+  if (t < d.tier && u.fame < fameReq(game, t)) return `Notoriété ${fameReq(game, t)} requise pour acheter une place en ${TIER_LABEL[t - 1]} de ${GAMES[game].short} (vous êtes à ${Math.round(u.fame)}).`;
   if (t < d.tier && u.budget < tierEntry(game, t)) return `Budget insuffisant : la place coûte ${money(tierEntry(game, t))}.`;
   const aca = academyOf(game);
   if (t > d.tier && aca && aca.divisions[game].tier <= t) return "Votre académie joue dans ce tier ou plus bas : l'équipe première ne peut pas y descendre.";

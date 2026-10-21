@@ -388,9 +388,9 @@ function viewRoster() {
   const tabs = divs.map(g => `<button class="tab ${UI.rosterGame === g ? "active" : ""}" data-act="roster-game" data-v="${g}">${GAMES[g].icon} ${GAMES[g].short} · ${tshort(g, u.divisions[g].tier)}</button>`).join("");
   const others = Object.keys(GAMES).filter(g => !u.divisions[g]);
   const open = `<div class="card" style="margin-top:20px"><h3>➕ Ouvrir une nouvelle division</h3>
-    <p class="muted" style="margin-top:-6px">Le tier 3 est ouvert à tous. Acheter une place plus haut demande de la notoriété : ${TIER_FAME_REQ[1]} pour le tier 2, ${TIER_FAME_REQ[0]} pour le tier 1 (vous êtes à ${u.fame.toFixed(0)}/100).</p>
+    <p class="muted" style="margin-top:-6px">Le tier 3 est ouvert à tous. Acheter une place plus haut demande de la notoriété, d'autant plus que le jeu est suivi (tier 1 de LoL bien plus exigeant que celui de Trackmania). Vous êtes à <b>${u.fame.toFixed(0)}/100</b>.</p>
     <div class="grid g3">${others.map(g => `
-    <div class="open-div"><div><b>${GAMES[g].icon} ${GAMES[g].name}</b><div class="muted" style="font-size:12px">${FMT_LABEL[GAMES[g].fmt]} · ${GAMES[g].size} joueur(s)${GAMES[g].fmt === "br" ? " · lobbies de " + lobbyText(g) : ""}</div>${!mercatoRules(g).always ? `<div style="font-size:12px" class="${mercatoOpen(g) ? "ok" : "muted"}">${mercatoOpen(g) ? "🟢 Mercato ouvert : bon moment pour lancer la section" : `🔴 Mercato fermé (agents libres seulement) jusqu'au ${dayLabel(nextWindow(g)[1], nextWindow(g)[0], 0)}`}</div>` : ""}</div>
+    <div class="open-div"><div><b>${GAMES[g].icon} ${GAMES[g].name}</b><div class="muted" style="font-size:12px">${FMT_LABEL[GAMES[g].fmt]} · ${GAMES[g].size} joueur(s)${GAMES[g].fmt === "br" ? " · lobbies de " + lobbyText(g) : ""}</div>${GAMES[g].open ? "" : `<div style="font-size:12px">Notoriété requise : <span class="${u.fame >= fameReq(g, 2) ? "ok" : "muted"}">T2 ${fameReq(g, 2)}</span> · <span class="${u.fame >= fameReq(g, 1) ? "ok" : "muted"}">T1 ${fameReq(g, 1)}</span></div>`}${!mercatoRules(g).always ? `<div style="font-size:12px" class="${mercatoOpen(g) ? "ok" : "muted"}">${mercatoOpen(g) ? "🟢 Mercato ouvert : bon moment pour lancer la section" : `🔴 Mercato fermé (agents libres seulement) jusqu'au ${dayLabel(nextWindow(g)[1], nextWindow(g)[0], 0)}`}</div>` : ""}</div>
       <div style="display:flex;gap:4px;flex-wrap:wrap">${(GAMES[g].open ? [3] : [3, 2, 1]).map(t => `<button class="small" data-act="open-div" data-v="${g}|${t}" ${canJoin(g, t) ? "disabled" : ""} title="${esc(canJoin(g, t) || tierName(g, GAMES[g].open ? 1 : t, zoneFrom(g, REGION_OF[u.country] || "EU", u.country)))}">${GAMES[g].open ? "Circuit ouvert" : "T" + t} · ${money(tierEntry(g, t))}</button>`).join("")}${franchiseZones(g).length ? `<button class="small" data-act="franchise" data-v="${g}" title="Ligue fermée : racheter la place d'un club">🔒 Franchise</button>` : ""}</div></div>`).join("")}</div></div>`;
   if (!UI.rosterGame) return `<h2>Effectifs</h2><p class="muted">Votre club n'a encore aucune division.</p>${open}`;
   const g = GAMES[UI.rosterGame], d = u.divisions[UI.rosterGame];
@@ -1593,7 +1593,7 @@ function fameModal() {
     <ul class="explain">
       <li><b>Mercato</b> : un joueur trop fort pour votre club refuse de discuter. Dans chaque jeu, les joueurs notés jusqu'à : ${games.length ? games.map(g => `${GAMES[g].icon} ${GAMES[g].short} <b>${interestMax(g)}</b>`).join(" · ") : `<b>${Math.min(99, Math.floor(f + 70))}</b>`}. Jouer en tier 1 (+20) ou en tier 2 (+8) dans un jeu y ouvre des joueurs plus forts.</li>
       <li><b>Sponsors</b> : ${f >= 55 ? "les marques internationales (Red Bull, Logitech…) s'intéressent à vous" : f >= 25 ? "les marques nationales s'intéressent à vous ; les internationales à partir de 55/100" : "seuls les commerces locaux s'intéressent à vous ; les marques nationales à partir de 25/100"}. Une notoriété élevée fait aussi monter les montants proposés.</li>
-      <li><b>Divisions</b> : acheter une place en tier 2 demande ${TIER_FAME_REQ[1]}/100, en tier 1 ${TIER_FAME_REQ[0]}/100.</li>
+      <li><b>Divisions</b> : acheter une place en tier 1 ou 2 demande de la notoriété, plus dans les jeux très suivis. ${(games.length ? games : ["lol", "rl", "trackmania"]).filter(g => !GAMES[g].open).slice(0, 6).map(g => `${GAMES[g].icon} ${GAMES[g].short} : T2 <b>${fameReq(g, 2)}</b>, T1 <b>${fameReq(g, 1)}</b>`).join(" · ")}.</li>
       <li><b>Salaires</b> : une star demande plus cher à un club peu connu.</li>
     </ul>
     <h3>Comment la faire monter</h3>
@@ -2069,7 +2069,7 @@ function tierModal(game) {
   const rows = [1, 2, 3].map(t => {
     const e = t === d.tier ? null : tierChangeCheck(game, t), up = t < d.tier;
     return `<tr class="${t === d.tier ? "me" : ""}"><td>${tchip(t, game)}</td><td>${esc(tierName(game, t, zone, subPrefFor(u.id, game, t, zone)))}</td>
-      <td>${t === d.tier ? "<b>Tier actuel</b>" : up ? `Droit d'entrée <b>${money(tierEntry(game, t))}</b> · notoriété ${TIER_FAME_REQ[t - 1]} requise` : "Gratuit · notoriété −2, confiance du conseil −5"}</td>
+      <td>${t === d.tier ? "<b>Tier actuel</b>" : up ? `Droit d'entrée <b>${money(tierEntry(game, t))}</b> · notoriété ${fameReq(game, t)} requise` : "Gratuit · notoriété −2, confiance du conseil −5"}</td>
       <td>${t === d.tier ? "" : req === t ? "<b class='ok'>Demandé pour la fin de saison</b>" : e ? `<span class="muted" style="font-size:12px">${esc(e)}</span>` : `<button class="small ${up ? "primary" : ""}" data-act="tier-req" data-v="${game}|${t}">${up ? "⬆️ Acheter la place" : "⬇️ Descendre"}</button>`}</td></tr>`;
   }).join("");
   modal(`<h2>🔀 ${g.icon} ${g.name} : changer de tier</h2>
