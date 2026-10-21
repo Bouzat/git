@@ -1,0 +1,20 @@
+{
+  "name": "esports-manager",
+  "productName": "Esports Manager",
+  "version": "1.0.0",
+  "description": "Esports Manager — CEO Edition",
+  "main": "app/main.js",
+  "author": "Esports Manager",
+  "scripts": {
+    "prepare-app": "node -e \"const fs=require('fs');fs.rmSync('app',{recursive:true,force:true});fs.mkdirSync('app');for(const f of ['index.html','js','css'])fs.cpSync('../'+f,'app/'+f,{recursive:true});fs.copyFileSync('main.js','app/main.js')\"",
+    "build": "npm run prepare-app && electron-builder --win portable --x64"
+  },
+  "build": {
+    "appId": "com.esportsmanager.ceo",
+    "files": ["app/**/*"],
+    "directories": { "output": "dist" },
+    "win": { "target": ["portable"], "signAndEditExecutable": false },
+    "portable": { "artifactName": "EsportsManager.exe" }
+  },
+  "devDependencies": { "electron": "37.2.0", "electron-builder": "26.0.12" }
+}

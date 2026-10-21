@@ -244,3 +244,5 @@ Le classement des structures affiche les points, les titres, les 2es et 3es plac
 - l'historique des éditions jouées et la référence de l'EWC 2026 réelle.
 
 Un bandeau sur le tableau de bord pendant l'EWC et dans l'onglet Tournois y renvoie. Quand vous gagnez plusieurs titres la même semaine, la célébration les liste tous, avec leurs gains.
+
+**Version Windows (.exe)** : le dossier `desktop/` empaquette le jeu avec Electron en un seul `EsportsManager.exe` portable, sans installation. Pour le refaire : `cd desktop && npm install && npm run build` ; le fichier arrive dans `desktop/dist/`. La sauvegarde est enregistrée sur l'ordinateur du joueur.
