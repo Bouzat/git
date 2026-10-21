@@ -1596,7 +1596,9 @@ function mercatoCloseWarning() {
 ACTIONS["mw-continue"] = () => { closeModal(); playWeek(); };
 function mercatoTime(info) {
   if (!info || !info.opened.length) return;
-  const u = user(), mine = info.opened.filter(o => o[2]), others = info.opened.filter(o => !o[2] && !o[3]);
+  // l'animation ne s'affiche que si le mercato s'ouvre dans un jeu où le club a une section
+  const u = user(), mine = info.opened.filter(o => o[2]), others = [];
+  if (!mine.length) return;
   const line = ([g, cur, , , end]) => `<div class="mt-g">${GAMES[g].icon} <b>${GAMES[g].name}</b> <span class="muted">${untilTxt(end)} · ${esc(cur[2])}</span></div>`;
   const box = document.createElement("div"); box.className = "mercato-time";
   box.innerHTML = `<div class="mt-card"><div class="mt-title"><span>MERCATO</span> <span>TIME !</span></div>
