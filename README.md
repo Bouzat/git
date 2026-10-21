@@ -127,6 +127,7 @@ Le **calendrier Rocket League** est la vraie saison RLCS 2026 (`tools/sources/ro
 - **Discussions** (💬) : félicitez un joueur, encouragez-le, exigez mieux (risqué selon sa personnalité), promettez-lui une place, mettez-le sur la liste des transferts (des clubs feront des offres), renégociez ou résiliez son contrat. Le tableau de bord liste les joueurs en difficulté et en forme. Les **réunions d'équipe** (féliciter, rassurer, mettre la pression, rester concentrés) aident quand les résultats ne suivent pas.
 - **Matchs en direct** : un match lancé au jour de match se déroule manche par manche (ou partie par partie en battle royale) avec un fil d'actions, pour le suspense. On peut accélérer ou passer au résultat.
 - **Recherche** : le champ du menu trouve une équipe ou un joueur.
+- **Tableaux triables** : dans tous les tableaux (sponsors, effectifs, classements, grand livre, tournois…), un clic sur un en-tête trie la colonne et un second clic inverse l'ordre. Le tri reste en place quand on change d'onglet.
 
 ## Classement mondial CS2 (façon HLTV)
 

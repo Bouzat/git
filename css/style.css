@@ -225,3 +225,6 @@ tr.mate td { color: var(--muted); font-style: italic; }
 .brand-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 14px; }
 .brand-kpi { display: flex; flex-direction: column; gap: 2px; padding: 12px; } .brand-kpi b { font-size: 20px; } .brand-kpi span { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
 .link-row { cursor: pointer; }
+th.sortable { cursor: pointer; user-select: none; }
+th.sortable:hover { color: var(--text); }
+th.sorted-asc::after { content: " ▲"; color: var(--accent2); } th.sorted-desc::after { content: " ▼"; color: var(--accent2); }

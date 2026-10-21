@@ -38,7 +38,56 @@ function toast(msg) {
   t.innerHTML = msg; t.classList.remove("hidden");
   clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.add("hidden"), 3200);
 }
-function modal(html) { document.getElementById("modal-box").innerHTML = html; document.getElementById("modal").classList.remove("hidden"); }
+function modal(html) { const box = document.getElementById("modal-box"); box.innerHTML = html; document.getElementById("modal").classList.remove("hidden"); applyTableSorts(box, "modal"); }
+// ---------- tri des tableaux ----------
+// Tout tableau avec une ligne d'en-têtes se trie d'un clic sur une colonne (second clic : ordre inverse) ; le tri est gardé
+// quand l'écran se redessine. Les tableaux qui trient eux-mêmes (mercato : en-têtes data-act) ne sont pas concernés.
+UI.sorts = UI.sorts || {};
+// valeur de tri d'une cellule : data-sort, sinon un nombre (montants en k€ / M€ / Md€, %, notes, rangs…), sinon le texte
+function cellValue(td) {
+  if (!td) return "";
+  if (td.dataset.sort !== undefined) return isNaN(+td.dataset.sort) ? td.dataset.sort : +td.dataset.sort;
+  const t = td.textContent.replace(/\s+/g, " ").trim();
+  const bar = td.querySelector(".bar i");
+  if (!t && bar) return parseFloat(bar.style.width) || 0;
+  const m = t.replace(/[\u00a0\u202f]/g, " ").match(/^[^\d+-]{0,3}([-+]?\d[\d ]*(?:[.,]\d+)?)\s*(Md€|M€|k€|€|%|e\b|er\b|an|sem|M\b|k\b)?/);
+  if (m && /^[^A-Za-zÀ-ÿ]{0,3}[-+]?\d/.test(t)) {
+    let v = parseFloat(m[1].replace(/ /g, "").replace(",", "."));
+    const unit = m[2] || "";
+    if (unit === "Md€") v *= 1e9; else if (unit === "M€" || unit === "M") v *= 1e6; else if (unit === "k€" || unit === "k") v *= 1e3;
+    return v;
+  }
+  return t.toLowerCase();
+}
+function sortTable(table, col, dir) {
+  const rows = [...table.querySelectorAll("tr")], head = rows.find(r => r.querySelector("th"));
+  if (!head) return;
+  const body = rows.filter(r => r !== head && r.querySelectorAll("td").length > col && !r.querySelector("td[colspan]"));
+  if (body.length < 2) return;
+  const parent = body[0].parentNode;
+  body.map((r, i) => ({ r, i, v: cellValue(r.children[col]) }))
+    .sort((a, b) => { const x = a.v, y = b.v; const c = typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y), "fr", { numeric: true }); return (c || a.i - b.i) * dir; })
+    .forEach(o => parent.appendChild(o.r));
+  head.querySelectorAll("th").forEach((th, i) => { th.classList.toggle("sorted-asc", i === col && dir > 0); th.classList.toggle("sorted-desc", i === col && dir < 0); });
+}
+function applyTableSorts(root, scope) {
+  root.querySelectorAll("table").forEach((t, i) => {
+    const head = [...t.querySelectorAll("tr")].find(r => r.querySelector("th"));
+    if (!head || head.querySelector("th[data-act]")) return;
+    t.dataset.sortKey = scope + ":" + i;
+    head.querySelectorAll("th").forEach(th => { if (th.textContent.trim()) th.classList.add("sortable"); });
+    const st = UI.sorts[t.dataset.sortKey];
+    if (st) sortTable(t, st.col, st.dir);
+  });
+}
+document.addEventListener("click", e => {
+  const th = e.target.closest("th.sortable");
+  if (!th || th.dataset.act) return;
+  const table = th.closest("table"), key = table.dataset.sortKey, col = [...th.parentNode.children].indexOf(th);
+  const cur = UI.sorts[key], dir = cur && cur.col === col ? -cur.dir : (typeof cellValue(table.querySelectorAll("tr")[1] && table.querySelectorAll("tr")[1].children[col]) === "number" ? -1 : 1);
+  UI.sorts[key] = { col, dir };
+  sortTable(table, col, dir);
+});
 function closeModal() { document.getElementById("modal").classList.add("hidden"); }
 
 // =====================================================================
@@ -157,6 +206,7 @@ function render() {
       </div>
       ${({ dash: viewDash, roster: viewRoster, market: viewMarket, calendar: viewCalendar, comp: viewComp, tours: viewTours, finance: viewFinance, sponsors: viewSponsors, facilities: viewFacilities, inbox: viewInbox, world: viewWorld })[UI.view]()}
     </main></div>`;
+  applyTableSorts($app, UI.view);
 }
 
 // période de la saison (barre du haut)
@@ -683,7 +733,7 @@ function viewTours() {
     const r = tourStatus(g, name, week);
     const status = r ? `🏆 ${displayName(r.top[0], g)}${r.mine ? ` · <b>vous : ${r.mine}e</b>` : ""}` : week < S.week ? "<span class='muted'>Annulé</span>" : week === S.week ? "<b class='warn'>Cette semaine</b>" : "À venir";
     const st = tourState(g, t);
-    return `<tr class="${r && r.mine === 1 ? "me" : ""}"><td style="white-space:nowrap">${weekLabel(S.season, week)}</td><td>${gchip(g)}</td><td><b>${esc(name)}</b>${region ? ` <small class="muted">${REGION_LABEL(region)}</small>` : ""}</td><td>${prize ? money(prize) : "<span class='muted' title='Pas de cashprize : qualification et prestige'>—</span>"}</td><td>${accessLabel(tiers)}</td><td>${r ? r.n : tournamentField(g, tiers, size, region || "", name).length}${GAMES[g].fmt === "br" ? " " + GAMES[g].unit + "s" : ""}</td><td style="white-space:nowrap">${st.html || "<span class='muted'>—</span>"}</td><td>${status}</td></tr>`;
+    return `<tr class="${r && r.mine === 1 ? "me" : ""}"><td style="white-space:nowrap" data-sort="${week}">${weekLabel(S.season, week)}</td><td>${gchip(g)}</td><td><b>${esc(name)}</b>${region ? ` <small class="muted">${REGION_LABEL(region)}</small>` : ""}</td><td>${prize ? money(prize) : "<span class='muted' title='Pas de cashprize : qualification et prestige'>—</span>"}</td><td>${accessLabel(tiers)}</td><td>${r ? r.n : tournamentField(g, tiers, size, region || "", name).length}${GAMES[g].fmt === "br" ? " " + GAMES[g].unit + "s" : ""}</td><td style="white-space:nowrap">${st.html || "<span class='muted'>—</span>"}</td><td>${status}</td></tr>`;
   }).join("");
   if (!UI.tourSize) UI.tourSize = "all";
   const stabs = [["all", "Tous les tournois"], ["big", "Grands tournois"], ["small", "Petits tournois & cash cups"]].map(([k, l]) => `<button class="tab small ${UI.tourSize === k ? "active" : ""}" data-act="tour-size" data-v="${k}">${l}</button>`).join("");
@@ -728,7 +778,7 @@ function viewFinance() {
   const fans0 = (S.finance.find(f => f.season === season) || {}).fans;
   const deals = u.sponsorDeals.map(d => { const e = ETHIC[d.ethic || "neutre"]; return `<tr><td>${e[0]} <b>${esc(d.name)}</b></td><td class="${e[2]}">${e[1]}</td><td>${money(d.weekly)}/sem</td><td>${d.weeks} sem. restantes</td><td>${money(d.weekly * d.weeks)} à venir</td></tr>`; }).join("");
   const gameSel = `<select data-change="fin-game" aria-label="Filtrer par jeu"><option value="all">Toutes les sections</option><option value="" ${UI.finGame === "" ? "selected" : ""}>Club (général)</option>${games.map(g => `<option value="${g}" ${UI.finGame === g ? "selected" : ""}>${GAMES[g].icon} ${GAMES[g].short}</option>`).join("")}</select>`;
-  const ledRows = led.filter(e => UI.finGame === "all" || e[4] === UI.finGame).slice(-60).reverse().map(([sn, w, cat, amt, g, label]) => `<tr><td style="white-space:nowrap">${weekLabel(sn, w)}</td><td>${g ? gchip(g) : "<span class='muted'>Club</span>"}</td><td>${BOOK_LABELS[cat] || cat}</td><td>${esc(label)}</td><td style="text-align:right" class="${amt >= 0 ? "ok" : "bad"}">${amt >= 0 ? "+" : ""}${money(amt)}</td></tr>`).join("");
+  const ledRows = led.filter(e => UI.finGame === "all" || e[4] === UI.finGame).slice(-60).reverse().map(([sn, w, cat, amt, g, label]) => `<tr><td style="white-space:nowrap" data-sort="${sn * 100 + w}">${weekLabel(sn, w)}</td><td>${g ? gchip(g) : "<span class='muted'>Club</span>"}</td><td>${BOOK_LABELS[cat] || cat}</td><td>${esc(label)}</td><td style="text-align:right" class="${amt >= 0 ? "ok" : "bad"}">${amt >= 0 ? "+" : ""}${money(amt)}</td></tr>`).join("");
   return `<h2>Finances — saison ${season}</h2><div class="grid g3">
     <div class="card"><h3>Budget</h3><div class="kpi ${u.budget < 0 ? "bad" : ""}">${money(u.budget)}</div><div class="muted">Résultat de la saison : <b class="${tot(inc) + tot(exp) >= 0 ? "ok" : "bad"}">${money(tot(inc) + tot(exp))}</b></div></div>
     <div class="card"><h3>Masse salariale</h3><div class="kpi">${money(ps.reduce((s, p) => s + p.salary, 0))}<span class="muted" style="font-size:14px">/sem</span></div><div class="muted">${money(ps.reduce((s, p) => s + p.salary, 0) * SEASON_WEEKS)} sur la saison · valeur de l'effectif ${money(ps.reduce((s, p) => s + playerValue(p), 0))}</div></div>
@@ -1088,7 +1138,7 @@ function viewSponsors() {
   const list = BRANDS.filter(b => !u.sponsorDeals.some(d => d.name === b[0]) && (F.ethic === "all" || b[2] === F.ethic) && (F.size === "all" || (F.size === "reach" ? b[3] <= reach + 1 : b[3] === +F.size)))
     .sort((a, b) => b[3] - a[3] || a[0].localeCompare(b[0]))
     .map(b => { const ch = Math.round(contactChance(b[0]) * 100), e = ETHIC[b[2]], cd = S.brandCooldown && S.brandCooldown[b[0]] > nowIndex();
-      return `<tr><td class="link-row" data-act="brand-info" data-v="${esc(b[0])}">${brandLogo(b[0])} <b class="link">${esc(b[0])}</b></td><td class="muted">${esc(b[1])}</td><td>${BRAND_SIZE[b[3]]}</td><td class="${e[2]}">${e[0]} ${e[1]}</td><td><span class="${ch >= 50 ? "ok" : ch >= 20 ? "warn" : "bad"}">${ch} %</span></td>
+      return `<tr><td class="link-row" data-act="brand-info" data-v="${esc(b[0])}" data-sort="${esc(b[0].toLowerCase())}">${brandLogo(b[0])} <b class="link">${esc(b[0])}</b></td><td class="muted">${esc(b[1])}</td><td>${BRAND_SIZE[b[3]]}</td><td class="${e[2]}">${e[0]} ${e[1]}</td><td><span class="${ch >= 50 ? "ok" : ch >= 20 ? "warn" : "bad"}">${ch} %</span></td>
         <td>${cd ? "<span class='muted'>a refusé récemment</span>" : `<button class="small" data-act="sp-contact" data-v="${esc(b[0])}">📞 Contacter</button>`}</td></tr>`; }).join("");
   const opt = (k, cur, list) => list.map(([v, l]) => `<option value="${v}" ${cur === v ? "selected" : ""}>${l}</option>`).join("");
   return `<h2>🤝 Sponsors</h2>
