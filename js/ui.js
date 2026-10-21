@@ -189,6 +189,11 @@ function renderHome() {
 //  Jeu
 // =====================================================================
 function render() {
+  if (MEMO || !S) return render0();
+  MEMO = new Map();
+  try { render0(); } finally { MEMO = null; }
+}
+function render0() {
   if (!S) return renderHome();
   const u = user();
   document.documentElement.style.setProperty("--club", u.color);
@@ -1315,7 +1320,7 @@ Object.assign(ACTIONS, {
   "continue": () => { if (load()) { UI.view = "dash"; render(); } },
   "wipe": () => modal(`<h2>Effacer la sauvegarde ?</h2><p>La partie en cours sera définitivement perdue.</p><div class="actions"><button data-act="close-modal">Annuler</button><button class="danger" data-act="do-wipe">Effacer</button></div>`),
   "do-wipe": () => { wipeSave(); closeModal(); renderHome(); },
-  "quit": () => { save(); S = null; UI.screen = "home"; UI.compGame = UI.compTier = UI.rosterGame = null; renderHome(); },
+  "quit": () => { saveNow(); S = null; UI.screen = "home"; UI.compGame = UI.compTier = UI.rosterGame = null; renderHome(); },
   "view": v => { UI.view = v; render(); window.scrollTo(0, 0); },
   "roster-game": v => { UI.rosterGame = v; render(); },
   "comp-game": v => { UI.compGame = v; const d = user().divisions[v]; UI.compTier = d ? d.tier : 1; UI.compZone = d ? d.zone : null; UI.compSub = d ? d.sub : null; render(); },

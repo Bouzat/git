@@ -212,6 +212,10 @@ function genPlayer(game, minR, maxR, ageMin = 17, ageMax = 28, club = null, role
 }
 function addPlayer(p) { S.players[p.id] = p; }
 const user = () => S.clubs[S.userId];
+// cache de calculs le temps d'un affichage (l'état ne change pas pendant un rendu) : évite de refaire 1 000 fois
+// la masse salariale ou les plateaux des tournois ; désactivé (null) hors rendu
+let MEMO = null;
+const memo = (k, f) => { if (!MEMO) return f(); if (MEMO.has(k)) return MEMO.get(k); const v = f(); MEMO.set(k, v); return v; };
 const divOf = (clubId, game) => S.clubs[clubId] && S.clubs[clubId].divisions[game];
 const clubPlayers = (clubId, game) => { const d = divOf(clubId, game); return d ? d.players.map(id => S.players[id]).filter(Boolean) : []; };
 const allUserPlayers = () => Object.keys(user().divisions).flatMap(g => gamePlayers(g));
@@ -255,7 +259,8 @@ const academyId = game => `${S.userId}~aca~${game}`;
 const academyOf = game => S.clubs[academyId(game)] || null;
 const userAcademies = () => Object.values(S.clubs).filter(c => c.parent === S.userId && c.academyOf);
 // toutes les équipes du club du joueur dans un jeu : équipe première, académie, autres duos/trios (Fortnite)
-const userTeams = game => [S.userId].concat(Object.values(S.clubs).filter(c => c.parent === S.userId && c.divisions[game]).map(c => c.id)).filter(id => divOf(id, game));
+const userTeams = game => memo("ut|" + game, () => userTeams0(game)).slice();
+const userTeams0 = game => [S.userId].concat(Object.values(S.clubs).filter(c => c.parent === S.userId && c.divisions[game]).map(c => c.id)).filter(id => divOf(id, game));
 const gamePlayers = game => userTeams(game).flatMap(id => clubPlayers(id, game));
 const canHaveAcademy = game => GAMES[game].fmt === "team";
 // installations d'un club (une académie utilise celles de son club)
@@ -843,7 +848,7 @@ function allocOf(game) {
 // - manuel : une enveloppe et un plafond de salaires par jeu, à répartir soi-même (onglet Finances).
 const allocManual = () => !!S.allocManual;
 const RESERVE_WEEKS = 10, WAGE_WEEKS = 20;
-const clubWages = () => allUserPlayers().reduce((s, p) => s + p.salary, 0);
+const clubWages = () => memo("wages", () => allUserPlayers().reduce((s, p) => s + p.salary, 0));
 const clubReserve = () => Math.round(clubWages() * RESERVE_WEEKS / 1000) * 1000;
 const spendable = () => Math.max(0, user().budget - clubReserve());
 const transferRoom = game => allocManual() ? allocOf(game).transfer - allocOf(game).spent : spendable();
@@ -1414,7 +1419,8 @@ function rankTournament(game, order, prize, name = "Tournoi") {
   const base = clamp(60 + prize / 2500, 60, 1000);
   order.forEach((id, i) => rankAdd(game, id, base * (i < 1 ? 1 : i < 2 ? 0.7 : i < 4 ? 0.5 : i < 8 ? 0.3 : i < 16 ? 0.15 : 0.07), undefined, `${name} : ${i === 0 ? "vainqueur" : i + 1 + "e place"}`));
 }
-function rankingOf(game) {
+function rankingOf(game) { return memo("rk|" + game, () => rankingOf0(game)); }
+function rankingOf0(game) {
   const now = rankNow(), tot = {};
   for (const [t, id, pts] of (S.rankLog && S.rankLog[game]) || []) {
     const age = now - t, k = age <= 13 ? 1 : age <= 26 ? 0.75 : age <= 52 ? 0.4 : 0;
@@ -1811,7 +1817,8 @@ function fireCoach(game, silent) {
   c.club = null; delete u.coaches[game];
   if (!silent) mail(`Départ de l'entraîneur : ${c.name}`, `${c.name} quitte le club (indemnité de ${money(c.wage * 8)}).`, "transfer", game);
 }
-function teamStrength(clubId, game) {
+function teamStrength(clubId, game) { return memo(`str|${clubId}|${game}`, () => teamStrength0(clubId, game)); }
+function teamStrength0(clubId, game) {
   const c = S.clubs[clubId], g = GAMES[game];
   // un joueur suspendu ne joue pas
   const ps = clubPlayers(clubId, game).filter(p => !(p.suspendedUntil && p.suspendedUntil >= nowIndex()));
@@ -2344,13 +2351,18 @@ function inRegion(clubId, game, region) {
   return region.split("|").some(x => x === "CN" ? cn : x === "KR" ? r === "ASIA" && c.country === "KR" : x === "PAC" ? r === "ASIA" && !cn : x === r);
 }
 const REGION_LABEL = r => r ? r.split("|").map(x => ({ CN: "Chine", PAC: "Pacifique", KR: "Corée" })[x] || REGIONS[x]).join(" / ") : "Monde";
-function tournamentPool(game, tiers, region) {
+function tournamentPool(game, tiers, region) { return memo(`pool|${game}|${tiers}|${region}`, () => tournamentPool0(game, tiers, region)); }
+function tournamentPool0(game, tiers, region) {
   const ids = leaguesOf(game).filter(L => GAMES[game].open || tiers.includes(String(L.tier))).flatMap(L => L.teams);
   return ids.filter(id => S.clubs[id] && divOf(id, game) && tiers.includes(String(S.clubs[id].divisions[game].tier)) && inRegion(id, game, region));
 }
 // plateau d'un tournoi (open : tous les clubs des tiers admis peuvent s'inscrire ; invitation : les mieux classés).
 // Les équipes du club du joueur qui ont décliné le tournoi n'y sont pas.
 function tournamentField(game, tiers, size, region, name, week, raw) {
+  if (!MEMO) return tournamentField0(game, tiers, size, region, name, week, raw);
+  return memo(`field|${game}|${tiers}|${size}|${region}|${name}|${week}|${!!raw}`, () => tournamentField0(game, tiers, size, region, name, week, raw)).slice();
+}
+function tournamentField0(game, tiers, size, region, name, week, raw) {
   const g = GAMES[game], spec = name && qualSpec(game, name);
   // étape qualificative : seulement les qualifiés de l'étape précédente (personne tant qu'elle n'a pas été jouée)
   if (spec && (spec.from || spec.worlds)) return qualField(game, spec, name, week, raw) || [];
@@ -2391,7 +2403,8 @@ function tourCandidates(game, week, id) {
 }
 // importance d'un tournoi : points de classement (dotation) et prestige des invitations
 const tourValue = t => t[2] + (t[3] === "1" ? 1e6 : invitational(t[3]) ? 2e5 : 0);
-function pickedTour(game, week, id) {
+function pickedTour(game, week, id) { return memo(`pick|${game}|${week}|${id}`, () => pickedTour0(game, week, id)); }
+function pickedTour0(game, week, id) {
   const c = tourCandidates(game, week, id);
   if (c.length < 2) return c[0] ? c[0][0] : null;
   const p = S.tourPick && S.tourPick[pickKey(game, week, id)];
@@ -3180,17 +3193,41 @@ function unpackSave(s) {
   return new TextDecoder().decode(all);
 }
 // la sauvegarde (sérialisation + compression, ~0,3 s pour un monde complet) part juste après l'affichage de la semaine
-function scheduleSave() {
-  if (typeof setTimeout !== "function") return save();
-  clearTimeout(scheduleSave.t);
-  scheduleSave.t = setTimeout(save, 30);
+// sauvegarde : la compression (≈1 s pour une grosse partie) se fait dans un Web Worker, hors du fil de l'interface,
+// et seulement quand le joueur arrête de cliquer ; saveNow() reste synchrone (fermeture de la page, retour au menu)
+const SAVE_DELAY = 700;
+let saveWorker, saveSeq = 0, savePending = false;
+function getSaveWorker() {
+  if (saveWorker !== undefined) return saveWorker;
+  try {
+    const src = `const LZW_MAX = ${LZW_MAX};\n${packSave.toString()}\nonmessage = e => postMessage({ id: e.data.id, z: packSave(e.data.js) });`;
+    saveWorker = new Worker(URL.createObjectURL(new Blob([src], { type: "text/javascript" })));
+    saveWorker.onmessage = e => { if (e.data.id === saveSeq && S) { writeSave(e.data.z); savePending = false; } };
+    saveWorker.onerror = () => { saveWorker = null; if (savePending && S) saveNow(); };
+  } catch (e) { saveWorker = null; }
+  return saveWorker;
 }
-if (typeof window !== "undefined" && window.addEventListener) window.addEventListener("beforeunload", () => { if (scheduleSave.t) save(); });
+function scheduleSave() {
+  if (typeof setTimeout !== "function" || typeof Worker === "undefined") return saveNow();
+  savePending = true;
+  clearTimeout(scheduleSave.t);
+  scheduleSave.t = setTimeout(() => {
+    scheduleSave.t = null;
+    const run = () => { if (!S) return; const w = getSaveWorker(); if (!w) return saveNow(); w.postMessage({ id: ++saveSeq, js: JSON.stringify(S) }); };
+    typeof requestIdleCallback === "function" ? requestIdleCallback(run, { timeout: 2000 }) : run();
+  }, SAVE_DELAY);
+}
+const save = scheduleSave;
+if (typeof window !== "undefined" && window.addEventListener) window.addEventListener("beforeunload", () => { if (savePending && S) saveNow(); });
 function readSave() { const s = localStorage.getItem(SAVE_KEY); return s ? unpackSave(s) : null; }
-function save() {
+function writeSave(z) {
   try { localStorage.removeItem("esports-manager-save-v2"); } catch (e) { }   // ancienne version incompatible : libère la place
-  try { localStorage.setItem(SAVE_KEY, packSave(JSON.stringify(S))); S.saveError = false; }
+  try { localStorage.setItem(SAVE_KEY, z); S.saveError = false; }
   catch (e) { if (!S.saveError) { S.saveError = true; if (typeof toast === "function") toast("⚠️ Sauvegarde impossible : stockage du navigateur plein ou bloqué."); } }
+}
+function saveNow() {
+  clearTimeout(scheduleSave.t); scheduleSave.t = null; saveSeq++; savePending = false;
+  writeSave(packSave(JSON.stringify(S)));
 }
 function load() { try { const s = readSave(); if (s) { S = JSON.parse(s); applySeasonFormats(); return true; } } catch (e) { } return false; }
 // empreinte de la base de données : une partie créée avant une mise à jour des effectifs garde l'ancien monde
@@ -3203,4 +3240,4 @@ function saveIsOutdated() {
   try { const s = readSave(); return !!s && JSON.parse(s).dataVersion !== dataVersion(); } catch (e) { return false; }
 }
 function hasSave() { try { return !!localStorage.getItem(SAVE_KEY); } catch (e) { return false; } }
-function wipeSave() { try { localStorage.removeItem(SAVE_KEY); } catch (e) { } }
+function wipeSave() { clearTimeout(scheduleSave.t); scheduleSave.t = null; saveSeq++; savePending = false; try { localStorage.removeItem(SAVE_KEY); } catch (e) { } }

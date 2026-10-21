@@ -225,3 +225,5 @@ js/ui.js        interface
 - l'héritage du club, avec les titres remportés avant votre arrivée.
 
 Les trophées peuvent être filtrés par jeu.
+
+**Fluidité** : la sauvegarde se compresse dans un Web Worker, en arrière-plan, quelques instants après le dernier clic, au lieu de geler l'écran environ 1 s à chaque action. Pendant l'affichage d'un écran, les calculs répétés sont mis en cache : masse salariale, plateaux des tournois, forces des équipes, classements. Résultat : le mercato passe de 0,6 s à 0,03 s, le calendrier de 0,5 s à 0,05 s et le tableau de bord de 0,36 s à 0,05 s.
