@@ -1572,6 +1572,7 @@ function brandModal(name) {
         ${req(u.fame >= b.minFame, `Notoriété ${b.minFame ? "≥ " + b.minFame : "sans minimum"} (vous : ${u.fame.toFixed(0)}/100)`)}
         ${b.minImage ? req((u.image ?? 60) >= b.minImage, `Image du club ≥ ${b.minImage} (vous : ${Math.round(u.image ?? 60)})`) : ""}
         ${req(b.games.some(g => u.divisions[g]), `Présent dans un des jeux visés`)}
+        ${b.size >= 2 ? req(!sectorRival(b.brand), sectorRival(b.brand) ? `Exclusivité : pas de concurrent du secteur (vous avez ${esc(sectorRival(b.brand))})` : `Exclusivité : pas de concurrent du secteur ${esc(b.sector)}`) : ""}
         <p style="margin:8px 0 0">Offre estimée : <b>${money(b.offer[0])} à ${money(b.offer[1])}/sem</b><br>Chances qu'elle accepte un rendez-vous : <b class="${ch >= 50 ? "ok" : ch >= 20 ? "warn" : "bad"}">${ch} %</b></p></div>
     </div>
     ${deal ? `<p class="ok">🤝 Partenaire du club : ${money(deal.weekly)}/sem, encore ${deal.weeks} semaine(s).</p>` : ""}
@@ -1736,7 +1737,7 @@ function viewSponsors() {
     .sort((a, b) => b[3] - a[3] || a[0].localeCompare(b[0]))
     .map(b => { const ch = Math.round(contactChance(b[0]) * 100), e = ETHIC[b[2]], cd = S.brandCooldown && S.brandCooldown[b[0]] > nowIndex();
       return `<tr><td class="link-row" data-act="brand-info" data-v="${esc(b[0])}" data-sort="${esc(b[0].toLowerCase())}">${brandLogo(b[0])} <b class="link">${esc(b[0])}</b></td><td class="muted">${esc(b[1])}</td><td>${BRAND_SIZE[b[3]]}</td><td class="${e[2]}">${e[0]} ${e[1]}</td><td><span class="${ch >= 50 ? "ok" : ch >= 20 ? "warn" : "bad"}">${ch} %</span></td>
-        <td>${cd ? "<span class='muted'>a refusé récemment</span>" : `<button class="small" data-act="sp-contact" data-v="${esc(b[0])}">📞 Contacter</button>`}</td></tr>`; }).join("");
+        <td>${sectorRival(b[0]) ? `<span class="muted" title="Exclusivité de secteur">🚫 concurrent de ${esc(sectorRival(b[0]))}</span>` : cd ? "<span class='muted'>a refusé récemment</span>" : `<button class="small" data-act="sp-contact" data-v="${esc(b[0])}">📞 Contacter</button>`}</td></tr>`; }).join("");
   const opt = (k, cur, list) => list.map(([v, l]) => `<option value="${v}" ${cur === v ? "selected" : ""}>${l}</option>`).join("");
   return `<h2>🤝 Sponsors</h2>${ecoCard()}
     <div class="grid g3">
@@ -1752,7 +1753,7 @@ function viewSponsors() {
       <p class="muted" style="margin-top:-4px;font-size:13px">Votre équipe commerciale peut contacter 2 marques par semaine. Une marque trop grande pour votre notoriété refuse presque toujours ; les marques éthiques regardent l'image du club. Une marque qui refuse ne peut pas être recontactée avant 8 semaines.</p>
       <div class="table-wrap"><table><tr><th>Marque</th><th>Secteur</th><th>Taille</th><th>Éthique</th><th>Chances</th><th></th></tr>${list}</table></div></div>`;
 }
-ACTIONS["sp-talk"] = v => { S.sponsorMarket.list = S.sponsorMarket.list.filter(x => x.brand !== v); sponsorModal(sponsorOffer(v), `<b>${esc(v)}</b> s'intéresse à votre club et vous propose un partenariat.`); };
+ACTIONS["sp-talk"] = v => { S.sponsorMarket.list = S.sponsorMarket.list.filter(x => x.brand !== v); const rv = sectorRival(v); if (rv) { toast(`${v} exige l'exclusivité dans son secteur : vous êtes déjà partenaire de ${rv}.`); return render(); } sponsorModal(sponsorOffer(v), `<b>${esc(v)}</b> s'intéresse à votre club et vous propose un partenariat.`); };
 ACTIONS["sp-contact"] = v => { const r = contactBrand(v); if (r.error) { toast(r.error); return render(); } sponsorModal(r.offer, `<b>${esc(v)}</b> accepte de vous rencontrer et fait une première offre.`); };
 ACTIONS["prospect"] = () => { UI.view = "sponsors"; render(); };
 

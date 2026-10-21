@@ -2868,6 +2868,13 @@ const BRANDS = [
   ["CryptoMoon Exchange", "Cryptomonnaies", "controverse", 3], ["Royal Spin Casino", "Casino en ligne", "controverse", 3], ["PetroGulf Energy", "Pétrole", "controverse", 3], ["MegaBet", "Paris sportifs", "controverse", 3],
 ];
 const BRAND_SIZE = ["", "Local", "National", "International"];
+// exclusivité par secteur : une marque nationale ou internationale refuse un club qui a déjà un concurrent du même
+// secteur (Red Bull et Monster, Logitech et Razer…) ; les commerces locaux peuvent se cumuler. Renvoie le concurrent.
+function sectorRival(name) {
+  const b = brandOf(name); if (b.size < 2) return null;
+  const d = user().sponsorDeals.find(x => x.name !== name && x.sector === b.sector && (x.size || 1) >= 2);
+  return d ? d.name : null;
+}
 // ce que valent les sections du club pour un sponsor : tier, audience du jeu et attrait pour les marques
 function sponsorWeight(u = user()) {
   return Object.entries(u.divisions).reduce((s, [g, d]) => { const e = ecoOf(g); return s + [3000, 600, 80][d.tier - 1] * e.spon * (0.4 + 1.2 * Math.sqrt(e.view / 100)); }, 0);
@@ -2914,7 +2921,7 @@ function sponsorOffer(arg) {
     // le type de marque dépend du jeu phare du club : beaucoup de paris en CS2, des marques grand public en LoL ou Rocket League
     const e = ecoOf(mainGame()), x = Math.random();
     const reach = brandReach(), ethic = arg || (x < e.eth ? "ethique" : x < e.eth + e.bet ? "controverse" : "neutre");
-    b = brandOf(pick(BRANDS.filter(x => x[2] === ethic && x[3] === reach && !u.sponsorDeals.some(d => d.name === x[0])).map(x => x[0]).concat(["PC Shop Local"])));
+    b = brandOf(pick(BRANDS.filter(x => x[2] === ethic && x[3] === reach && !u.sponsorDeals.some(d => d.name === x[0]) && !sectorRival(x[0])).map(x => x[0]).concat(["PC Shop Local"])));
   }
   const tierBonus = sponsorWeight(u), fit = brandFit(b.sector);
   // les marques controversées paient bien plus cher, les marques éthiques un peu moins (et regardent l'image du club) ; une grande marque paie plus qu'un commerce local
@@ -3024,7 +3031,7 @@ function refreshSponsorMarket() {
   const u = user(), reach = brandReach(), taken = new Set(u.sponsorDeals.map(d => d.name));
   const e = ecoOf(mainGame()), w = b => (b[2] === "controverse" ? e.bet : b[2] === "ethique" ? e.eth : 1 - e.bet - e.eth) * (brandFit(b[1]) > 1 ? 1.6 : 1);
   // tirage pondéré : les marques qui visent les jeux du club et le profil de sponsors de son jeu phare d'abord
-  const pool = BRANDS.filter(b => !taken.has(b[0]) && b[3] <= reach && b[3] >= reach - 1 && !(b[2] === "ethique" && (u.image ?? 60) < 40))
+  const pool = BRANDS.filter(b => !taken.has(b[0]) && !sectorRival(b[0]) && b[3] <= reach && b[3] >= reach - 1 && !(b[2] === "ethique" && (u.image ?? 60) < 40))
     .map(b => [b, Math.random() ** (1 / Math.max(0.01, w(b)))]).sort((a, b) => b[1] - a[1]).map(x => x[0]);
   S.sponsorMarket = { at: nowIndex(), season: S.season, list: pool.slice(0, randi(3, 5)).map(b => ({ brand: b[0], interest: randi(45, 95) })) };
 }
@@ -3068,6 +3075,7 @@ function contactBrand(name) {
   S.contacts = S.contacts && S.contacts.key === key ? S.contacts : { key, n: 0 };
   S.brandCooldown = S.brandCooldown || {};
   if (u.sponsorDeals.some(d => d.name === name)) return { error: `${name} est déjà partenaire du club.` };
+  const rival = sectorRival(name); if (rival) return { error: `${name} exige l'exclusivité dans son secteur (${brandOf(name).sector}) : vous êtes déjà partenaire de ${rival}.` };
   if (S.brandCooldown[name] && S.brandCooldown[name] > nowIndex()) return { error: `${name} vous a déjà répondu non récemment. Réessayez plus tard.` };
   if (S.contacts.n >= 2) return { error: "Votre équipe commerciale a déjà contacté 2 marques cette semaine." };
   S.contacts.n++;

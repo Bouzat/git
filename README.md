@@ -170,6 +170,8 @@ Chaque tournoi CS2 rapporte des points selon sa dotation et la place. Chaque mat
 
 **Argent du mercato.** Par défaut (mode automatique), un seul budget pour tout le club : vous pouvez dépenser votre budget moins une réserve de 10 semaines de salaires, et une recrue doit pouvoir être payée 20 semaines avec l'argent restant. Le mode manuel (une enveloppe mercato et un plafond de salaires par jeu, à la Football Manager) s'active dans Finances.
 
+**Exclusivité des sponsors.** Le nombre de sponsors n'est pas limité (les grands clubs ont 20 à 35 partenaires), mais une marque nationale ou internationale refuse un club qui a déjà un concurrent du même secteur (Red Bull et Monster, Logitech et Razer…). Les commerces locaux se cumulent.
+
 **Importance des matchs.** Dans la journée de match, chaque rencontre affiche son importance : finales de tier 1 et tournois S-Tier en or, playoffs de tier 1, finales de tier 2 et tournois A-Tier en argent, journées de ligue et tournois B-Tier normaux, cash cups (C-Tier) en discret. Chaque tournoi a un niveau S, A, B ou C selon son accès et sa dotation, avec un filtre dans l'onglet Tournois.
 
 **Changer de tier.** Dans l'onglet Effectifs, « 🔀 Changer de tier » permet d'acheter une place dans une division plus haute (notoriété et droit d'entrée requis) ou de redescendre volontairement (notoriété −2, confiance du conseil −5). Le changement est immédiat si la saison de l'équipe n'a pas commencé, sinon il se fait à la fin de la saison. Pas pour les ligues fermées (franchise), les circuits ouverts ni CS2 (classement mondial).
