@@ -234,3 +234,5 @@ Les trophées peuvent être filtrés par jeu.
 - les dotations du Club Championship (7 M$, 5 M$, 4 M$… 650 k$ pour le 10e).
 
 Le classement des structures affiche les points, les titres, les 2es et 3es places, les top 8 et la dotation. Les éditions jouées sont gardées dans un historique, et l'EWC 2026 réelle (classement des clubs et podiums par jeu) sert de référence. Les qualifications EWC ne rapportent plus de points au Club Championship.
+
+**Jeux solo** : SF6, Tekken, Fatal Fury, échecs, StarCraft II, EA FC, TFT et Trackmania n'ont pas de banc. Chaque joueur sous contrat est titulaire et joue de son côté, sous les couleurs du club. Il a sa propre place dans la ligue du club et dans les tournois, et vos joueurs peuvent s'affronter. Un joueur recruté en cours de saison dispute tout de suite les tournois ; ses matchs de ligue commencent la saison suivante. Les résultats affichent aussi la place de vos autres engagés.

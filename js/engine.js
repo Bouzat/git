@@ -1098,15 +1098,21 @@ function removeFromClub(p, keepContract) {
 // Pas de banc : chaque joueur du club joue dans un duo (ou trio). Le club peut aligner plusieurs équipes, chacune dans sa région
 // (un duo américain en FNCS Amérique du Nord, un duo européen en FNCS Europe). Un joueur seul se trouve un partenaire hors du club,
 // que le club ne paie pas.
-const unitGame = game => !!(GAMES[game] && GAMES[game].open);
+// Jeux solo (SF6, échecs, TFT…) : même principe, chaque joueur du club joue sous les couleurs du club, de son côté
+// (une entrée par joueur dans la ligue du club et dans les tournois), jamais ensemble.
+const unitGame = game => !!(GAMES[game] && (GAMES[game].open || GAMES[game].size === 1));
+const soloGame = game => !!(GAMES[game] && GAMES[game].size === 1 && !GAMES[game].open);
+for (const g of Object.values(GAMES)) if (g.size === 1 && !g.unit) g.unit = "joueur";
 const playerZone = (p, game = p.game) => zoneFrom(game, playRegion(p), p.nat);
 function createUnit(game, zone) {
   const u = user(); let n = 2; while (S.clubs[`${u.id}~${game}~${n}`]) n++;
   const c = baseClub(`${u.id}~${game}~${n}`, u.name, u.tag, u.country, u.color, u.fame, false);
   c.parent = u.id; c.unitOf = game;
-  c.divisions[game] = { tier: 3, zone, players: [], mates: [] };   // un nouveau duo démarre en statut Open
+  // un nouveau duo démarre en statut Open ; un joueur solo rejoint la division du club (même ligue)
+  const main = u.divisions[game], solo = soloGame(game) && main;
+  c.divisions[game] = solo ? { tier: main.tier, zone: main.zone, sub: main.sub, players: [], mates: [] } : { tier: 3, zone, players: [], mates: [] };
   S.clubs[c.id] = c;
-  const L = S.leagues[lkey(game, 1, zone)];
+  const L = solo ? leagueOf(u.id, game) : S.leagues[lkey(game, 1, zone)];
   L.teams.push(c.id); L.table[c.id] = emptyRow(GAMES[game].fmt);
   return c;
 }
@@ -1128,12 +1134,14 @@ function moveTeamZone(id, game, zone) {
 function refreshMates(id, game) {
   const d = divOf(id, game), g = GAMES[game]; if (!d) return;
   const own = clubPlayers(id, game), need = Math.max(0, g.size - own.length);
+  if (!need) { if (d.mates && d.mates.length) d.mates = []; return; }
   const taken = new Set(userTeams(game).filter(x => x !== id).flatMap(x => (divOf(x, game).mates || [])));
   const ok = pid => { const p = S.players[pid]; return p && !p.club && p.game === game && playerZone(p) === d.zone && !taken.has(pid); };
   if (!own.length) { d.mates = []; return; }
   const level = own.reduce((s, p) => s + p.rating, 0) / own.length;
   // un partenaire extérieur a à peu près le niveau du joueur : un partenaire trop faible est remplacé
   d.mates = (d.mates || []).filter(pid => ok(pid) && S.players[pid].rating >= level - 6).slice(0, need);
+  if (d.mates.length >= need) return;
   const cand = Object.values(S.players).filter(p => ok(p.id) && !d.mates.includes(p.id) && p.rating <= level + 3 && p.rating >= level - 6).sort((a, b) => Math.abs(a.rating - level + 2) - Math.abs(b.rating - level + 2));
   while (d.mates.length < need) {
     if (cand.length) { d.mates.push(cand.shift().id); continue; }
@@ -1147,20 +1155,21 @@ function refreshMates(id, game) {
 // l'équipe principale (le club) n'est jamais vide s'il reste des joueurs
 function arrangeUnits(game) {
   if (!unitGame(game) || !user().divisions[game]) return;
-  const g = GAMES[game], u = user();
-  const teams = () => userTeams(game).filter(id => !S.clubs[id].academyOf);
+  const g = GAMES[game], u = user(), n0 = userTeams0(game).length;
+  const teams = () => userTeams0(game).filter(id => S.clubs[id] && !S.clubs[id].academyOf);
   const homeless = [];
   for (const id of teams()) {
     const d = divOf(id, game);
     for (const p of clubPlayers(id, game)) {
-      const keep = clubPlayers(id, game).filter(x => playerZone(x) === d.zone);
-      if (playerZone(p) !== d.zone || keep.indexOf(p) >= g.size) { d.players = d.players.filter(x => x !== p.id); homeless.push(p); }
+      const zoneOk = x => soloGame(game) || playerZone(x) === d.zone;
+      const keep = clubPlayers(id, game).filter(zoneOk);
+      if (!zoneOk(p) || keep.indexOf(p) >= g.size) { d.players = d.players.filter(x => x !== p.id); homeless.push(p); }
     }
   }
   // l'équipe principale vide prend la région du premier joueur à placer
-  if (!clubPlayers(u.id, game).length && homeless.length) moveTeamZone(u.id, game, playerZone(homeless[0]));
+  if (!clubPlayers(u.id, game).length && homeless.length && !soloGame(game)) moveTeamZone(u.id, game, playerZone(homeless[0]));
   for (const p of homeless) {
-    const z = playerZone(p);
+    const z = soloGame(game) ? divOf(u.id, game).zone : playerZone(p);
     let id = teams().find(t => divOf(t, game).zone === z && clubPlayers(t, game).length < g.size);
     if (!id) id = createUnit(game, z).id;
     divOf(id, game).players.push(p.id); p.club = id;
@@ -1169,8 +1178,10 @@ function arrangeUnits(game) {
   for (const id of teams()) if (id !== u.id && !clubPlayers(id, game).length) removeUnit(id, game);
   if (!clubPlayers(u.id, game).length) {
     const other = teams().find(id => id !== u.id);
-    if (other) { const d = divOf(other, game); moveTeamZone(u.id, game, d.zone); for (const p of clubPlayers(other, game)) { u.divisions[game].players.push(p.id); p.club = u.id; } d.players = []; removeUnit(other, game); }
+    if (other) { const d = divOf(other, game); if (!soloGame(game)) moveTeamZone(u.id, game, d.zone); for (const p of clubPlayers(other, game)) { u.divisions[game].players.push(p.id); p.club = u.id; } d.players = []; removeUnit(other, game); }
   }
+  // équipes créées ou supprimées : le cache d'affichage n'est plus valable
+  if (MEMO && (homeless.length || userTeams0(game).length !== n0)) MEMO.clear();
   for (const id of teams()) { clubPlayers(id, game).forEach(p => p.starter = true); refreshMates(id, game); }
 }
 // déplace un joueur dans une autre équipe du club (to : id d'équipe, ou "new" pour un nouveau duo/trio dans sa région)
@@ -1222,6 +1233,7 @@ function aiFillRoster(clubId, game) {
 }
 function toggleStarter(pid) {
   const p = S.players[pid];
+  if (soloGame(p.game) && isMine(p.club)) return `Pas de banc en ${GAMES[p.game].name} : chacun de vos joueurs est titulaire et joue de son côté, sous les couleurs du club.`;
   if (unitGame(p.game) && isMine(p.club)) return `Pas de banc en ${GAMES[p.game].name} : chaque joueur joue dans un ${GAMES[p.game].unit}. Changez-le d'équipe pour le faire jouer avec un autre.`;
   if (p.starter) { p.starter = false; return null; }
   if (clubPlayers(p.club, p.game).filter(x => x.starter).length >= GAMES[p.game].size) return `Déjà ${GAMES[p.game].size} titulaire(s). Passez d'abord un joueur sur le banc.`;
@@ -2516,7 +2528,8 @@ function playTournament(game, t) {
     won: mine ? Math.round(prize * (share[mine - 1] || 0) * clubKeep(game)) : 0, mineId: mine ? order[mine - 1] : null, qual: mine ? quals[order[mine - 1]] || null : null });
   if (mine) {
     const won = Math.round(prize * (share[mine - 1] || 0) * clubKeep(game));
-    rep.tournaments.push({ game, name, place: mine, n: field.length, prize: won, winner: order[0], week: w, dd: 6, world: mine === 1 && isWorldTitle(game, t), qual: quals[order[mine - 1]] || null, quals: order.filter(id => isMine(id) && quals[id]).map(id => ({ id, place: order.indexOf(id) + 1, ...quals[id] })) });
+    rep.tournaments.push({ game, name, place: mine, n: field.length, prize: won, winner: order[0], week: w, dd: 6, world: mine === 1 && isWorldTitle(game, t), qual: quals[order[mine - 1]] || null, quals: order.filter(id => isMine(id) && quals[id]).map(id => ({ id, place: order.indexOf(id) + 1, ...quals[id] })),
+      others: order.map((id, i) => [id, i + 1]).filter(([id], i) => isMine(id) && i !== mine - 1) });
     if (mine === 1) mail(`🏆 ${name} remporté !`, `${user().name} remporte le <b>${name} ${S.season}</b> (${GAMES[game].name}) et empoche ${money(won)}.`, "trophy", game);
   }
 }
