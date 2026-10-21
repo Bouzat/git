@@ -357,3 +357,18 @@ details.fold[open] > summary { margin-bottom: 6px; }
 @keyframes fwshow { 0% { opacity: 0; } 5% { opacity: 1; } 70% { opacity: 1; } 100% { opacity: 0; } }
 @keyframes fwburst { 0% { transform: rotate(var(--a)) translateX(0) scale(1.4); } 100% { transform: rotate(var(--a)) translateX(110px) scale(.3); } }
 @media (prefers-reduced-motion: reduce) { .wc-rays, .fw, .wc-cup, .wc-big { animation: none; } .fw { display: none; } }
+/* salle des trophées */
+.tr-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.tr-stat { background: var(--panel); border: 1px solid var(--line, #ffffff14); border-radius: 12px; padding: 12px; text-align: center; }
+.tr-stat b { display: block; font-size: 24px; } .tr-stat span { font-size: 12px; color: var(--muted, #9aa3b2); }
+.tr-stat.gold b { color: #ffd166; }
+.shelf { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; padding: 10px 4px 16px; border-bottom: 6px solid #6b4a2a; background: linear-gradient(180deg, transparent 70%, #6b4a2a22); border-radius: 0 0 6px 6px; }
+.trophy { text-align: center; padding: 12px 8px; border-radius: 12px; background: var(--panel2); border: 1px solid #ffffff14; transition: transform .2s; }
+.trophy:hover { transform: translateY(-4px); }
+.tr-ic { font-size: 42px; line-height: 1.1; } .tr-name { font-weight: 800; font-size: 13px; margin: 6px 0 4px; } .tr-meta { font-size: 12px; } .tr-team { font-size: 11px; color: var(--muted, #9aa3b2); margin-top: 2px; } .tr-lbl { font-size: 11px; margin-top: 6px; color: var(--muted, #9aa3b2); }
+.trophy.world { background: linear-gradient(160deg, #3a2a00, #1a1405); border-color: #ffd166; box-shadow: 0 0 22px #ffd16644; }
+.trophy.world .tr-ic { font-size: 56px; filter: drop-shadow(0 0 12px #ffd166); } .trophy.world .tr-lbl { color: #ffd166; font-weight: 700; }
+.trophy.s { border-color: #ffd16677; } .trophy.league { border-color: #06d6a077; } .trophy.a { border-color: #c0c0c077; }
+.world-shelf { border-color: #ffd16666; background: radial-gradient(circle at 50% 0, #ffd16618, transparent 70%), var(--panel); }
+.medals { display: flex; flex-direction: column; gap: 6px; } .medal { font-size: 14px; }
+.empty-shelf { text-align: center; padding: 26px; }

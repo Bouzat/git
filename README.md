@@ -216,3 +216,12 @@ js/ui.js        interface
 **Qualifications visibles** : après chaque étape qualificative (qualifications, demi-finales et grande finale FNCS, qualifications EWC), le résultat indique clairement ✅ Qualifié pour l'étape suivante ou ❌ Éliminé avec le top requis ; pour chaque équipe quand vous en alignez plusieurs. Après une grande finale FNCS, il affiche votre place provisoire dans la course au Global Championship par rapport au quota de votre région. Le statut apparaît dans le jour de match, le direct, le bilan de la semaine et la colonne Résultat des Tournois.
 
 **Titre mondial** : remporter le championnat du monde d'un jeu déclenche une grande animation plein écran. Ça vaut pour le plus grand tournoi S-tier du jeu (Worlds, The International, FNCS Global Championship, VALORANT Champions, RLCS World Championship…), ainsi que les Majors CS2 et les Tactician's Crown TFT. L'animation montre des rayons dorés, des feux d'artifice, « CHAMPIONS DU MONDE », l'équipe, ses joueurs et le cashprize.
+
+**Salle des trophées** : nouvel onglet du menu Club. On y trouve :
+- vos chiffres clés : trophées, titres mondiaux, titres de ligue, tournois gagnés, podiums et gains en tournoi ;
+- une vitrine dorée « Champions du monde » ;
+- une étagère avec tous vos trophées, classés par prestige ;
+- les médailles (2e et 3e places en S-Tier et A-Tier) ;
+- l'héritage du club, avec les titres remportés avant votre arrivée.
+
+Les trophées peuvent être filtrés par jeu.

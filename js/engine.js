@@ -2472,11 +2472,12 @@ function playTournament(game, t) {
   champ.fame = clamp(champ.fame + (prize >= 1e6 ? 4 : prize >= 1e5 ? 2 : 0.5), 0, 100);
   fanChange(order[0], 1, stake * 4, isMine(order[0]) ? `🏆 ${name} remporté` : null);
   champ.titles.push(`${name} ${S.season}`); awardPlayers(order[0], game, `${name} ${S.season}`);
-  S.titles.push({ season: S.season, game, tier: 0, name, club: clubLabel(order[0], game), clubId: champ.id });
+  S.titles.push({ season: S.season, game, tier: 0, name, club: clubLabel(order[0], game), clubId: champ.id, tt: tourTier(t), world: isWorldTitle(game, t), prize });
   if (RANKED_GAMES.includes(game)) rankTournament(game, order, prize, name);
   if (name.startsWith("EWC")) ewcPoints(order.map(id => S.clubs[id] && S.clubs[id].parent === S.userId && !S.clubs[id].academyOf ? S.userId : id), game);
   const mine = order.findIndex(isMine) + 1;
-  (S.tourResults || (S.tourResults = [])).push({ season: S.season, week: w, game, name, prize, n: field.length, top: order.slice(0, 4), mine: mine || null, qual: mine ? quals[order[mine - 1]] || null : null });
+  (S.tourResults || (S.tourResults = [])).push({ season: S.season, week: w, game, name, prize, n: field.length, top: order.slice(0, 4), mine: mine || null, tt: tourTier(t),
+    won: mine ? Math.round(prize * (PLACE_SHARE[mine - 1] || 0) * clubKeep(game)) : 0, mineId: mine ? order[mine - 1] : null, qual: mine ? quals[order[mine - 1]] || null : null });
   if (mine) {
     const won = Math.round(prize * (PLACE_SHARE[mine - 1] || 0) * clubKeep(game));
     rep.tournaments.push({ game, name, place: mine, n: field.length, prize: won, winner: order[0], week: w, dd: 6, world: mine === 1 && isWorldTitle(game, t), qual: quals[order[mine - 1]] || null, quals: order.filter(id => isMine(id) && quals[id]).map(id => ({ id, place: order.indexOf(id) + 1, ...quals[id] })) });

@@ -194,7 +194,7 @@ function render() {
   document.documentElement.style.setProperty("--club", u.color);
   const unread = S.inbox.filter(m => !m.read).length;
   const navs = [["dash", "🏠 Tableau de bord"], ["roster", "👥 Effectifs"], ["market", "💱 Mercato"], ["calendar", "🗓️ Calendrier"], ["comp", "🏆 Compétitions"], ["tours", "📅 Tournois"],
-    ["finance", "💰 Finances"], ["sponsors", "🤝 Sponsors"], ["staff", "🧑‍🏫 Staff"], ["facilities", "🏗️ Infrastructures"], ["inbox", "✉️ Messagerie"], ["world", "🌍 Clubs & palmarès"]];
+    ["finance", "💰 Finances"], ["sponsors", "🤝 Sponsors"], ["staff", "🧑‍🏫 Staff"], ["facilities", "🏗️ Infrastructures"], ["inbox", "✉️ Messagerie"], ["trophies", "🏆 Salle des trophées"], ["world", "🌍 Clubs & palmarès"]];
   const pending = S.over ? [] : weekEvents().filter(e => !e.done);
   $app.innerHTML = `<div class="game">
     <aside class="side">
@@ -217,13 +217,13 @@ function render() {
         ${S.over ? `<button class="danger" data-act="quit">Partie terminée — Menu</button>` : `<div class="go-bar"><button class="go-skip" data-act="skip" title="Joue cette semaine puis passe les semaines sans match jusqu'au prochain">⏭<span>Aller au prochain match</span></button>
           <button class="primary go-main" data-act="next"><b>▶ Continuer</b><small>${pendingOffers().length ? `📨 ${pendingOffers().length} offre(s) à traiter` : pending.length ? `🎮 ${pending.length} match(s) à jouer cette semaine` : "Passer à la semaine suivante"}</small></button></div>`}
       </div>
-      ${({ dash: viewDash, roster: viewRoster, market: viewMarket, calendar: viewCalendar, comp: viewComp, tours: viewTours, finance: viewFinance, sponsors: viewSponsors, staff: viewStaff, facilities: viewFacilities, inbox: viewInbox, world: viewWorld })[UI.view]()}
+      ${({ dash: viewDash, roster: viewRoster, market: viewMarket, calendar: viewCalendar, comp: viewComp, tours: viewTours, finance: viewFinance, sponsors: viewSponsors, staff: viewStaff, facilities: viewFacilities, inbox: viewInbox, trophies: viewTrophies, world: viewWorld })[UI.view]()}
     </main></div>`;
   applyTableSorts($app, UI.view);
 }
 
 // menu : les écrans regroupés par usage
-const NAV_GROUPS = [["Jouer", ["dash", "calendar", "comp", "tours"]], ["Équipes", ["roster", "market", "staff"]], ["Club", ["finance", "sponsors", "facilities"]], ["Infos", ["inbox", "world"]]];
+const NAV_GROUPS = [["Jouer", ["dash", "calendar", "comp", "tours"]], ["Équipes", ["roster", "market", "staff"]], ["Club", ["finance", "sponsors", "facilities", "trophies"]], ["Infos", ["inbox", "world"]]];
 // période de la saison (barre du haut)
 function seasonPhase() {
   const w = S.week, md = matchday(w);
@@ -1212,6 +1212,45 @@ ACTIONS["mail-game"] = v => { UI.inbox.game = v; UI.mailOpen = null; render(); }
 ACTIONS["mail-go"] = v => { if (v === "market" && UI.inbox && UI.inbox.game) UI.market.game = UI.inbox.game; if (v === "comp") { const m = S.inbox.find(x => x.id === UI.mailOpen); if (m && m.game) ACTIONS["comp-game"](m.game); } UI.view = v; render(); };
 ACTIONS["mail-unread"] = v => { const m = S.inbox.find(x => x.id === v); if (m) m.read = false; render(); };
 ACTIONS["mail-del"] = v => { S.inbox = S.inbox.filter(x => x.id !== v); UI.mailOpen = null; scheduleSave(); render(); };
+
+// ---------- salle des trophées ----------
+// le trophée : titres mondiaux en or, puis S-tier, ligues, autres tournois ; les finales perdues des grands tournois en médailles
+function trophyKind(t) {
+  if (t.game === "ewc") return { k: 0, ic: "🌍", cls: "world", lbl: "EWC Club Champion" };
+  const tour = !t.tier && GAMES[t.game] && allTournaments(t.game).find(x => x[0] === t.name);
+  const world = t.world ?? (tour ? isWorldTitle(t.game, tour) : /Worlds|World (Championship|Finals|Cup)|Global (Championship|Finals?)|The International|Champions$|Tactician's Crown|Major/.test(t.name));
+  if (world) return { k: 0, ic: "🏆", cls: "world", lbl: "Champion du monde" };
+  if (t.tier) return { k: 2, ic: "🥇", cls: "league", lbl: t.tier === 1 ? "Champion de ligue" : `Ligue · ${GAMES[t.game] ? tierLabel(t.game, t.tier) : "tier " + t.tier}` };
+  const tt = t.tt || (tour ? tourTier(tour) : "B");
+  return tt === "S" ? { k: 1, ic: "🏆", cls: "s", lbl: "Tournoi S-Tier" } : tt === "A" ? { k: 3, ic: "🏅", cls: "a", lbl: "Tournoi A-Tier" } : { k: 4, ic: "🎖️", cls: "b", lbl: `Tournoi ${tt}-Tier` };
+}
+function viewTrophies() {
+  const u = user(), f = UI.trophyGame || "all";
+  const mineT = S.titles.filter(t => t.clubId && isMine(t.clubId) && (f === "all" || t.game === f));
+  const won = mineT.filter(t => !t.real), legacy = mineT.filter(t => t.real);
+  const medals = (S.tourResults || []).filter(r => (r.mine === 2 || r.mine === 3) && (f === "all" || r.game === f) && ["S", "A"].includes(r.tt || (allTournaments(r.game).find(x => x[0] === r.name) ? tourTier(allTournaments(r.game).find(x => x[0] === r.name)) : "C")));
+  const all = won.map(t => ({ t, kd: trophyKind(t) }));
+  const worlds = all.filter(x => x.kd.k === 0);
+  const games = [...new Set(S.titles.filter(t => t.clubId && isMine(t.clubId)).map(t => t.game).concat((S.tourResults || []).filter(r => r.mine && r.mine <= 3).map(r => r.game)))];
+  const tabs = [["all", "Tous"]].concat(games.map(g => [g, GAMES[g] ? GAMES[g].icon + " " + GAMES[g].short : "🌍 EWC"]))
+    .map(([k, l]) => `<button class="tab small ${f === k ? "active" : ""}" data-act="trophy-game" data-v="${k}">${l}</button>`).join("");
+  const earned = (S.tourResults || []).filter(r => f === "all" || r.game === f).reduce((a, r) => a + (r.won || 0), 0);
+  const team = t => t.club && t.club !== u.name ? `<div class="tr-team">${esc(t.club)}</div>` : "";
+  const gameChip = g => GAMES[g] ? gchip(g) : "<span class='chip'>🌍 EWC</span>";
+  const card = ({ t, kd }) => `<div class="trophy ${kd.cls}"><div class="tr-ic">${kd.ic}</div><div class="tr-name">${esc(t.name)}</div><div class="tr-meta">${gameChip(t.game)} <b>${t.season}</b></div>${team(t)}<div class="tr-lbl">${kd.lbl}${t.prize ? ` · ${money(t.prize)}` : ""}</div></div>`;
+  const shelf = (title, list) => list.length ? `<div class="card"><h3>${title} <small class="muted">(${list.length})</small></h3><div class="shelf">${list.map(card).join("")}</div></div>` : "";
+  const sorted = all.filter(x => x.kd.k > 0).sort((a, b) => a.kd.k - b.kd.k || b.t.season - a.t.season);
+  const stat = (n, l, cls = "") => `<div class="tr-stat ${cls}"><b>${n}</b><span>${l}</span></div>`;
+  return `<h2>🏆 Salle des trophées de ${esc(u.name)}</h2>
+    <div class="tr-stats">${stat(won.length, "trophées remportés", "gold")}${stat(worlds.length, "titres mondiaux", "gold")}${stat(all.filter(x => x.kd.k === 2).length, "titres de ligue")}${stat(all.filter(x => x.kd.k === 1 || x.kd.k >= 3).length, "tournois gagnés")}${stat(medals.length, "podiums (S/A)")}${stat(money(earned), "gains en tournoi")}</div>
+    ${games.length > 1 ? `<div class="tabs">${tabs}</div>` : ""}
+    ${worlds.length ? `<div class="card world-shelf"><h3>🌍 Champions du monde</h3><div class="shelf">${worlds.sort((a, b) => b.t.season - a.t.season).map(card).join("")}</div></div>` : ""}
+    ${shelf("🏆 Vitrine", sorted)}
+    ${!won.length ? `<div class="card empty-shelf"><div style="font-size:54px">🗄️</div><p><b>La vitrine est encore vide.</b></p><p class="muted">Chaque ligue, tournoi ou titre mondial remporté sous votre direction viendra s'exposer ici. Les finales perdues des grands tournois sont rangées dans les médailles.</p></div>` : ""}
+    ${medals.length ? `<div class="card"><h3>🥈 Médailles <small class="muted">(podiums en S-Tier et A-Tier)</small></h3><div class="medals">${medals.slice().reverse().map(r => `<div class="medal">${r.mine === 2 ? "🥈" : "🥉"} <b>${esc(r.name)}</b> ${gameChip(r.game)} <small class="muted">${r.season}${r.won ? " · " + money(r.won) : ""}</small></div>`).join("")}</div></div>` : ""}
+    ${legacy.length ? `<div class="card"><h3>📜 Héritage du club <small class="muted">(titres remportés avant votre arrivée)</small></h3><div class="medals">${legacy.slice().sort((a, b) => b.season - a.season).map(t => `<div class="medal">${trophyKind(t).ic} <b>${esc(t.name)}</b> ${gameChip(t.game)} <small class="muted">${t.season}${t.club && t.club !== u.name ? " · " + esc(t.club) : ""}</small></div>`).join("")}</div></div>` : ""}`;
+}
+ACTIONS["trophy-game"] = v => { UI.trophyGame = v; render(); };
 
 // ---------- monde ----------
 function viewWorld() {
