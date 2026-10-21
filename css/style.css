@@ -277,3 +277,7 @@ th.sorted-asc::after { content: " ▲"; color: var(--accent2); } th.sorted-desc:
 .mt-g { font-size: 14px; padding: 3px 0; }
 @media (max-width: 600px) { .mt-title { font-size: 34px; } }
 @media (prefers-reduced-motion: reduce) { .mt-title span { animation: none; } }
+/* ---------- liste des transferts ---------- */
+.tl-offer { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; padding: 4px 0; border-bottom: 1px dashed var(--line); font-size: 13px; }
+.tl-offer:last-child { border-bottom: 0; }
+.tl-int { font-size: 12px; font-weight: 700; } .tl-int.i0 { color: var(--bad); } .tl-int.i1 { color: #ffd166; } .tl-int.i2 { color: var(--accent2); } .tl-int.i3 { color: var(--ok); }

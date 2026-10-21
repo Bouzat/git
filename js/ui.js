@@ -327,7 +327,7 @@ function viewRoster() {
       <button class="small" data-act="talk" data-v="${p.id}" title="Parler au joueur">💬</button>
       <button class="small" data-act="contract" data-v="${p.id}">Contrat</button>
       ${academyOf(p.game) ? `<button class="small" data-act="to-academy" data-v="${p.id}" title="Envoyer le joueur dans l'académie (même contrat)">↓ Académie</button>` : ""}
-      <button class="small" data-act="sell" data-v="${p.id}">Vendre</button>
+      ${sellBtn(p)}
       <button class="small danger" data-act="release" data-v="${p.id}">Libérer</button></td></tr>`).join("");
   if (unitGame(UI.rosterGame)) return `<h2>Effectifs</h2><div class="tabs">${tabs}</div>${unitRoster(UI.rosterGame)}${open}`;
   return `<h2>Effectifs</h2><div class="tabs">${tabs}</div>
@@ -355,7 +355,7 @@ function unitRoster(game) {
     const rows = ps.map(p => `<tr><td>${flag(p.nat)} <b class="link" data-act="player-info" data-v="${p.id}">${esc(p.handle)}</b> <small class="muted">${playRegion(p)}</small>${adaptFactor(p) < 1 ? ` <small class="warn" title="Adaptation à sa nouvelle région">✈️</small>` : ""}</td><td>${p.role}</td><td>${ageTxt(p)}</td><td>${R(p.rating)}</td><td>${potTxt(p)}</td><td>${noteChip(avgNote(p))}</td><td>${bar(p.form)}</td><td>${bar(p.morale)}</td>
       <td>${money(p.salary)}/sem</td><td class="${p.years <= 1 ? "warn" : ""}">${p.years} an(s)</td>
       <td style="white-space:nowrap"><button class="small" data-act="talk" data-v="${p.id}" title="Parler au joueur">💬</button> ${opts(p) ? `<select class="small-sel" data-change="unit-move" data-pid="${p.id}" aria-label="Changer d'équipe"><option value="">Changer d'équipe…</option>${opts(p)}</select>` : ""}
-        <button class="small" data-act="contract" data-v="${p.id}">Contrat</button><button class="small" data-act="sell" data-v="${p.id}">Vendre</button><button class="small danger" data-act="release" data-v="${p.id}">Libérer</button></td></tr>`).join("")
+        <button class="small" data-act="contract" data-v="${p.id}">Contrat</button>${sellBtn(p)}<button class="small danger" data-act="release" data-v="${p.id}">Libérer</button></td></tr>`).join("")
       + mates.map(p => `<tr class="mate"><td>${flag(p.nat)} ${esc(p.handle)}* </td><td>${p.role}</td><td>${ageTxt(p)}</td><td>${R(p.rating)}</td><td colspan="7" class="muted">Partenaire extérieur au club : il joue avec votre joueur, vous ne le payez pas.</td></tr>`).join("");
     return `<div class="card" style="margin-bottom:14px"><div class="toolbar"><div style="flex:1;min-width:0"><h3 style="margin:0">${g.icon} ${g.unit[0].toUpperCase() + g.unit.slice(1)} ${k + 1} · ${ZONE_NAMES[d.zone]} — Force ${R(Math.round(teamStrength(id, game).str))}</h3>
       <div style="margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">${tchip(d.tier, game)}<span class="muted">${esc(leagueName(L))}${pos ? ` · ${pos}e / ${L.teams.length}` : ""}</span></div></div></div>
@@ -456,8 +456,57 @@ function estPot(p) {
 }
 
 // ---------- mercato ----------
+function marketTabs() {
+  const n = allUserPlayers().filter(p => p.listed).length, offers = allUserPlayers().reduce((t, p) => t + ((p.listed && p.offers) || []).length, 0);
+  return `<div class="tabs"><button class="tab ${UI.market.tab !== "list" ? "active" : ""}" data-act="m-tab" data-v="search">🔎 Recherche de joueurs</button><button class="tab ${UI.market.tab === "list" ? "active" : ""}" data-act="m-tab" data-v="list">📋 Liste des transferts${n ? ` (${n})` : ""}${offers ? ` <span class="pill">${offers}</span>` : ""}</button></div>`;
+}
+ACTIONS["m-tab"] = v => { UI.market.tab = v; render(); };
+const sellBtn = p => p.listed ? `<button class="small" data-act="sell" data-v="${p.id}" title="Sur la liste des transferts">📋 En vente${(p.offers || []).length ? ` (${p.offers.length})` : ""}</button>` : `<button class="small" data-act="sell" data-v="${p.id}">Vendre</button>`;
+function viewTransferList() {
+  const u = user(), m = UI.market, now = rankNow();
+  const mine = allUserPlayers().filter(p => p.listed && (m.game === "all" || p.game === m.game));
+  const offerRows = p => (p.offers || []).map(o => `<div class="tl-offer"><span><b>${esc(S.clubs[o.club].name)}</b> propose <b class="ok">${money(o.fee)}</b>${o.final ? " <small class='warn'>(dernière offre)</small>" : ""} <small class="muted">· expire dans ${Math.max(0, o.until - now) + 1} sem.</small></span>
+      <span style="white-space:nowrap"><button class="small primary" data-act="tl-accept" data-v="${p.id}|${o.id}">Accepter</button><button class="small" data-act="tl-counter" data-v="${p.id}|${o.id}">Contre-proposition</button><button class="small danger" data-act="tl-refuse" data-v="${p.id}|${o.id}">Refuser</button></span></div>`).join("");
+  const mineRows = mine.map(p => { const lvl = transferInterest(p), st = mercatoStatus(p.game); return `<tr><td>${flag(p.nat)} <b class="link" data-act="player-info" data-v="${p.id}">${esc(p.handle)}</b></td><td>${gchip(p.game)}</td><td>${ageTxt(p)}</td><td>${R(p.rating)}</td><td>${money(playerValue(p))}</td><td><b>${money(p.askPrice || playerValue(p))}</b></td>
+      <td data-sort="${now - (p.listedAt ?? now)}">${now - (p.listedAt ?? now)} sem.</td><td data-sort="${lvl}"><span class="tl-int i${lvl}">${INTEREST_LABEL[lvl]}</span>${st.open ? "" : `<br><small class="bad">🔴 mercato fermé</small>`}</td>
+      <td style="min-width:320px">${offerRows(p) || `<span class="muted">${st.open ? "Aucune offre pour l'instant" : "Pas d'offre tant que le mercato est fermé"}</span>`}</td>
+      <td style="white-space:nowrap"><button class="small" data-act="sell" data-v="${p.id}">Modifier le prix</button><button class="small" data-act="tl-unlist" data-v="${p.id}">Retirer</button></td></tr>`; }).join("");
+  const others = Object.values(S.players).filter(p => p.listed && p.club && !isMine(p.club) && !(S.clubs[p.club] && S.clubs[p.club].parent === u.id) && (m.game === "all" || p.game === m.game))
+    .sort((a, b) => b.rating - a.rating).slice(0, 200);
+  const otherRows = others.map(p => { const c = S.clubs[p.club], keen = interestCheck(p), shut = windowCheck(p); return `<tr><td>${flag(p.nat)} <b class="link" data-act="player-info" data-v="${p.id}">${esc(p.handle)}</b></td><td>${gchip(p.game)}</td><td>${p.role}</td><td>${ageTxt(p)}</td><td>${R(p.rating)}</td><td>${potTxt(p)}</td><td>${esc(c.name)} <small class="muted">${tshort(p.game, c.divisions[p.game].tier)}</small></td><td>${money(playerValue(p))}</td><td><b>${money(p.askPrice)}</b></td>
+      <td>${!u.divisions[p.game] ? `<span class="muted">Pas de section</span>` : shut ? `<button class="small" disabled title="${esc(shut)}">🔴 Mercato fermé</button>` : keen ? `<button class="small primary" data-act="offer" data-v="${p.id}">Faire une offre</button>` : `<button class="small" disabled title="Votre club n'est pas assez connu">🔒 Hors de portée</button>`}</td></tr>`; }).join("");
+  const gameOpts = `<option value="all">Tous les jeux</option>` + Object.entries(GAMES).map(([k, g]) => `<option value="${k}" ${m.game === k ? "selected" : ""}>${g.icon} ${g.name}</option>`).join("");
+  return `<h2>Mercato</h2>${marketTabs()}
+    <div class="toolbar"><select data-change="m-game" aria-label="Jeu">${gameOpts}</select></div>
+    ${mercatoBanner(m.game)}
+    <h3>Mes joueurs à vendre</h3>
+    <p class="muted" style="margin-top:-6px;font-size:13px">Mettre un joueur en vente ne garantit pas qu'il partira : les clubs ne font une offre que si le joueur les renforce, s'ils ont le budget et si le prix demandé est raisonnable. Les offres n'arrivent que pendant le mercato du jeu. Pour mettre un joueur en vente : bouton « Vendre » dans l'onglet Effectifs.</p>
+    <div class="card table-wrap"><table><tr><th>Joueur</th><th>Jeu</th><th>Âge</th><th>Note</th><th>Valeur</th><th>Prix demandé</th><th>En vente depuis</th><th>Intérêt</th><th>Offres reçues</th><th></th></tr>${mineRows || `<tr><td colspan="10" class="muted">Aucun joueur de votre club n'est sur la liste des transferts.</td></tr>`}</table></div>
+    <h3 style="margin-top:20px">Mis en vente par les autres clubs</h3>
+    <p class="muted" style="margin-top:-6px;font-size:13px">Ces clubs veulent se séparer de ces joueurs : ils acceptent une offre au prix affiché, souvent moins cher qu'un joueur qu'ils veulent garder.</p>
+    <div class="card table-wrap"><table><tr><th>Joueur</th><th>Jeu</th><th>Rôle</th><th>Âge</th><th>Note</th><th>Potentiel</th><th>Club</th><th>Valeur</th><th>Prix</th><th></th></tr>${otherRows || `<tr><td colspan="10" class="muted">Aucun joueur en vente pour l'instant${m.game !== "all" ? " dans ce jeu" : ""}.</td></tr>`}</table></div>`;
+}
+function sellModal(pid) {
+  const p = S.players[pid], val = playerValue(p), price = p.askPrice || val, st = mercatoStatus(p.game);
+  modal(`<h2>${p.listed ? "Prix de vente" : "Mettre en vente"} : ${flag(p.nat)} ${esc(p.handle)}</h2>
+    <p>${GAMES[p.game].name} · ${p.role} · ${ageTxt(p)} ans · ${R(p.rating)} · valeur estimée <b>${money(val)}</b></p>
+    <div class="form-row"><label for="f-ask">Prix demandé (€)</label><input id="f-ask" type="number" step="500" min="0" value="${price}" data-input="sell-preview" data-pid="${pid}"></div>
+    <div id="sell-preview" class="card" style="padding:10px 14px"></div>
+    <p class="muted" style="font-size:12px">${esc(st.text)}<br>Le joueur part sur la liste des transferts : les clubs intéressés feront des offres (à accepter, refuser ou négocier), mais il est possible que personne ne se manifeste. Un joueur qui n'a pas demandé à partir peut mal le prendre.</p>
+    <div class="actions"><button data-act="close-modal">Annuler</button>${p.listed ? `<button data-act="tl-unlist" data-v="${pid}">Retirer de la liste</button>` : ""}<button class="primary" data-act="do-list" data-v="${pid}">${p.listed ? "Mettre à jour le prix" : "📋 Mettre sur la liste des transferts"}</button></div>`);
+  sellPreview(pid);
+}
+function sellPreview(pid) {
+  const p = S.players[pid], el = document.getElementById("sell-preview"), inp = document.getElementById("f-ask"); if (!el || !inp) return;
+  const keep = p.askPrice; p.askPrice = Math.max(0, +inp.value || 0);
+  const lvl = transferInterest(p), n = potentialBuyers(p).length, ratio = p.askPrice / Math.max(1, playerValue(p));
+  p.askPrice = keep;
+  el.innerHTML = `<b class="tl-int i${lvl}">${INTEREST_LABEL[lvl]}</b> · ${n} club(s) pourraient être intéressés à ce prix (${Math.round(ratio * 100)} % de sa valeur)${ratio > 1.6 ? "<br><span class='bad'>Prix bien trop élevé : aucun club ne fera d'offre.</span>" : ratio > 1.2 ? "<br><span class='warn'>Prix élevé : les offres seront rares.</span>" : ""}`;
+}
+document.addEventListener("input", e => { if (e.target.dataset && e.target.dataset.input === "sell-preview") sellPreview(e.target.dataset.pid); });
 function viewMarket() {
   const u = user(), m = UI.market;
+  if (m.tab === "list") return viewTransferList();
   let ps = Object.values(S.players).filter(p => p.club !== u.id && !(S.clubs[p.club] && S.clubs[p.club].parent === u.id));
   if (m.game !== "all") ps = ps.filter(p => p.game === m.game);
   if (m.status === "free") ps = ps.filter(p => !p.club);
@@ -504,7 +553,7 @@ function viewMarket() {
       : shut ? `<button class="small" disabled title="${esc(shut)}">🔴 Mercato fermé</button>`
       : `<button class="small" data-act="offer" data-v="${p.id}" ${keen ? "" : "disabled title='Votre club n&#39;est pas assez connu : en ${GAMES[p.game].short}, seuls les joueurs notés jusqu&#39;à ${interestMax(p.game)} acceptent de discuter (notoriété ${Math.round(u.fame)}/100)'"}>${keen ? (c.solo ? "Recruter" : "Offre") + " (~" + money(askingPrice(p)) + ")" : "🔒 Hors de portée"}</button>`;
     return `<tr><td>${flag(p.nat)} <b class="link" data-act="player-info" data-v="${p.id}">${esc(p.handle)}</b></td><td>${gchip(p.game)}</td><td>${p.role}</td><td>${ageTxt(p)}</td><td>${R(p.rating)}</td><td>${potTxt(p)}</td>
-      <td>${where}</td><td>${money(playerValue(p))}</td><td>${money(salaryDemand(p, u))}/sem</td><td class="${cost(p) > u.budget ? "bad" : ""}">${money(cost(p))}</td><td>${btn}</td></tr>`;
+      <td>${where}${p.listed ? ` <span class="chip warn" title="Son club veut le vendre : prix ${money(p.askPrice)}">📋 en vente</span>` : ""}</td><td>${money(playerValue(p))}</td><td>${money(salaryDemand(p, u))}/sem</td><td class="${cost(p) > u.budget ? "bad" : ""}">${money(cost(p))}</td><td>${btn}</td></tr>`;
   }).join("");
   const head = [["name", "Joueur"], ["game", "Jeu"], ["role", "Rôle"], ["age", "Âge"], ["rating", "Note"], ["pot", "Potentiel"], ["club", "Statut"], ["value", "Valeur"], ["salary", "Salaire demandé"], ["price", "Coût"]]
     .map(([k, l]) => `<th class="sortable" data-act="m-sort-col" data-v="${k}" title="Trier (cliquer à nouveau pour inverser)">${l}${m.sort === k ? (m.dir === 1 ? " ▼" : " ▲") : ""}</th>`).join("") + "<th></th>";
@@ -512,7 +561,7 @@ function viewMarket() {
   const natOpts = Object.keys(natCount).sort((a, b) => (COUNTRIES[a] || a).localeCompare(COUNTRIES[b] || b)).map(cc => [cc, `${flag(cc)} ${COUNTRIES[cc] || cc} (${natCount[cc]})`]);
   const ages = [0, 16, 18, 20, 22, 24, 26, 28, 30, 99];
   const active = Object.keys(MARKET_DEFAULT).some(k => !["page", "per", "sort", "dir"].includes(k) && m[k] !== MARKET_DEFAULT[k]);
-  return `<h2>Mercato</h2>
+  return `<h2>Mercato</h2>${marketTabs()}
     <div class="toolbar">
       <select id="m-game" data-change="m-game" aria-label="Jeu">${gameOpts}</select>
       <input id="m-q" data-change="m-q" placeholder="Rechercher joueur ou club…" value="${esc(m.q)}" aria-label="Recherche">
@@ -1018,8 +1067,30 @@ Object.assign(ACTIONS, {
   "auto-lineup": () => { autoStarters(S.userId, UI.rosterGame); render(); },
   "renew": v => openNego(startNegotiation(v, "renew")),
   "contract": v => contractModal(v),
-  "sell": v => { const p = S.players[v]; modal(`<h2>Vendre ${esc(p.handle)} ?</h2><p>Un club est prêt à payer environ <b>${money(playerValue(p) * 0.9)}</b>.</p><div class="actions"><button data-act="close-modal">Annuler</button><button class="primary" data-act="do-sell" data-v="${v}">Vendre</button></div>`); },
-  "do-sell": v => { const fee = sellPlayer(v); closeModal(); toast("Vendu pour " + money(fee)); render(); },
+  "sell": v => sellModal(v),
+  "do-list": v => {
+    const p = S.players[v], price = +document.getElementById("f-ask").value || 0, was = p.listed;
+    if (!was && !p.wantsOut && p.morale >= 35) p.morale = clamp(p.morale - 8, 0, 100);
+    listPlayer(v, price); closeModal();
+    if (!was) mail(`📋 ${p.handle} sur la liste des transferts`, `${p.handle} est mis en vente pour ${money(p.askPrice)} (valeur estimée ${money(playerValue(p))}). ${INTEREST_LABEL[transferInterest(p)]} pour l'instant.`, "transfer", p.game);
+    toast(was ? `Prix de ${p.handle} : ${money(p.askPrice)}` : `${p.handle} est sur la liste des transferts.`); save(); render();
+  },
+  "tl-unlist": v => { const p = S.players[v]; unlistPlayer(v); p.morale = clamp(p.morale + 3, 0, 100); closeModal(); toast(`${p.handle} est retiré de la liste des transferts.`); save(); render(); },
+  "tl-accept": v => { const [pid, oid] = v.split("|"); const r = acceptTransferOffer(pid, oid); toast(r); save(); render(); },
+  "tl-refuse": v => { const [pid, oid] = v.split("|"), o = findOffer(pid, oid); if (o) mail(`Offre refusée`, `Vous refusez l'offre de ${S.clubs[o.club].name} (${money(o.fee)}) pour ${S.players[pid].handle}.`, "transfer", S.players[pid].game); refuseTransferOffer(pid, oid); save(); render(); },
+  "tl-counter": v => {
+    const [pid, oid] = v.split("|"), p = S.players[pid], o = findOffer(pid, oid); if (!o) return toast("Offre expirée.");
+    modal(`<h2>Contre-proposition à ${esc(S.clubs[o.club].name)}</h2><p>Offre actuelle pour ${esc(p.handle)} : <b>${money(o.fee)}</b> · prix demandé ${money(p.askPrice)} · valeur ${money(playerValue(p))}</p>
+      <div class="form-row"><label for="f-counter">Votre prix (€)</label><input id="f-counter" type="number" step="500" value="${Math.max(o.fee + 500, p.askPrice || 0)}"></div>
+      <p class="muted" style="font-size:12px">Le club peut accepter, monter une dernière fois, ou se retirer si vous demandez trop.</p>
+      <div class="actions"><button data-act="close-modal">Annuler</button><button class="primary" data-act="tl-do-counter" data-v="${v}">Envoyer</button></div>`);
+  },
+  "tl-do-counter": v => {
+    const [pid, oid] = v.split("|"), r = counterTransferOffer(pid, oid, +document.getElementById("f-counter").value || 0);
+    closeModal(); mail(`Contre-proposition : ${S.players[pid].handle}`, r.msg, "transfer", S.players[pid].game);
+    if (r.status === "accept") { const t = acceptTransferOffer(pid, oid); toast(r.msg + " " + t); } else toast(r.msg);
+    save(); render();
+  },
   "release": v => { const p = S.players[v]; modal(`<h2>Libérer ${esc(p.handle)} ?</h2><p>Indemnité de rupture : <b>${money(Math.round(p.salary * 52 * p.years * 0.25))}</b>.</p><div class="actions"><button data-act="close-modal">Annuler</button><button class="danger" data-act="do-release" data-v="${v}">Libérer</button></div>`); },
   "do-release": v => { releasePlayer(v); closeModal(); render(); },
   "sign": v => {

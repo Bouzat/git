@@ -771,6 +771,7 @@ function askingPrice(p) {
   if (!p.club) return 0;
   const c = S.clubs[p.club];
   if (c.solo) return Math.round(playerValue(p) * 0.8 / 500) * 500; // prime versée au joueur indépendant
+  if (p.listed && p.askPrice) return p.askPrice;
   return Math.round(playerValue(p) * (p.starter ? 1.6 : 1.2) * (0.8 + c.fame / 250) / 500) * 500;
 }
 function signFreeAgent(pid, salary, years) {
@@ -832,7 +833,7 @@ function sellPlayer(pid, buyerId, offerFee) {
   const pool = buyers.length ? buyers : Object.values(S.clubs).filter(c => c.ai && !c.solo && c.divisions[p.game]).map(c => c.id);
   const buyer = S.clubs[buyerId && S.clubs[buyerId] && S.clubs[buyerId].divisions[p.game] ? buyerId : pick(pool)];
   const fee = offerFee || Math.round(playerValue(p) * rand(0.75, 1.1) / 500) * 500;
-  delete p.listed;
+  unlistPlayer(p.id);
   const game = p.game;
   removeFromClub(p);
   joinClub(p, buyer, salaryDemand(p, buyer), randi(1, 3));
@@ -876,6 +877,7 @@ function joinClub(p, club, salary, years) {
   else if (clubPlayers(club.id, p.game).filter(x => x.starter).length < GAMES[p.game].size) p.starter = true;
 }
 function removeFromClub(p, keepContract) {
+  if (p.listed) unlistPlayer(p.id);
   const d = divOf(p.club, p.game);
   if (d) d.players = d.players.filter(id => id !== p.id);
   p.club = null; p.starter = false;
@@ -1041,7 +1043,7 @@ function talkToPlayer(pid, kind) {
     if (p.starter) r = ["", "Il est déjà titulaire."];
     else { p.status = "Titulaire"; p.promiseBroken = 0; mood(10); r = ["ok", "« Merci, je ne vous décevrai pas. » Attention : il compte jouer, sinon son moral chutera."]; }
   } else if (kind === "list") {
-    p.listed = !p.listed;
+    if (p.listed) unlistPlayer(p.id); else listPlayer(p.id);
     if (!p.listed) { mood(4); r = ["ok", `${p.handle} est retiré de la liste des transferts.`]; }
     else if (p.wantsOut || (pers === "Mercenaire" && p.morale < 55) || p.morale < 35) { mood(5); r = ["ok", `${p.handle} est sur la liste des transferts. Il n'est pas mécontent de pouvoir partir.`]; }
     else { mood(-10); r = ["bad", `${p.handle} est sur la liste des transferts. Il est vexé qu'on ne compte plus sur lui.`]; }
@@ -1076,15 +1078,93 @@ function teamTalk(game, kind) {
   return { tone: "", msg };
 }
 // joueurs placés sur la liste des transferts : des clubs de l'IA font des offres
+// ---------- liste des transferts ----------
+// Mettre un joueur en vente ne garantit rien : les clubs font une offre seulement s'il leur apporte quelque chose,
+// s'ils en ont les moyens, si le prix demandé est raisonnable et si le mercato de son jeu est ouvert.
+function listPlayer(pid, price) {
+  const p = S.players[pid];
+  p.listed = true; p.askPrice = Math.max(0, Math.round((price ?? playerValue(p)) / 500) * 500); p.listedAt = p.listedAt || rankNow(); p.offers = p.offers || [];
+  return null;
+}
+function unlistPlayer(pid) { const p = S.players[pid]; delete p.listed; delete p.askPrice; delete p.listedAt; delete p.offers; delete p.noOfferMail; }
+// clubs de l'IA pour qui le joueur serait un renfort et qui peuvent payer environ ce prix
+function potentialBuyers(p, price = p.askPrice || playerValue(p)) {
+  return Object.values(S.clubs).filter(c => c.ai && !c.solo && !c.filler && c.id !== p.club && c.divisions[p.game] && c.budget > price * 0.7 && !(c.parent && isMine(c.parent)) && (() => {
+    const r = clubPlayers(c.id, p.game);
+    return r.length < GAMES[p.game].size || r.some(x => x.rating < p.rating - 1);
+  })());
+}
+// 0 (personne) à 3 (très demandé)
+function transferInterest(p) {
+  const ratio = (p.askPrice || playerValue(p)) / Math.max(1, playerValue(p)), n = potentialBuyers(p).length;
+  if (!n || ratio > 1.6) return 0;
+  const score = Math.min(n, 12) / 12 * 2 + (1.4 - ratio) * 2 + (p.age <= 22 ? 0.4 : p.age >= 28 ? -0.4 : 0);
+  return score >= 2.2 ? 3 : score >= 1.2 ? 2 : score > 0.3 ? 1 : 0;
+}
+const INTEREST_LABEL = ["Aucun club intéressé", "Intérêt faible", "Intérêt moyen", "Très demandé"];
 function offersForListed(report) {
+  const now = rankNow();
   for (const p of allUserPlayers().filter(x => x.listed)) {
-    if (Math.random() > 0.12 || !mercatoOpen(p.game)) continue;
-    const cands = Object.values(S.clubs).filter(c => c.ai && !c.solo && !c.filler && c.divisions[p.game] && c.budget > playerValue(p) * 0.6);
+    p.listedAt = p.listedAt ?? now; p.askPrice = p.askPrice || playerValue(p);
+    p.offers = (p.offers || []).filter(o => o.until >= now && S.clubs[o.club] && mercatoOpen(p.game));
+    if (!mercatoOpen(p.game)) continue;
+    const lvl = transferInterest(p);
+    if (!lvl || p.offers.length >= 3 || Math.random() > [0, 0.12, 0.28, 0.5][lvl] * (windowAt(p.game) ? 1.3 : 1)) {
+      if (!p.offers.length && now - p.listedAt >= 6 && !p.noOfferMail) { p.noOfferMail = true; mail(`📋 Aucune offre pour ${p.handle}`, `${p.handle} est sur la liste des transferts depuis ${now - p.listedAt} semaines sans la moindre offre (${INTEREST_LABEL[lvl].toLowerCase()}). Prix demandé : ${money(p.askPrice)} pour une valeur estimée à ${money(playerValue(p))}. Baissez le prix ou attendez une période de mercato plus animée.`, "transfer", p.game); }
+      continue;
+    }
+    const cands = potentialBuyers(p).filter(c => !p.offers.some(o => o.club === c.id));
     if (!cands.length) continue;
-    const buyer = pick(cands), fee = Math.round(playerValue(p) * rand(0.7, 1.05) / 500) * 500;
-    report.events.push({ title: `Offre pour ${p.handle}`, body: `<b>${buyer.name}</b> propose <b>${money(fee)}</b> pour ${flag(p.nat)} ${p.handle} (${GAMES[p.game].short}, note ${p.rating}), placé sur la liste des transferts.`,
-      choices: [{ label: "Accepter 💰", fx: () => { if (!S.players[p.id] || !isMine(p.club)) return "Le joueur n'est plus au club."; sellPlayer(p.id, buyer.id, fee); return `${p.handle} part à ${buyer.name} pour ${money(fee)}.`; } },
-                { label: "Refuser", fx: () => "Offre refusée." }] });
+    const buyer = pick(cands), ask = p.askPrice || playerValue(p), val = playerValue(p);
+    // un club offre en dessous du prix demandé, et garde une marge pour une contre-proposition
+    const max = Math.round(Math.min(buyer.budget * 0.8, Math.max(ask * rand(0.85, 1.05), val * rand(0.8, 1.1))) / 500) * 500;
+    const fee = Math.round(max * rand(0.78, 0.95) / 500) * 500;
+    if (fee < 500) continue;
+    const o = { id: "of" + Math.random().toString(36).slice(2, 8), club: buyer.id, fee, max, until: now + 2, at: now };
+    p.offers.push(o);
+    mail(`💼 Offre pour ${p.handle} : ${money(fee)}`, `<b>${buyer.name}</b> propose <b>${money(fee)}</b> pour ${flag(p.nat)} ${p.handle} (${GAMES[p.game].short}, note ${p.rating}). Prix demandé : ${money(ask)}. L'offre est valable 2 semaines : acceptez, refusez ou faites une contre-proposition dans Mercato → Liste des transferts.`, "transfer", p.game);
+  }
+}
+function findOffer(pid, oid) { const p = S.players[pid]; return p && (p.offers || []).find(o => o.id === oid); }
+function acceptTransferOffer(pid, oid) {
+  const p = S.players[pid], o = findOffer(pid, oid);
+  if (!o || !isMine(p.club)) return "Offre expirée.";
+  if (!mercatoOpen(p.game)) return "Le mercato est fermé.";
+  const fee = o.fee; unlistPlayer(pid); sellPlayer(pid, o.club, fee);
+  return `${p.handle} part à ${S.clubs[o.club].name} pour ${money(fee)}.`;
+}
+function refuseTransferOffer(pid, oid) { const p = S.players[pid]; p.offers = (p.offers || []).filter(o => o.id !== oid); }
+// contre-proposition : le club accepte jusqu'à son plafond, s'aligne une seule fois si on demande un peu plus, sinon se retire
+function counterTransferOffer(pid, oid, fee) {
+  const p = S.players[pid], o = findOffer(pid, oid);
+  if (!o) return { status: "gone", msg: "Offre expirée." };
+  const club = S.clubs[o.club].name;
+  if (fee <= o.fee) return { status: "same", msg: "Votre contre-proposition est inférieure ou égale à leur offre." };
+  if (fee <= o.max) { o.fee = fee; return { status: "accept", msg: `${club} accepte ${money(fee)}.` }; }
+  if (!o.final && fee <= o.max * 1.2) { o.fee = o.max; o.final = true; o.until = Math.max(o.until, rankNow() + 1); return { status: "raise", msg: `${club} ne va pas jusque-là, mais monte à ${money(o.max)}. C'est leur dernière offre.` }; }
+  refuseTransferOffer(pid, oid);
+  return { status: "walk", msg: `${club} juge votre demande excessive et retire son offre.` };
+}
+// les clubs de l'IA mettent aussi en vente des remplaçants ou des joueurs en trop (moins chers qu'un joueur non transférable)
+function aiTransferList() {
+  for (const c of Object.values(S.clubs)) {
+    if (!c.ai || c.solo || c.filler || Math.random() > 0.04) continue;
+    for (const g of Object.keys(c.divisions)) {
+      if (!mercatoOpen(g) || Math.random() > 0.5) continue;
+      const r = clubPlayers(c.id, g);
+      const cand = r.filter(p => !p.listed && (!p.starter || r.length > GAMES[g].size + 1)).sort((a, b) => a.rating - b.rating)[0];
+      if (cand) listPlayer(cand.id, playerValue(cand) * rand(0.75, 1.05));
+    }
+  }
+  // offres entre clubs de l'IA pour les joueurs en vente ; sans preneur, le club finit par le garder
+  for (const p of Object.values(S.players).filter(p => p.listed && p.club && !isMine(p.club))) {
+    if (rankNow() - (p.listedAt ?? rankNow()) > 16) { unlistPlayer(p.id); continue; }
+    if (!mercatoOpen(p.game) || Math.random() > 0.05) continue;
+    const buyer = pick(potentialBuyers(p)); if (!buyer) continue;
+    const seller = S.clubs[p.club], fee = p.askPrice;
+    unlistPlayer(p.id); removeFromClub(p); buyer.budget -= fee; seller.budget += fee;
+    joinClub(p, buyer, salaryDemand(p, buyer), randi(1, 3)); aiFillRoster(seller.id, p.game);
+    news(`${flag(p.nat)} ${p.handle} quitte ${seller.name} pour ${buyer.name} (${GAMES[p.game].short}, ${money(fee)}).`);
   }
 }
 
@@ -1828,6 +1908,7 @@ function advanceWeek() {
   }
   if (Math.random() < 0.1) { const ev = randomEvent(); if (ev) report.events.push(ev); }
   aiMarket();
+  aiTransferList();
   // un message de résultats par jeu (comme le compte rendu de match de Football Manager)
   const byGame = {};
   for (const r of report.matches) (byGame[r.game] = byGame[r.game] || []).push(`${r.stage || ""} : <b>${clubLabel(r.a, r.game)} ${r.sa}-${r.sb} ${clubLabel(r.b, r.game)}</b>${r.mvp ? " · MVP " + r.mvp : ""}`);
