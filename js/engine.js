@@ -1238,7 +1238,12 @@ function aiTransferList() {
 // tournois suivent ce classement, et les tiers sont refaits d'après lui à chaque fin de saison.
 const RANKED_GAMES = ["cs2"];
 const rankNow = () => S.season * 52 + S.week;
-function rankAdd(game, id, pts, t = rankNow()) { if (!S.clubs[id]) return; ((S.rankLog = S.rankLog || {})[game] = S.rankLog[game] || []).push([t, id, Math.round(pts)]); }
+function rankAdd(game, id, pts, t = rankNow(), why = "") {
+  if (!S.clubs[id]) return;
+  ((S.rankLog = S.rankLog || {})[game] = S.rankLog[game] || []).push([t, id, Math.round(pts)]);
+  // points gagnés ou perdus par le club du joueur cette semaine (récap après chaque match)
+  if (why && isMine(id) && S.rep && S.rep.season === S.season && S.rep.week === S.week) (S.rep.rank = S.rep.rank || []).push([game, Math.round(pts), why, id]);
+}
 function rankLeagueWin(game, id) { const d = divOf(id, game); if (d) rankAdd(game, id, [12, 5, 2][d.tier - 1]); }
 // points du classement de chaque équipe, recalculés une fois par semaine (assez précis pour les face-à-face)
 function rankPtsMap(game) {
@@ -1254,12 +1259,12 @@ function rankMatch(game, winner, loser, stake = 1) {
   const expected = 1 / (1 + Math.pow(10, (rb - ra) / 400));
   const k = 50 + 25 * Math.min(2, stake), delta = Math.round(k * (1 - expected));
   const d = divOf(winner, game), bonus = d ? [12, 5, 2][d.tier - 1] : 0;
-  rankAdd(game, winner, bonus + delta); rankAdd(game, loser, -delta);
+  rankAdd(game, winner, bonus + delta, undefined, `Victoire contre ${clubLabel(loser, game)}`); rankAdd(game, loser, -delta, undefined, `Défaite contre ${clubLabel(winner, game)}`);
   return { win: bonus + delta, loss: -delta };
 }
-function rankTournament(game, order, prize) {
+function rankTournament(game, order, prize, name = "Tournoi") {
   const base = clamp(60 + prize / 2500, 60, 1000);
-  order.forEach((id, i) => rankAdd(game, id, base * (i < 1 ? 1 : i < 2 ? 0.7 : i < 4 ? 0.5 : i < 8 ? 0.3 : i < 16 ? 0.15 : 0.07)));
+  order.forEach((id, i) => rankAdd(game, id, base * (i < 1 ? 1 : i < 2 ? 0.7 : i < 4 ? 0.5 : i < 8 ? 0.3 : i < 16 ? 0.15 : 0.07), undefined, `${name} : ${i === 0 ? "vainqueur" : i + 1 + "e place"}`));
 }
 function rankingOf(game) {
   const now = rankNow(), tot = {};
@@ -1894,11 +1899,11 @@ function weekEvents() {
 // lance un événement de la semaine et renvoie ce qui s'y est passé pour le club
 function playEvent(id) {
   const rep = weekReport(), u = user();
-  const b = { m: rep.matches.length, l: rep.lobbies.length, t: rep.tournaments.length, f: rep.fans.length, budget: u.budget, fans: u.fans };
+  const b = { m: rep.matches.length, l: rep.lobbies.length, t: rep.tournaments.length, f: rep.fans.length, r: (rep.rank || []).length, budget: u.budget, fans: u.fans };
   if (id.startsWith("L:")) { const L = S.leagues[id.slice(2)]; if (L) playLeagueDay(L); }
   else { const hit = weekTournaments().find(([game, t]) => tourKey(game, t[0]) === id); if (hit) playTournament(hit[0], hit[1]); }
   scheduleSave();
-  return { matches: rep.matches.slice(b.m), lobbies: rep.lobbies.slice(b.l), tournaments: rep.tournaments.slice(b.t), fans: rep.fans.slice(b.f), money: u.budget - b.budget, fanDelta: u.fans - b.fans };
+  return { matches: rep.matches.slice(b.m), lobbies: rep.lobbies.slice(b.l), tournaments: rep.tournaments.slice(b.t), fans: rep.fans.slice(b.f), rank: (rep.rank || []).slice(b.r), money: u.budget - b.budget, fanDelta: u.fans - b.fans };
 }
 // image du club (0-100) : les sponsors éthiques la font monter, les sponsors controversés la font chuter
 function imageTarget(u) {
@@ -2190,7 +2195,7 @@ function playTournament(game, t) {
   fanChange(order[0], 1, stake * 4, isMine(order[0]) ? `🏆 ${name} remporté` : null);
   champ.titles.push(`${name} ${S.season}`); awardPlayers(order[0], game, `${name} ${S.season}`);
   S.titles.push({ season: S.season, game, tier: 0, name, club: clubLabel(order[0], game), clubId: champ.id });
-  if (RANKED_GAMES.includes(game)) rankTournament(game, order, prize);
+  if (RANKED_GAMES.includes(game)) rankTournament(game, order, prize, name);
   if (name.startsWith("EWC")) ewcPoints(order.map(id => S.clubs[id] && S.clubs[id].parent === S.userId && !S.clubs[id].academyOf ? S.userId : id), game);
   const mine = order.findIndex(isMine) + 1;
   (S.tourResults || (S.tourResults = [])).push({ season: S.season, week: w, game, name, prize, n: field.length, top: order.slice(0, 4), mine: mine || null });

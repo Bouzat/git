@@ -698,7 +698,7 @@ function rankCard(game) {
   const me = list.findIndex(x => isMine(x.id));
   const tabs = [["W", "🌍 Monde"]].concat(Object.entries(RANK_REGIONS).map(([k, v]) => [k, v[0]])).map(([k, l]) => `<button class="tab small ${reg === k ? "active" : ""}" data-act="rank-reg" data-v="${k}">${l}</button>`).join("");
   const mine = user().divisions[game] ? (() => { const r = rankRegionOf(S.userId, game), w = rankPos(game, S.userId), rr = regionalRanking(game, r).findIndex(x => x.id === S.userId) + 1;
-    return `<p style="margin:0 0 8px">Votre équipe : <b>${w ? w + "e" : "non classée"}</b> au classement mondial · <b>${rr ? rr + "e" : "non classée"}</b> en ${RANK_REGIONS[r][0]}.</p>`; })() : "";
+    return `<p style="margin:0 0 8px">Votre équipe : <b>${w ? ord(w) : "non classée"}</b> au classement mondial · <b>${rr ? ord(rr) : "non classée"}</b> en ${RANK_REGIONS[r][0]}.</p>`; })() : "";
   const show = list.slice(0, 30).concat(me >= 30 ? [list[me]] : []);
   const rows = show.map(x => { const i = list.indexOf(x), mv = prev[x.id] ? prev[x.id] - (i + 1) : 0, d = divOf(x.id, game);
     const wr = world.indexOf(x) + 1;
@@ -844,7 +844,7 @@ function tourPickCard(games) {
   }
   if (!blocks.length) return "";
   const rk = games.filter(g => RANKED_GAMES.includes(g) && u.divisions[g]).map(g => { const reg = rankRegionOf(u.id, g), w = rankPos(g, u.id), r = regionalRanking(g, reg).findIndex(x => x.id === u.id) + 1;
-    return `${GAMES[g].icon} ${GAMES[g].short} : <b>${w ? w + "e" : "non classé"}</b> mondial · <b>${r ? r + "e" : "non classé"}</b> ${RANK_REGIONS[reg][0]}`; }).join(" — ");
+    return `${GAMES[g].icon} ${GAMES[g].short} : <b>${w ? ord(w) : "non classé"}</b> mondial · <b>${r ? ord(r) : "non classé"}</b> ${RANK_REGIONS[reg][0]}`; }).join(" — ");
   return `<div class="card" style="margin-bottom:16px"><h3>🎯 Choix des tournois</h3>
     <p class="muted" style="margin-top:-6px;font-size:13px">Une équipe ne peut jouer qu'un tournoi par semaine. Ces semaines-là, votre équipe est retenue dans plusieurs tournois : choisissez celui que vous jouez (par défaut, le plus important). Un grand tournoi rapporte plus d'argent et de points de classement, mais le plateau est plus relevé ; un plus petit tournoi offre de meilleures chances d'aller loin.${rk ? `<br>Vos classements : ${rk}.` : ""}</p>${blocks.join("")}</div>`;
 }
@@ -1629,7 +1629,7 @@ function resultsHtml(r) {
     const [comp, stage] = (m.stage || "").split(" — ");
     items.push({ k: (m.week || r.week || 0) * 10 + (m.dd ?? 5), html: `<div class="res-row ${won ? "w" : "l"}"><div class="res-date">${m.week ? dayLabel(season, m.week, m.dd ?? 5) : ""}</div>
       <div class="res-main"><div class="res-title"><span class="res-badge">${won ? "V" : "D"}</span> <b>${my}-${their}</b> contre <b>${displayName(opp, m.game)}</b>${me !== S.userId ? ` <small class="muted">(${displayName(me, m.game)})</small>` : ""}</div>
-      <div class="muted res-sub">${GAMES[m.game].icon} ${esc(comp || "")}${stage ? " · " + esc(stage) : ""} · BO${m.bestOf}${m.maps && m.maps.length ? " · " + m.maps.join(", ") : ""}${m.mvp ? " · MVP " + esc(m.mvp) : ""}</div>
+      <div class="muted res-sub">${GAMES[m.game].icon} ${esc(comp || "")}${stage ? " · " + esc(stage) : ""} · BO${m.bestOf}${m.maps && m.maps.length ? " · " + m.maps.join(", ") : ""}${m.mvp ? " · MVP " + esc(m.mvp) : ""}${m.rk ? (won ? ` · <b class="ok">classement +${m.rk.win} pts</b>` : ` · <b class="bad">classement ${m.rk.loss} pts</b>`) : ""}</div>
       ${(meA ? m.notesA : m.notesB) ? `<details class="res-notes"><summary>Notes des joueurs</summary>${notesLine(meA ? m.notesA : m.notesB)}</details>` : ""}</div></div>` });
   }
   for (const l of r.lobbies) {
@@ -1800,10 +1800,23 @@ ACTIONS["md-play"] = v => {
   const r = playEvent(v);
   playLive(r, () => showEventResult(r));
 };
+// points de classement gagnés ou perdus (CS2) : détail par match et par tournoi, total, places mondiale et régionale
+const ord = n => n === 1 ? "1er" : n + "e";
+function rankRecap(list) {
+  if (!list || !list.length) return "";
+  const byGame = {};
+  for (const [g, pts, why, id] of list) (byGame[g] = byGame[g] || []).push([pts, why, id]);
+  return Object.entries(byGame).map(([g, l]) => {
+    const tot = l.reduce((a, x) => a + x[0], 0), id = l[0][2], w = rankPos(g, id), reg = rankRegionOf(id, g), rr = regionalRanking(g, reg).findIndex(x => x.id === id) + 1;
+    return `<div class="recap" style="margin-top:12px"><div class="recap-h"><span>🌍 Classement ${GAMES[g].short}</span><b class="${tot >= 0 ? "ok" : "bad"}">${tot >= 0 ? "+" : ""}${tot} pts</b></div>
+      ${l.map(([pts, why]) => `<div class="recap-r"><span>${esc(why)}</span><b class="${pts >= 0 ? "ok" : "bad"}">${pts >= 0 ? "+" : ""}${pts}</b></div>`).join("")}
+      <div class="recap-r"><span class="muted">Place actuelle</span><b>${w ? ord(w) + " mondial" : "non classé"} · ${rr ? ord(rr) + " " + RANK_REGIONS[reg][0] : ""}</b></div></div>`;
+  }).join("");
+}
 function showEventResult(r) {
   const res = resultsHtml(r) || "<p class='muted'>Votre équipe n'a pas joué.</p>";
   render();
-  matchDayModal(`<div class="card md-result">${res}${fanRecap(r.fans, "📈 Fans après ce match")}${r.money ? `<p>Gains : <b class="${r.money >= 0 ? "ok" : "bad"}">${r.money >= 0 ? "+" : ""}${money(r.money)}</b></p>` : ""}</div>`);
+  matchDayModal(`<div class="card md-result">${res}${rankRecap(r.rank)}${fanRecap(r.fans, "📈 Fans après ce match")}${r.money ? `<p>Gains : <b class="${r.money >= 0 ? "ok" : "bad"}">${r.money >= 0 ? "+" : ""}${money(r.money)}</b></p>` : ""}</div>`);
   celebrate([r]);
 };
 // offres reçues pour vos joueurs en vente : comme dans Football Manager, il faut y répondre avant de continuer
@@ -1852,6 +1865,7 @@ function showSummary(reps) {
   const se = last.seasonEnd;
   const title = se ? "🏁 Fin de la saison " + last.season : reps.length > 1 ? `${weekLabel(reps[0].season, reps[0].week)} → ${weekLabel(last.season, last.week, true)}` : `Semaine du ${weekLabel(last.season, last.week, true)}`;
   modal(`<h2>${title}</h2>${reps.length > 1 ? `<p class="muted" style="margin-top:-6px">${reps.length} semaines jouées.</p>` : ""}${res}
+    ${rankRecap(reps.flatMap(r => r.rank || []))}
     <div class="grid g2" style="margin-top:12px">${fanRecap(reps.flatMap(r => r.fans))}${moneyRecap(merge("income"), merge("expenses"))}</div>
     ${(() => { const pr = reps.flatMap(r => r.progress || []); return pr.length ? `<div class="recap" style="margin-top:12px"><div class="recap-h"><span>📈 Progression des joueurs</span></div>${pr.map(([id, h, g, r]) => `<div class="recap-r"><span>${GAMES[g].icon} ${esc(h)}</span><b class="ok">${r} (+1)</b></div>`).join("")}</div>` : ""; })()}
     ${missing.length ? `<p class="bad">⚠️ Effectif incomplet en ${missing.map(g => GAMES[g].short).join(", ")} : vos équipes jouent en sous-nombre !</p>` : ""}
