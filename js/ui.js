@@ -205,7 +205,7 @@ function render() {
         <div class="stat link-row" data-act="explain-budget" title="Comprendre le budget"><b class="${u.budget < 0 ? "bad" : ""}">${money(u.budget)}</b><span>Budget ⓘ</span></div>
         <div class="stat link-row" data-act="explain-fame" title="À quoi sert la notoriété ?"><b>${Math.round(u.fame)}<small class="muted">/100</small></b><span>Notoriété ⓘ</span></div>
         <div class="stat"><b>${u.fans.toLocaleString("fr-FR")}</b><span>Fans</span></div>
-        <div class="stat"><b class="${S.board.confidence < 30 ? "bad" : S.board.confidence < 55 ? "warn" : "ok"}">${Math.round(S.board.confidence)}%</b><span>Confiance du conseil</span></div>
+        <div class="stat link-row" data-act="explain-board" title="Comment marche la confiance du conseil ?"><b class="${S.board.confidence < 30 ? "bad" : S.board.confidence < 55 ? "warn" : "ok"}">${Math.round(S.board.confidence)}%</b><span>Confiance du conseil ⓘ</span></div>
         ${mercatoChip()}
         <div class="spacer"></div>
         ${S.over ? `<button class="danger" data-act="quit">Partie terminée — Menu</button>` : `<button data-act="skip" title="Joue cette semaine puis passe les semaines sans match jusqu'au prochain">⏭ Prochain match</button>
@@ -267,7 +267,7 @@ function viewDash() {
   const obj = objectiveText();
   return `<div class="grid g2">
     <div class="card"><h3>🎯 Objectif du conseil</h3><p style="font-size:16px"><b>${obj[0].toUpperCase() + obj.slice(1)}</b></p>
-      <div>Confiance ${bar(S.board.confidence)} ${Math.round(S.board.confidence)}%</div>
+      <div>Confiance ${bar(S.board.confidence)} ${Math.round(S.board.confidence)}% <span class="link" data-act="explain-board" title="Comment marche la confiance du conseil ?">ⓘ comment ça marche</span></div>
       <p class="muted" style="font-size:12px">À la fin de chaque saison, les 2 premiers d'un tier montent et les 2 derniers descendent. Si la confiance tombe à 0 % ou si les dettes deviennent trop lourdes, vous êtes licencié.</p></div>
     <div class="card"><h3>📅 Résultats de la semaine passée</h3>${lastHtml}</div>
   </div>
@@ -1428,6 +1428,33 @@ function budgetModal() {
     </ul>
     <div class="actions"><button data-act="close-modal">Fermer</button><button data-act="alloc">⚖️ Répartir le budget mercato</button><button class="primary" data-act="explain-go-fin">Voir les finances</button></div>`);
 }
+// confiance du conseil : ce qui la fait bouger et comment la remonter
+function boardModal() {
+  const c = S.board.confidence, o = S.board.objective, u = user();
+  const lvl = c >= 75 ? "Le conseil vous fait pleinement confiance." : c >= 55 ? "Le conseil est serein." : c >= 30 ? "Le conseil commence à douter." : "Le conseil est à bout : votre poste est menacé.";
+  modal(`<h2>🏛️ Confiance du conseil : ${Math.round(c)}%</h2><p class="muted" style="margin-top:-6px">${lvl} Le conseil d'administration juge votre travail de CEO. <b>À 0 %, vous êtes licencié</b> et la partie s'arrête.</p>
+    ${bar(c)}
+    <h3 style="margin-top:14px">L'objectif de la saison</h3>
+    <p style="margin:0">${o ? `<b>${objectiveText(o)}</b>` : "Aucun objectif fixé pour l'instant."}<br><span class="muted" style="font-size:13px">Fixé par le conseil au début de chaque saison d'après votre meilleure division et votre notoriété.</span></p>
+    <h3 style="margin-top:14px">Ce qui la fait bouger</h3>
+    <ul class="explain">
+      <li><b>Fin de saison</b> : objectif atteint <b class="ok">+20</b> ; manqué mais qualifié pour des playoffs <b class="bad">−8</b> ; manqué sans playoffs <b class="bad">−20</b>.</li>
+      <li><b>Titres</b> : <b class="ok">+8</b> par championnat remporté dans la saison.</li>
+      <li><b>Budget dans le rouge</b> : <b class="bad">−2 chaque semaine</b> tant que le budget est négatif${u.budget < 0 ? ` <b class="bad">(c'est le cas en ce moment : ${money(u.budget)})</b>` : ""}.</li>
+      <li><b>Conférences de presse</b> : certaines réponses plaisent au conseil (fermeté, objectifs réalistes), d'autres l'inquiètent (promettre le titre, défendre un joueur fautif).</li>
+      <li><b>Investisseurs</b> : faire entrer un investisseur au capital coûte <b class="bad">−10</b> ; refuser l'offre rapporte <b class="ok">+3</b>.</li>
+    </ul>
+    <h3>Comment l'augmenter</h3>
+    <ul class="explain">
+      <li>Viser d'abord l'<b>objectif de la saison</b> : c'est ce qui pèse le plus.</li>
+      <li>Gagner des <b>titres</b> : chaque championnat remporté s'ajoute à l'objectif.</li>
+      <li>Garder un <b>budget positif</b> : répartissez le budget mercato (onglet Finances) et évitez les salaires que vous ne pouvez pas payer.</li>
+      <li>Soigner les <b>conférences de presse</b> : rester mesuré et sanctionner les écarts.</li>
+      <li>Refuser les investisseurs quand vous n'avez pas besoin d'argent.</li>
+    </ul>
+    <div class="actions"><button data-act="close-modal">Fermer</button><button class="primary" data-act="explain-go-fin">Voir les finances</button></div>`);
+}
+ACTIONS["explain-board"] = () => boardModal();
 ACTIONS["explain-fame"] = () => fameModal();
 ACTIONS["explain-budget"] = () => budgetModal();
 ACTIONS["explain-go-fin"] = () => { closeModal(); UI.view = "finance"; render(); };
