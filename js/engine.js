@@ -1736,9 +1736,21 @@ function playLobby(L, entrants, nGames, stake = 0.6, stage = "") {
   const nOpen = Math.max(0, g.lobby - S0.length);
   const res = {}; entrants.forEach(id => res[id] = { places: [], kills: 0, pts: 0, top1: 0, kpg: [] });
   const gumbel = () => -6 * Math.log(-Math.log(Math.random()));
+  // une partie de battle royale est très aléatoire : le niveau donne des probabilités, pas des places fixes.
+  // Forme du jour de chaque équipe, mort prématurée (mauvais atterrissage, troisième équipe, zone) plus fréquente
+  // pour les équipes faibles mais possible pour les meilleures, et parfois une partie « folle » pour n'importe qui.
+  const avgStr = S0.length ? S0.reduce((a, e) => a + e.str, 0) / S0.length : (lo + hi) / 2;
+  const day = {}; S0.forEach(e => day[e.id] = gauss() * 3);
+  const roll = str => {
+    // l'écart de niveau compte, mais une partie se joue aussi sur l'atterrissage, la zone et les combats
+    let v = avgStr + (str - avgStr) * 0.55 + gumbel();
+    if (Math.random() < clamp(0.2 - (str - avgStr) * 0.007, 0.07, 0.35)) v -= rand(18, 45);
+    else if (Math.random() < 0.07) v += rand(6, 16);
+    return v;
+  };
   for (let k = 0; k < nGames; k++) {
-    const field = S0.map(e => ({ id: e.id, perf: e.str + gumbel() }))
-      .concat(Array.from({ length: nOpen }, () => ({ id: null, perf: rand(lo - 6, hi - 2) + gumbel() })));
+    const field = S0.map(e => ({ id: e.id, perf: roll(e.str + day[e.id]) }))
+      .concat(Array.from({ length: nOpen }, () => ({ id: null, perf: roll(rand(lo - 6, hi - 2)) })));
     field.sort((x, y) => y.perf - x.perf);
     const N = field.length, avg = field.reduce((s, f) => s + f.perf, 0) / N;
     field.forEach((f, i) => {
