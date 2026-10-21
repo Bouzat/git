@@ -3,8 +3,14 @@
 // =====================================================================
 
 // filtres du mercato (valeurs par défaut, aussi utilisées par « Réinitialiser »)
+// montant saisi librement : « 50000 », « 50 000 € », « 50k », « 1,5M », « 2 M€ »
+function parseMoney(txt) {
+  const t = String(txt || "").toLowerCase().replace(/€|\s|\u202f|\u00a0/g, "").replace(",", ".");
+  const m = t.match(/^(\d+(?:\.\d+)?)(k|m|md)?$/); if (!m) return 0;
+  return Math.round(+m[1] * ({ k: 1e3, m: 1e6, md: 1e9 }[m[2]] || 1));
+}
 const MARKET_DEFAULT = { game: "all", q: "", status: "all", min: 0, sort: "rating", dir: 1, region: "all", page: 0, per: 50,
-  nat: "all", role: "all", ageMin: 0, ageMax: 99, potMin: 0, tier: "all", maxPrice: 0, budgetOnly: false, keenOnly: false };
+  nat: "all", role: "all", ageMin: 0, ageMax: 99, potMin: 0, tier: "all", minPrice: 0, maxPrice: 0, budgetOnly: false, keenOnly: false };
 const UI = { screen: "home", view: "dash", rosterGame: null, compGame: null, compTier: null,
   market: { ...MARKET_DEFAULT }, pickClub: null, mailOpen: null };
 const $app = document.getElementById("app");
@@ -540,6 +546,7 @@ function viewMarket() {
   if (m.potMin) ps = ps.filter(p => p.pot >= m.potMin);
   if (m.tier !== "all") ps = ps.filter(p => { const c = S.clubs[p.club]; return m.tier === "0" ? !c : c && !c.solo && c.divisions[p.game] && c.divisions[p.game].tier === +m.tier; });
   const cost = p => askingPrice(p) + (p.club ? 0 : salaryDemand(p, u) * 4);   // indemnité ou prime de signature
+  if (m.minPrice) ps = ps.filter(p => cost(p) >= m.minPrice);
   if (m.maxPrice) ps = ps.filter(p => cost(p) <= m.maxPrice);
   if (m.budgetOnly) ps = ps.filter(p => cost(p) <= spendRoom(p.game) && salaryDemand(p, u) <= wageRoom(p.game));
   if (m.keenOnly) ps = ps.filter(p => !p.club || interestCheck(p));
@@ -593,7 +600,7 @@ function viewMarket() {
       <select id="m-agemax" data-change="m-agemax" aria-label="Âge maximum">${opt(m.ageMax, ages.slice(1).map(a => [a, a < 99 ? "Âge ≤ " + a : "Âge max."]))}</select>
       <select id="m-potmin" data-change="m-potmin" aria-label="Potentiel minimum">${opt(m.potMin, [0, 70, 75, 80, 85, 90].map(v => [v, v ? "Potentiel ≥ " + v : "Tout potentiel"]))}</select>
       <select id="m-tier" data-change="m-tier" aria-label="Niveau du club actuel">${opt(m.tier, [["all", "Tous niveaux de club"], ["0", "Sans club"], ["1", "Club " + TIER_LABEL[0]], ["2", "Club " + TIER_LABEL[1]], ["3", "Club " + TIER_LABEL[2]]])}</select>
-      <select id="m-maxprice" data-change="m-maxprice" aria-label="Coût maximum">${opt(m.maxPrice, [0, 50000, 100000, 250000, 500000, 1e6, 2.5e6, 5e6].map(v => [v, v ? "Coût ≤ " + money(v) : "Tout coût"]))}</select>
+      <span class="price-range" title="Coût de l'opération : indemnité de transfert, ou prime de signature pour un agent libre. Exemples : 50000, 50k, 1,5M">Coût <input id="m-minprice" data-change="m-minprice" inputmode="decimal" placeholder="min (ex. 20k)" value="${m.minPrice ? money(m.minPrice) : ""}" aria-label="Coût minimum"> à <input id="m-maxprice" data-change="m-maxprice" inputmode="decimal" placeholder="max (ex. 1,5M)" value="${m.maxPrice ? money(m.maxPrice) : ""}" aria-label="Coût maximum"></span>
       <label class="muted"><input type="checkbox" data-change="m-budget" ${m.budgetOnly ? "checked" : ""}> Dans mon budget</label>
       <label class="muted"><input type="checkbox" data-change="m-keen" ${m.keenOnly ? "checked" : ""}> Intéressés par mon club</label>
       ${active ? `<button class="small" data-act="m-reset">✕ Réinitialiser les filtres</button>` : ""}
@@ -1766,7 +1773,8 @@ document.addEventListener("change", e => {
   if (k === "m-agemax") m.ageMax = +e.target.value;
   if (k === "m-potmin") m.potMin = +e.target.value;
   if (k === "m-tier") m.tier = e.target.value;
-  if (k === "m-maxprice") m.maxPrice = +e.target.value;
+  if (k === "m-maxprice") m.maxPrice = parseMoney(e.target.value);
+  if (k === "m-minprice") m.minPrice = parseMoney(e.target.value);
   if (k === "m-budget") m.budgetOnly = e.target.checked;
   if (k === "m-keen") m.keenOnly = e.target.checked;
   if (k === "m-status") m.status = e.target.value;
