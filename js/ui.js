@@ -504,7 +504,7 @@ function viewTransferList() {
       <td style="white-space:nowrap"><button class="small" data-act="sell" data-v="${p.id}">Modifier le prix</button><button class="small" data-act="tl-unlist" data-v="${p.id}">Retirer</button></td></tr>`; }).join("");
   const others = Object.values(S.players).filter(p => p.listed && p.club && !isMine(p.club) && !(S.clubs[p.club] && S.clubs[p.club].parent === u.id) && (m.game === "all" || p.game === m.game))
     .sort((a, b) => b.rating - a.rating).slice(0, 200);
-  const otherRows = others.map(p => { const c = S.clubs[p.club], keen = interestCheck(p), shut = windowCheck(p); return `<tr><td>${flag(p.nat)} <b class="link" data-act="player-info" data-v="${p.id}">${esc(p.handle)}</b></td><td>${gchip(p.game)}</td><td>${p.role}</td><td>${ageTxt(p)}</td><td>${R(p.rating)}</td><td>${potTxt(p)}</td><td>${esc(c.name)} <small class="muted">${tshort(p.game, c.divisions[p.game].tier)}</small></td><td>${money(playerValue(p))}</td><td><b>${money(p.askPrice)}</b></td>
+  const otherRows = others.map(p => { const c = S.clubs[p.club], keen = interestCheck(p), shut = windowCheck(p); return `<tr><td>${flag(p.nat)} <b class="link" data-act="player-info" data-v="${p.id}">${esc(p.handle)}</b></td><td>${gchip(p.game)}</td><td>${p.role}</td><td>${ageTxt(p)}</td><td>${R(p.rating)}</td><td>${potTxt(p)}</td><td>${teamLink(c, p.game)} <small class="muted">${tshort(p.game, c.divisions[p.game].tier)}</small></td><td>${money(playerValue(p))}</td><td><b>${money(p.askPrice)}</b></td>
       <td>${!u.divisions[p.game] ? `<span class="muted">Pas de section</span>` : shut ? `<button class="small" disabled title="${esc(shut)}">🔴 Mercato fermé</button>` : keen ? `<button class="small primary" data-act="offer" data-v="${p.id}">Faire une offre</button>` : `<button class="small" disabled title="Votre club n'est pas assez connu">🔒 Hors de portée</button>`}</td></tr>`; }).join("");
   const gameOpts = `<option value="all">Tous les jeux</option>` + Object.entries(GAMES).map(([k, g]) => `<option value="${k}" ${m.game === k ? "selected" : ""}>${g.icon} ${g.name}</option>`).join("");
   return `<h2>Mercato</h2>${marketTabs()}
@@ -579,7 +579,7 @@ function viewMarket() {
   const gameOpts = `<option value="all">Tous les jeux</option>` + Object.entries(GAMES).map(([k, g]) => `<option value="${k}" ${m.game === k ? "selected" : ""}>${g.icon} ${g.name}</option>`).join("");
   const rows = ps.map(p => {
     const c = p.club ? S.clubs[p.club] : null, d = c && c.divisions[p.game];
-    const where = !c ? "<span class='ok'>Agent libre</span>" : c.solo ? `<span class="warn">Indépendant</span> <small class="muted">${tshort(p.game, d.tier)}</small>` : `${esc(c.name)} <small class="muted">${tshort(p.game, d.tier)}</small>`;
+    const where = !c ? "<span class='ok'>Agent libre</span>" : c.solo ? `<span class="warn">Indépendant</span> <small class="muted">${tshort(p.game, d.tier)}</small>` : `${teamLink(c, p.game)} <small class="muted">${tshort(p.game, d.tier)}</small>`;
     const keen = interestCheck(p), shut = !c || c.solo ? null : windowCheck(p);
     const btn = !c ? `<button class="small primary" data-act="sign" data-v="${p.id}">Signer</button>`
       : shut ? `<button class="small" disabled title="${esc(shut)}">🔴 Mercato fermé</button>`
@@ -1055,9 +1055,34 @@ function viewWorld() {
     <div class="card table-wrap"><h3>Classement mondial des clubs (notoriété)</h3><table><tr><th>#</th><th>Club</th><th></th><th>Notoriété</th><th>Fans</th><th>Divisions</th><th>Titres</th></tr>${rows}</table></div>
     <div class="card table-wrap"><h3>Palmarès</h3>${hist ? `<table><tr><th>Saison</th><th>Jeu</th><th>Compétition</th><th>Champion</th></tr>${hist}</table>` : "<p class='muted'>Aucun titre décerné pour l'instant.</p>"}</div></div>`;
 }
+// lien vers l'effectif d'un club dans un jeu (mercato, fiche joueur…)
+const teamLink = (c, game, txt) => `<span class="link" data-act="team-info" data-v="${c.id}|${game}" title="Voir l'effectif">${txt || esc(c.name)}</span>`;
+// effectif d'un club dans un jeu, avec de quoi faire une offre à chaque joueur
+function teamInfo(id, game) {
+  const c = S.clubs[id], d = c && c.divisions[game]; if (!d) return;
+  const u = user(), mine = isMine(id), owner = c.parent && S.clubs[c.parent] ? S.clubs[c.parent] : c;
+  const ps = clubPlayers(id, game).concat(unitMates(id, game)).sort((a, b) => b.starter - a.starter || b.rating - a.rating);
+  const btn = p => {
+    if (mine || isMine(p.club)) return "";
+    if (!p.club) return `<button class="small primary" data-act="sign" data-v="${p.id}">Signer</button>`;
+    const shut = S.clubs[p.club].solo ? null : windowCheck(p);
+    if (shut) return `<button class="small" disabled title="${esc(shut)}">🔴 Mercato fermé</button>`;
+    return interestCheck(p) ? `<button class="small" data-act="offer" data-v="${p.id}">Offre (~${money(askingPrice(p))})</button>` : `<button class="small" disabled title="Votre club n'est pas assez connu pour ce joueur">🔒 Hors de portée</button>`;
+  };
+  const coach = mine ? coachOf(game) : aiCoachOf(id, game);
+  const st = teamStrength(id, game);
+  modal(`<div style="display:flex;gap:12px;align-items:center">${badge(owner)}<div><h2 style="margin:0">${esc(d.label || c.name)} ${flag(c.country)}</h2>
+    <div class="muted" style="font-size:13px">${GAMES[game].icon} ${GAMES[game].name} · ${esc(divName(id, game))} · ${tierLabel(game, d.tier)} · force ${R(Math.round(st.str))}${coach ? ` · 🧑‍🏫 ${esc(coach.name)}` : ""}</div></div></div>
+    ${!mine && GAMES[game] && u.divisions[game] ? `<p class="afford" style="margin-top:12px">💰 Vous pouvez dépenser jusqu'à <b>${money(spendRoom(game))}</b> en ${GAMES[game].short}. ${mercatoStatus(game).text}</p>` : ""}
+    <div class="table-wrap" style="margin-top:10px"><table><tr><th></th><th>Joueur</th><th>Rôle</th><th>Âge</th><th>Note</th><th>Potentiel</th><th>Valeur</th><th>Contrat</th><th></th></tr>
+    ${ps.map(p => `<tr><td>${p.starter ? "⭐" : ""}</td><td>${flag(p.nat)} <b class="link" data-act="player-info" data-v="${p.id}">${esc(p.handle)}</b>${p.listed ? ` <span class="chip warn" title="Prix demandé : ${money(p.askPrice)}">📋 en vente</span>` : ""}${p.club !== id ? ` <small class="muted">(partenaire extérieur)</small>` : ""}</td>
+      <td class="muted">${p.role}</td><td>${ageTxt(p)}</td><td>${R(p.rating)}</td><td>${potTxt(p)}</td><td>${money(playerValue(p))}</td><td>${p.club ? p.years + " an(s)" : "—"}</td><td>${btn(p)}</td></tr>`).join("") || `<tr><td colspan="9" class="muted">Aucun joueur.</td></tr>`}</table></div>
+    <div class="actions"><button data-act="close-modal">Fermer</button><button data-act="club-info" data-v="${owner.id}">🏢 Tout le club</button></div>`);
+}
+ACTIONS["team-info"] = v => { const [id, g] = v.split("|"); teamInfo(id, g); };
 function clubInfo(id) {
   const c = S.clubs[id];
-  const divs = Object.entries(c.divisions).map(([g, d]) => `<h3 style="margin-top:12px">${GAMES[g].icon} ${GAMES[g].name}${d.label ? ` — ${esc(d.label)}` : ""} · ${esc(divName(id, g))} · ${GAMES[g].open ? "statut " : ""}${tierLabel(g, d.tier)} ${d.generated ? "<span class='warn' title='Le club a bien une équipe dans ce jeu, mais son effectif réel est introuvable'>* joueurs inventés</span>" : d.verified ? "<span class='ok' title='Effectif recoupé dans des sources 2026'>✓ 2026</span>" : c.filler ? "" : "<span class='muted' title='Effectif établi de mémoire, peut être dépassé'>≈ non vérifié</span>"}</h3><div class="table-wrap"><table>${clubPlayers(id, g).sort((a, b) => b.starter - a.starter || b.rating - a.rating).map(p => `<tr><td>${p.starter ? "⭐" : ""}</td><td>${flag(p.nat)} ${esc(p.handle)}</td><td class="muted">${p.role}</td><td>${ageTxt(p)} ans</td><td>${R(p.rating)}</td><td>${potTxt(p)}</td></tr>`).join("")}</table></div>`).join("");
+  const divs = Object.entries(c.divisions).map(([g, d]) => `<h3 style="margin-top:12px">${teamLink(c, g, GAMES[g].icon + " " + GAMES[g].name)}${d.label ? ` — ${esc(d.label)}` : ""} · ${esc(divName(id, g))} · ${GAMES[g].open ? "statut " : ""}${tierLabel(g, d.tier)} ${d.generated ? "<span class='warn' title='Le club a bien une équipe dans ce jeu, mais son effectif réel est introuvable'>* joueurs inventés</span>" : d.verified ? "<span class='ok' title='Effectif recoupé dans des sources 2026'>✓ 2026</span>" : c.filler ? "" : "<span class='muted' title='Effectif établi de mémoire, peut être dépassé'>≈ non vérifié</span>"}</h3><div class="table-wrap"><table>${clubPlayers(id, g).sort((a, b) => b.starter - a.starter || b.rating - a.rating).map(p => `<tr><td>${p.starter ? "⭐" : ""}</td><td>${flag(p.nat)} ${esc(p.handle)}</td><td class="muted">${p.role}</td><td>${ageTxt(p)} ans</td><td>${R(p.rating)}</td><td>${potTxt(p)}</td></tr>`).join("")}</table></div>`).join("");
   const coachLine = Object.keys(c.divisions).map(g => [g, id === S.userId ? coachOf(g) : aiCoachOf(id, g)]).filter(([, co]) => co).map(([g, co]) => `${GAMES[g].icon} ${esc(co.name)} (${coachLevel(co).toFixed(1)})`).join(" · ");
   modal(`<div style="display:flex;gap:12px;align-items:center">${badge(c)}<div><h2 style="margin:0">${esc(c.name)} ${flag(c.country)}</h2>${coachLine ? `<div class="muted" style="font-size:12px">🧑‍🏫 Entraîneurs : ${coachLine}</div>` : ""}<span class="muted">${c.solo ? "Pro indépendant · " : ""}Notoriété ${Math.round(c.fame)}/100 · ${c.fans.toLocaleString("fr-FR")} fans${c.titles.length ? " · 🏆 " + c.titles.map(esc).join(", ") : ""}</span></div></div>${divs}<div class="actions"><button data-act="close-modal">Fermer</button></div>`);
 }
@@ -1836,7 +1861,7 @@ function playerInfo(pid) {
     <div class="card" style="margin-top:12px"><h3>Évolution au club${p.joinedAt ? ` (depuis ${weekLabel(Math.floor(p.joinedAt / 100), p.joinedAt % 100, true)})` : ""}</h3>
       ${lineChart([{ pts: h.map(x => x[1]), color: "#ffd166", label: "note" }, { pts: h.map(x => 60 + (x[2] - 50) / 5), color: "var(--ok)", label: "forme (échelle réduite)" }], h.length ? [weekLabel(Math.floor(h[0][0] / 100), h[0][0] % 100), weekLabel(Math.floor(h[h.length - 1][0] / 100), h[h.length - 1][0] % 100)] : [])}</div>`;
   }
-  modal(`<h2>${flag(p.nat)} ${esc(p.handle)}${p.late ? ` <span class="chip">révélation tardive</span>` : ""}</h2><p class="muted" style="margin-top:-6px">${GAMES[p.game].icon} ${GAMES[p.game].name} · ${p.role} · ${ageTxt(p)} ans · ${COUNTRIES[p.nat] || p.nat || "nationalité inconnue"} · ${c ? (c.solo ? "pro indépendant" : `<span class="link" data-act="club-info" data-v="${c.parent || c.id}">${esc(c.name)}</span>`) : "agent libre"}</p>
+  modal(`<h2>${flag(p.nat)} ${esc(p.handle)}${p.late ? ` <span class="chip">révélation tardive</span>` : ""}</h2><p class="muted" style="margin-top:-6px">${GAMES[p.game].icon} ${GAMES[p.game].name} · ${p.role} · ${ageTxt(p)} ans · ${COUNTRIES[p.nat] || p.nat || "nationalité inconnue"} · ${c ? (c.solo ? "pro indépendant" : teamLink(c, p.game)) : "agent libre"}</p>
     <div class="offer"><div><span class="muted">Note</span><b>${R(p.rating)}</b></div><div><span class="muted">Potentiel estimé</span><b>${potTxt(p)}</b></div><div><span class="muted">Moyenne en match (saison)</span><b>${avg ? avg.toFixed(2) : "—"}</b></div><div><span class="muted">Valeur</span><b>${money(playerValue(p))}</b></div></div>
     <p>Région de jeu : ${REGIONS[playRegion(p)]}${c ? ` · contrat ${p.years} an(s)` : ""}${mine ? ` · ${money(p.salary)}/sem${p.clause ? ` · clause ${money(p.clause)}` : ""}` : ""}</p>
     <div class="grid g2"><div><h3>Palmarès</h3>${won.length ? `<p style="margin:0">${won.map(t => `🏆 ${esc(t)}`).join("<br>")}</p>` : "<p class='muted'>Aucun titre pour l'instant.</p>"}</div>
