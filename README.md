@@ -156,7 +156,9 @@ Le **calendrier Rocket League** est la vraie saison RLCS 2026 (`tools/sources/ro
 
 **Données réelles CS2** (fichiers de l'utilisateur d'après Liquipedia, dans `tools/sources/cs2/`, importés par `python3 tools/build_cs2.py`) : 158 équipes d'Europe, de la CEI, des Amériques, d'Asie, d'Océanie et d'Afrique avec leurs effectifs 2026 et la nationalité de chaque joueur, 900 vrais joueurs sans équipe comme agents libres, et le calendrier 2026 complet (22 tournois S-Tier dont les Majors de Cologne et de Singapour, l'EWC, les IEM, BLAST, PGL et ESL Pro League ; tournois A et B-Tier comme CCT, NODWIN Clutch, ESL Challenger League par région ; tournois C-Tier dotés d'au moins 5 000 $). Le tier 1 compte les 16 meilleures équipes du classement, le tier 2 les 32 suivantes. Les équipes féminines ne sont pas importées (pas de circuit féminin CS2 dans le jeu).
 
-Chaque tournoi CS2 rapporte des points selon sa dotation et la place, chaque victoire en ligue un peu. Les points comptent pleinement 3 mois, à 75 % jusqu'à 6 mois et à 40 % jusqu'à un an. Les invitations aux grands tournois suivent ce classement, et en fin de saison les tiers sont refaits d'après lui (top 12 en tier 1).
+Chaque tournoi CS2 rapporte des points selon sa dotation et la place, chaque victoire en ligue un peu. Les points comptent pleinement 3 mois, à 75 % jusqu'à 6 mois et à 40 % jusqu'à un an. Les invitations aux grands tournois suivent ce classement, et en fin de saison les tiers sont refaits d'après lui. Comme la VRS de Valve, il y a un classement mondial et un classement par région (Europe, Amériques, Asie-Pacifique), visibles dans Compétitions.
+
+**Un tournoi par semaine.** Comme en vrai, une équipe ne peut pas jouer deux tournois en même temps (tous les jeux). Quand elle est retenue dans plusieurs tournois la même semaine (une invitation et un open, deux invitations…), l'onglet Tournois propose « 🎯 Choix des tournois » : dotation, accès, niveau du plateau et points de classement selon la place (1er, 2e, top 4, top 8) de chaque option. Par défaut, le club joue le plus important.
 
 ## Contrats et négociation (façon FM)
 

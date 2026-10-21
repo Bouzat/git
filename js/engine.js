@@ -1253,6 +1253,10 @@ function rankingOf(game) {
   return Object.entries(tot).map(([id, pts]) => ({ id, pts: Math.round(pts) })).sort((a, b) => b.pts - a.pts);
 }
 const rankPos = (game, id) => rankingOf(game).findIndex(x => x.id === id) + 1;
+// classement régional (comme la VRS de Valve : Europe, Amériques, Asie-Pacifique)
+const RANK_REGIONS = { EU: ["Europe", ["EU", "MENA"]], AM: ["Amériques", ["NA", "SA"]], AS: ["Asie-Pacifique", ["ASIA", "OCE"]] };
+const rankRegionOf = (id, game) => { const r = clubRegion(S.clubs[id], game); return Object.keys(RANK_REGIONS).find(k => RANK_REGIONS[k][1].includes(r)) || "EU"; };
+const regionalRanking = (game, reg) => rankingOf(game).filter(x => rankRegionOf(x.id, game) === reg);
 // classement de départ : d'après le niveau des équipes (comme si la saison précédente venait de finir)
 function seedRanking() {
   for (const game of RANKED_GAMES) {
@@ -1840,7 +1844,7 @@ const tourKey = (game, name) => "T:" + game + "|" + name;
 // plateau d'un tournoi de la semaine, tiré une seule fois : celui affiché avant le match est celui qui joue
 function weekField(game, t) {
   const rep = weekReport(), k = tourKey(game, t[0]);
-  if (!rep.fields[k]) rep.fields[k] = tournamentField(game, t[3], t[4], t[5], t[0]);
+  if (!rep.fields[k]) rep.fields[k] = tournamentField(game, t[3], t[4], t[5], t[0], t[1]);
   return rep.fields[k];
 }
 // événements du club du joueur cette semaine (à lancer un par un, ou tous d'un coup)
@@ -1893,7 +1897,7 @@ function advanceWeek() {
   for (const [game, t] of weekTournaments()) playTournament(game, t);
   if (w === EWC_LAST_WEEK) awardEwcClubChampionship(report);
   // un tournoi décliné : les joueurs du jeu se reposent
-  for (const [game, t] of weekTournaments()) if (declined(game, t[0]) && u.divisions[game]) gamePlayers(game).forEach(p => p.form = clamp(p.form + 6, 0, 100));
+  for (const [game, t] of weekTournaments()) if (declined(game, t[0], t[1]) && u.divisions[game]) gamePlayers(game).forEach(p => p.form = clamp(p.form + 6, 0, 100));
 
   // primes de victoire prévues dans les contrats
   for (const r of report.matches) if (isMine(r.winner)) book("bonuses", -clubPlayers(r.winner, r.game).filter(p => p.starter).reduce((t, p) => t + (p.winBonus || 0), 0), r.game, r.stage);
@@ -2072,11 +2076,11 @@ function tournamentPool(game, tiers, region) {
 }
 // plateau d'un tournoi (open : tous les clubs des tiers admis peuvent s'inscrire ; invitation : les mieux classés).
 // Les équipes du club du joueur qui ont décliné le tournoi n'y sont pas.
-function tournamentField(game, tiers, size, region, name) {
+function tournamentField(game, tiers, size, region, name, week, raw) {
   const g = GAMES[game];
   // jeux à classement mondial (CS2) : les invitations suivent les points du classement
   const rp = {}; if (RANKED_GAMES.includes(game)) rankingOf(game).forEach(x => rp[x.id] = x.pts);
-  const ranked = tournamentPool(game, tiers, region).filter(id => !(isMine(id) && name && declined(game, name)))
+  const ranked = tournamentPool(game, tiers, region).filter(id => raw || !(isMine(id) && name && declinedFor(id, game, name, week)))
     .map(id => ({ id, s: (rp[id] || 0) * 1000 + teamStrength(id, game).str + S.clubs[id].fame * 0.05 })).sort((a, b) => b.s - a.s).map(x => x.id);
   // open (tiers 2-3 ou 3) : inscriptions libres, plateau tiré au hasard ; sinon les mieux classés
   const pool = tiers.includes("3") && !tiers.includes("1") ? shuffle(ranked) : ranked;
@@ -2090,8 +2094,43 @@ function tournamentField(game, tiers, size, region, name) {
   }
   return field;
 }
-// le club du joueur a-t-il décliné ce tournoi cette saison ?
-const declined = (game, name) => S.tourChoice && S.tourChoice[game + "|" + name] === "out";
+// Une équipe ne joue qu'un tournoi par semaine dans un jeu, comme en vrai : quand elle est retenue dans plusieurs
+// (invitation à un grand tournoi et open la même semaine…), elle en choisit un ; par défaut le plus important.
+const pickKey = (game, week, id) => game + "|" + week + "|" + id;
+const tourWeek = (game, name) => { const t = allTournaments(game).find(x => x[0] === name); return t ? t[1] : -1; };
+const optedOut = (game, name) => !!(S.tourChoice && S.tourChoice[game + "|" + name] === "out");
+// tournois de la semaine auxquels l'équipe peut participer (inscrite à l'open ou invitée), hors ceux qu'elle a déclinés
+function tourCandidates(game, week, id) {
+  return allTournaments(game).filter(t => t[1] === week && !optedOut(game, t[0]) && tournamentPool(game, t[3], t[5]).includes(id)
+    && (!invitational(t[3]) || tournamentField(game, t[3], t[4], t[5], t[0], week, true).includes(id)));
+}
+// importance d'un tournoi : points de classement (dotation) et prestige des invitations
+const tourValue = t => t[2] + (t[3] === "1" ? 1e6 : invitational(t[3]) ? 2e5 : 0);
+function pickedTour(game, week, id) {
+  const c = tourCandidates(game, week, id);
+  if (c.length < 2) return c[0] ? c[0][0] : null;
+  const p = S.tourPick && S.tourPick[pickKey(game, week, id)];
+  if (p && c.some(t => t[0] === p)) return p;
+  return c.slice().sort((a, b) => tourValue(b) - tourValue(a))[0][0];
+}
+function declinedFor(id, game, name, week) {
+  if (optedOut(game, name)) return true;
+  if (week === undefined || week === null) week = tourWeek(game, name);
+  const p = pickedTour(game, week, id);
+  return p !== null && p !== name;
+}
+// le club du joueur a-t-il décliné ce tournoi (ou choisi un autre tournoi la même semaine) ?
+const declined = (game, name, week) => declinedFor(S.userId, game, name, week);
+function setTourPick(game, week, name) {
+  (S.tourPick = S.tourPick || {})[pickKey(game, week, S.userId)] = name;
+  if (S.tourChoice) delete S.tourChoice[game + "|" + name];
+  const rep = weekReport(); for (const t of allTournaments(game)) if (t[1] === week) delete rep.fields[tourKey(game, t[0])];
+}
+// points de classement d'un tournoi selon la place (même barème que rankTournament)
+function rankPointsFor(prize) {
+  const base = clamp(60 + prize / 2500, 60, 1000);
+  return { win: Math.round(base), final: Math.round(base * 0.7), top4: Math.round(base * 0.5), top8: Math.round(base * 0.3), top16: Math.round(base * 0.15) };
+}
 function playTournament(game, t) {
   const rep = weekReport(), k = tourKey(game, t[0]);
   if (rep.done[k]) return; rep.done[k] = true;

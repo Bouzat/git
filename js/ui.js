@@ -694,13 +694,18 @@ function viewComp() {
 
 // classement mondial façon HLTV (CS2)
 function rankCard(game) {
-  const list = rankingOf(game), prev = (S.rankPrev && S.rankPrev[game]) || {};
+  const reg = UI.rankReg || "W", world = rankingOf(game), list = reg === "W" ? world : regionalRanking(game, reg), prev = (S.rankPrev && S.rankPrev[game]) || {};
   const me = list.findIndex(x => isMine(x.id));
+  const tabs = [["W", "🌍 Monde"]].concat(Object.entries(RANK_REGIONS).map(([k, v]) => [k, v[0]])).map(([k, l]) => `<button class="tab small ${reg === k ? "active" : ""}" data-act="rank-reg" data-v="${k}">${l}</button>`).join("");
+  const mine = user().divisions[game] ? (() => { const r = rankRegionOf(S.userId, game), w = rankPos(game, S.userId), rr = regionalRanking(game, r).findIndex(x => x.id === S.userId) + 1;
+    return `<p style="margin:0 0 8px">Votre équipe : <b>${w ? w + "e" : "non classée"}</b> au classement mondial · <b>${rr ? rr + "e" : "non classée"}</b> en ${RANK_REGIONS[r][0]}.</p>`; })() : "";
   const show = list.slice(0, 30).concat(me >= 30 ? [list[me]] : []);
   const rows = show.map(x => { const i = list.indexOf(x), mv = prev[x.id] ? prev[x.id] - (i + 1) : 0, d = divOf(x.id, game);
-    return `<tr class="${isMine(x.id) ? "me" : ""}"><td><b>${i + 1}</b></td><td>${mv > 0 ? `<span class="ok">▲${mv}</span>` : mv < 0 ? `<span class="bad">▼${-mv}</span>` : "<span class='muted'>=</span>"}</td><td><span style="color:${S.clubs[x.id].color}">■</span> <b class="link" data-act="club-info" data-v="${x.id}">${displayName(x.id, game)}</b></td><td>${tchip(d.tier)}</td><td style="text-align:right"><b>${x.pts}</b></td></tr>`; }).join("");
-  return `<div class="card" style="margin-bottom:16px"><h3>🌍 Classement mondial ${GAMES[game].short} (points façon HLTV)</h3>
-    <p class="muted" style="margin-top:-6px;font-size:13px">Chaque tournoi rapporte des points selon sa dotation et votre place, chaque victoire en ligue un peu. Les points comptent pleinement 3 mois, à 75 % jusqu'à 6 mois, à 40 % jusqu'à un an. Les invitations aux grands tournois suivent ce classement, et en fin de saison le top 12 joue en tier 1, les 12 suivants en tier 2.</p>
+    const wr = world.indexOf(x) + 1;
+    return `<tr class="${isMine(x.id) ? "me" : ""}"><td><b>${i + 1}</b>${reg !== "W" ? ` <small class="muted">(${wr}e)</small>` : ""}</td><td>${mv > 0 ? `<span class="ok">▲${mv}</span>` : mv < 0 ? `<span class="bad">▼${-mv}</span>` : "<span class='muted'>=</span>"}</td><td><span style="color:${S.clubs[x.id].color}">■</span> <b class="link" data-act="club-info" data-v="${x.id}">${displayName(x.id, game)}</b></td><td>${tchip(d.tier)}</td><td style="text-align:right"><b>${x.pts}</b></td></tr>`; }).join("");
+  return `<div class="card" style="margin-bottom:16px"><h3>🌍 Classement ${GAMES[game].short} (points façon VRS / HLTV)</h3>
+    <p class="muted" style="margin-top:-6px;font-size:13px">Chaque tournoi rapporte des points selon sa dotation et votre place, chaque victoire en ligue un peu. Les points comptent pleinement 3 mois, à 75 % jusqu'à 6 mois, à 40 % jusqu'à un an. Comme la VRS de Valve, il existe un classement mondial et un classement par région (Europe, Amériques, Asie-Pacifique). Les invitations aux grands tournois suivent ce classement, et en fin de saison les meilleurs jouent en tier 1, les suivants en tier 2. Une équipe ne joue qu'un tournoi par semaine : choisissez-les dans l'onglet Tournois.</p>
+    <div class="tabs">${tabs}</div>${mine}
     <div class="table-wrap" style="max-height:420px;overflow:auto"><table><tr><th>#</th><th></th><th>Équipe</th><th>Tier</th><th style="text-align:right">Points</th></tr>${rows}</table></div></div>`;
 }
 // rachat d'une franchise (ligue fermée) : places à vendre et prix
@@ -755,10 +760,16 @@ function tourState(game, t) {
     const anyRegion = tournamentPool(game, tiers, "").some(isMine);
     return { st: "no", html: anyRegion ? `<span class='muted' title='Réservé à : ${REGION_LABEL(region)}'>Autre région</span>` : "<span class='muted'>Non éligible</span>" };
   }
-  const out = declined(game, name), past = week < S.week || (week === S.week && weekReport().done[tourKey(game, name)]);
-  if (out) return { st: "out", html: `<span class="warn">Décliné</span>${past ? "" : ` <button class="small" data-act="tour-toggle" data-v="${esc(game + "|" + name)}">S'inscrire</button>`}` };
-  if (invitational(tiers) && !tournamentField(game, tiers, size, region, name).some(isMine)) return { st: "noinv", html: "<span class='warn'>Hors invitations</span>" };
-  return { st: "in", html: `<span class="ok">${invitational(tiers) ? "Invité" : "Inscrit"}</span>${past ? "" : ` <button class="small" data-act="tour-toggle" data-v="${esc(game + "|" + name)}" title="Ne pas participer : pas de frais de déplacement, les joueurs se reposent">Décliner</button>`}` };
+  const past = week < S.week || (week === S.week && weekReport().done[tourKey(game, name)]);
+  if (optedOut(game, name)) return { st: "out", html: `<span class="warn">Décliné</span>${past ? "" : ` <button class="small" data-act="tour-toggle" data-v="${esc(game + "|" + name)}">S'inscrire</button>`}` };
+  const cands = tourCandidates(game, week, S.userId);
+  // un autre tournoi est choisi la même semaine : un seul tournoi à la fois
+  if (declined(game, name, week)) {
+    if (invitational(tiers) && !cands.some(x => x[0] === name)) return { st: "noinv", html: "<span class='warn'>Hors invitations</span>" };
+    return { st: "other", html: `<span class="muted" title="Une équipe ne joue qu'un tournoi par semaine">Autre tournoi choisi</span>${past ? "" : ` <button class="small" data-act="tour-pick" data-v="${esc(game + "|" + week + "|" + name)}">Choisir celui-ci</button>`}` };
+  }
+  if (invitational(tiers) && !tournamentField(game, tiers, size, region, name, week).some(isMine)) return { st: "noinv", html: "<span class='warn'>Hors invitations</span>" };
+  return { st: "in", html: `<span class="ok">${cands.length > 1 ? "✅ Choisi" : invitational(tiers) ? "Invité" : "Inscrit"}</span>${past ? "" : ` <button class="small" data-act="tour-toggle" data-v="${esc(game + "|" + name)}" title="Ne pas participer : pas de frais de déplacement, les joueurs se reposent">Décliner</button>`}` };
 }
 function viewCalendar() {
   const u = user();
@@ -797,12 +808,46 @@ function viewCalendar() {
 }
 ACTIONS["tour-toggle"] = v => {
   const k = v; S.tourChoice = S.tourChoice || {};
-  if (S.tourChoice[k] === "out") delete S.tourChoice[k]; else S.tourChoice[k] = "out";
+  if (S.tourChoice[k] === "out") { delete S.tourChoice[k]; const [g, n] = k.split("|"); setTourPick(g, tourWeek(g, n), n); } else S.tourChoice[k] = "out";
   // un tournoi de la semaine en cours : son plateau est retiré
   const rep = weekReport(); delete rep.fields["T:" + k];
   toast(S.tourChoice[k] === "out" ? "Tournoi décliné : pas de déplacement, vos joueurs se reposeront." : "Inscription confirmée.");
   scheduleSave(); render();
 };
+
+ACTIONS["tour-pick"] = v => {
+  const [g, w, ...n] = v.split("|"), name = n.join("|");
+  setTourPick(g, +w, name); toast(`${GAMES[g].short} : vous jouerez « ${name} » cette semaine-là.`); scheduleSave(); render();
+};
+// choix des tournois : les semaines à venir où le club est retenu dans plusieurs tournois d'un même jeu
+function tourPickCard(games) {
+  const u = user(), blocks = [];
+  for (const g of games) {
+    if (!u.divisions[g]) continue;
+    const ranked = RANKED_GAMES.includes(g);
+    for (let w = S.week; w <= SEASON_LAST && blocks.length < 8; w++) {
+      if (w === S.week && allTournaments(g).some(t => t[1] === w && weekReport().done[tourKey(g, t[0])])) continue;
+      const c = tourCandidates(g, w, u.id); if (c.length < 2) continue;
+      const pick = pickedTour(g, w, u.id);
+      const rows = c.sort((a, b) => tourValue(b) - tourValue(a)).map(t => {
+        const f = tournamentField(g, t[3], t[4], t[5], t[0], w, true), str = f.map(id => teamStrength(id, g).str).sort((a, b) => b - a);
+        const top = str.slice(0, 8), avg = top.length ? Math.round(top.reduce((a, b) => a + b, 0) / top.length) : 0;
+        const pts = rankPointsFor(t[2]);
+        return `<tr class="${t[0] === pick ? "me" : ""}"><td><b>${esc(t[0])}</b>${t[5] ? ` <small class="muted">${REGION_LABEL(t[5])}</small>` : ""}</td><td>${t[2] ? money(t[2]) : "—"}</td><td>${accessLabel(t[3])}</td>
+          <td>${f.length} ${GAMES[g].fmt === "br" ? GAMES[g].unit + "s" : "équipes"} · niveau ${R(avg)}</td>
+          ${ranked ? `<td title="Vainqueur / finaliste / demi-finaliste / quart">${pts.win} / ${pts.final} / ${pts.top4} / ${pts.top8}</td>` : ""}
+          <td>${t[0] === pick ? "<b class='ok'>✅ Choisi</b>" : `<button class="small" data-act="tour-pick" data-v="${esc(g + "|" + w + "|" + t[0])}">Choisir</button>`}</td></tr>`;
+      }).join("");
+      blocks.push(`<h4 style="margin:12px 0 6px">${GAMES[g].icon} ${GAMES[g].short} · ${weekLabel(S.season, w)}${w === S.week ? " <span class='chip now'>Cette semaine</span>" : ""}</h4>
+        <div class="table-wrap"><table><tr><th>Tournoi</th><th>Dotation</th><th>Accès</th><th>Plateau (top 8)</th>${ranked ? "<th>Points de classement (1er / 2e / top 4 / top 8)</th>" : ""}<th></th></tr>${rows}</table></div>`);
+    }
+  }
+  if (!blocks.length) return "";
+  const rk = games.filter(g => RANKED_GAMES.includes(g) && u.divisions[g]).map(g => { const reg = rankRegionOf(u.id, g), w = rankPos(g, u.id), r = regionalRanking(g, reg).findIndex(x => x.id === u.id) + 1;
+    return `${GAMES[g].icon} ${GAMES[g].short} : <b>${w ? w + "e" : "non classé"}</b> mondial · <b>${r ? r + "e" : "non classé"}</b> ${RANK_REGIONS[reg][0]}`; }).join(" — ");
+  return `<div class="card" style="margin-bottom:16px"><h3>🎯 Choix des tournois</h3>
+    <p class="muted" style="margin-top:-6px;font-size:13px">Une équipe ne peut jouer qu'un tournoi par semaine. Ces semaines-là, votre équipe est retenue dans plusieurs tournois : choisissez celui que vous jouez (par défaut, le plus important). Un grand tournoi rapporte plus d'argent et de points de classement, mais le plateau est plus relevé ; un plus petit tournoi offre de meilleures chances d'aller loin.${rk ? `<br>Vos classements : ${rk}.` : ""}</p>${blocks.join("")}</div>`;
+}
 
 // ---------- tournois ----------
 const accessLabel = t => ({ "1": "Invitation (les meilleurs)", "12": "Tiers 1 et 2", "2": "Tier 2", "23": "Open (tiers 2-3)", "3": "Open (tier 3)", "123": "Meilleurs de la région", "1230": "Open régional (tous tiers)" }[t] || t);
@@ -846,7 +891,7 @@ function viewTours() {
   }).join("");
   if (!UI.tourSize) UI.tourSize = "all";
   const stabs = [["all", "Tous les tournois"], ["big", "Grands tournois"], ["small", "Petits tournois & cash cups"]].map(([k, l]) => `<button class="tab small ${UI.tourSize === k ? "active" : ""}" data-act="tour-size" data-v="${k}">${l}</button>`).join("");
-  return `<h2>📅 Tournois de la saison ${S.season}</h2>${ewcCard()}
+  return `<h2>📅 Tournois de la saison ${S.season}</h2>${tourPickCard(games)}${ewcCard()}
     <p class="muted" style="margin-top:-6px">En plus des ligues, les tournois à cashprize, à leurs vraies dates. Les tournois sur invitation prennent les meilleures équipes ; les opens accueillent tous les clubs des tiers admis. Vous pouvez décliner un tournoi (pas de déplacement à payer, vos joueurs se reposent). Les gains sont partagés avec les joueurs selon leurs contrats.</p>
     <div class="tabs">${tabs}</div><div class="tabs">${stabs}</div>
     <div class="card table-wrap"><table><tr><th>Dates</th><th>Jeu</th><th>Tournoi</th><th>Dotation</th><th>Accès</th><th>Places</th><th>Vous</th><th>Résultat</th></tr>${rows}</table></div>`;
@@ -1630,6 +1675,7 @@ function mercatoDatesModal() {
     <div class="actions"><button class="primary" data-act="close-modal">Fermer</button></div>`);
 }
 ACTIONS["mercato-dates"] = () => mercatoDatesModal();
+ACTIONS["rank-reg"] = v => { UI.rankReg = v; render(); };
 function mercatoChip() {
   const u = user(), open = Object.keys(u.divisions).filter(g => !mercatoRules(g).always && windowAt(g)).map(g => [g, windowEnd(g).weeks]).sort((a, b) => a[1] - b[1]);
   if (!open.length) return "";
