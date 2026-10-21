@@ -144,19 +144,41 @@ function planTiers(game) {
   return all;
 }
 
+// ---------- économie de chaque jeu ----------
+// view : audience moyenne des grandes compétitions (indice, LoL = 100) ; spon : attrait pour les marques grand public ;
+// bet : part des sponsors de paris, casinos et crypto ; eth : part des marques éthiques. Inspiré des audiences et des sponsors réels.
+const GAME_ECO = {
+  lol: { view: 100, spon: 1.3, bet: 0.12, eth: 0.25 }, cs2: { view: 60, spon: 0.9, bet: 0.55, eth: 0.08 }, val: { view: 40, spon: 1.1, bet: 0.2, eth: 0.18 },
+  valgc: { view: 6, spon: 1.1, bet: 0.05, eth: 0.4 }, dota: { view: 35, spon: 0.85, bet: 0.5, eth: 0.08 }, rl: { view: 18, spon: 1.25, bet: 0.08, eth: 0.28 },
+  ow: { view: 10, spon: 1, bet: 0.1, eth: 0.2 }, r6: { view: 12, spon: 0.95, bet: 0.3, eth: 0.12 }, cod: { view: 14, spon: 1.05, bet: 0.2, eth: 0.12 },
+  mlbb: { view: 55, spon: 1, bet: 0.3, eth: 0.12 }, fn: { view: 22, spon: 1.25, bet: 0.05, eth: 0.3 }, apex: { view: 12, spon: 1, bet: 0.12, eth: 0.18 },
+  pubg: { view: 9, spon: 0.85, bet: 0.35, eth: 0.1 }, fc: { view: 9, spon: 1.2, bet: 0.35, eth: 0.15 }, sf6: { view: 8, spon: 1, bet: 0.1, eth: 0.18 },
+  sc2: { view: 5, spon: 0.85, bet: 0.15, eth: 0.15 }, hok: { view: 45, spon: 1, bet: 0.2, eth: 0.12 }, cf: { view: 8, spon: 0.8, bet: 0.3, eth: 0.1 },
+  wz: { view: 7, spon: 1, bet: 0.2, eth: 0.12 }, pubgm: { view: 35, spon: 0.95, bet: 0.3, eth: 0.12 }, ff: { view: 25, spon: 0.9, bet: 0.3, eth: 0.12 },
+  tft: { view: 8, spon: 1, bet: 0.1, eth: 0.2 }, trackmania: { view: 3, spon: 1.05, bet: 0.05, eth: 0.3 }, tk8: { view: 6, spon: 0.95, bet: 0.15, eth: 0.15 },
+  fatal: { view: 2, spon: 0.9, bet: 0.15, eth: 0.15 }, chess: { view: 8, spon: 1.15, bet: 0.08, eth: 0.35 },
+};
+const ecoOf = game => GAME_ECO[game] || { view: 10, spon: 1, bet: 0.2, eth: 0.15 };
+// poids économique d'un jeu (audience) : la valeur des joueurs et leurs salaires en dépendent
+const ecoMult = game => clamp(0.25 + 0.8 * Math.sqrt(ecoOf(game).view / 100), 0.3, 1.1);
+// niveau de la division d'un club dans un jeu : un joueur de tier 1 vaut plus et demande plus qu'en tier 3
+const TIER_VALUE = [1.2, 0.85, 0.65];
+const clubTierIn = (clubId, game) => { const d = clubId && divOf(clubId, game); return d ? (GAMES[game].open ? d.tier : d.tier) : 0; };
 // ---------- joueurs ----------
 function playerValue(p) {
-  const g = GAMES[p.game];
+  const g = { mult: ecoMult(p.game) }, tier = clubTierIn(p.club, p.game);
   const af = p.age <= 20 ? 1.3 : p.age <= 24 ? 1.15 : p.age <= 28 ? 1 : p.age <= 31 ? 0.7 : 0.45;
   const potBonus = 1 + Math.max(0, p.pot - p.rating) * 0.02;
-  return Math.max(2000, Math.round(25000 * Math.pow(1.13, p.rating - 60) * af * g.mult * potBonus / 500) * 500);
+  return Math.max(2000, Math.round(25000 * Math.pow(1.13, p.rating - 60) * af * g.mult * potBonus * (tier ? TIER_VALUE[tier - 1] : 0.85) / 500) * 500);
 }
 function salaryDemand(p, club) {
   // courbe exponentielle : ~200 €/sem pour un amateur noté 60, ~15 k€/sem pour une superstar notée 95
-  const base = (150 + 15 * Math.pow(1.17, p.rating - 50)) * Math.max(0.5, GAMES[p.game].mult);
+  const base = (150 + 15 * Math.pow(1.17, p.rating - 50)) * Math.max(0.45, ecoMult(p.game));
   // les petits clubs doivent payer plus cher pour attirer les stars
   const prestige = club ? 1 + Math.max(0, p.rating - 50 - club.fame) / 100 : 1;
-  return Math.max(150, Math.round(base * prestige / 50) * 50);
+  // les salaires suivent le niveau de la division du club (tier 1 mieux payé)
+  const t = club ? clubTierIn(club.id, p.game) : 0, tierF = t ? [1.15, 0.9, 0.75][t - 1] : 1;
+  return Math.max(150, Math.round(base * prestige * tierF / 50) * 50);
 }
 // potentiel : marge de progression qui dépend surtout de l'âge (un joueur de 25 ans ou plus a atteint son plafond)
 function potentialFor(rating, age) {
@@ -1963,6 +1985,20 @@ const FNCS_QUOTA = { EU: 12, NA: 9, SA: 4, MENA: 3, ASIA: 2, OCE: 2 };
 })();
 // nombre de qualifiés : une part du plateau de l'étape précédente (au plus un lobby complet)
 const qualTop = (spec, n, game) => Math.min(GAMES[game].lobby * 2, Math.max(2, spec.top <= 1 ? Math.ceil(n * spec.top) : spec.top));
+// EWC : chaque tournoi a des qualifications ouvertes trois semaines avant ; environ 75 % des places sont des invitations
+(function ewcQualifiers() {
+  for (const [game, T] of Object.entries(TOURNAMENTS)) {
+    if (T.some(t => t[6] && t[6].ewcQual)) continue;
+    const add = [];
+    for (const t of T) {
+      if (!/^EWC — /.test(t[0]) || t[6]) continue;
+      const q = `EWC — Qualifications ${GAMES[game] ? GAMES[game].short : game}`;
+      add.push([q, Math.max(SEASON_FIRST, t[1] - 3), 0, "1230", GAMES[game] && GAMES[game].fmt === "br" ? 64 : 32, "", { tier: "B" }]);
+      t[6] = { tier: "S", ewcQual: q, invite: Math.max(1, Math.round(t[4] * 0.75)) };
+    }
+    T.push(...add);
+  }
+})();
 const qualSpec = (game, name) => { const t = (TOURNAMENTS[game] || []).find(x => x[0] === name); return t && t[6] ? t[6] : null; };
 // plateau d'une étape qualificative : les mieux classés de l'étape précédente (null si elle n'a pas encore été jouée)
 function qualField(game, spec, name, week, raw) {
@@ -2232,6 +2268,15 @@ function tournamentField(game, tiers, size, region, name, week, raw) {
   const g = GAMES[game], spec = name && qualSpec(game, name);
   // étape qualificative : seulement les qualifiés de l'étape précédente (personne tant qu'elle n'a pas été jouée)
   if (spec && (spec.from || spec.worlds)) return qualField(game, spec, name, week, raw) || [];
+  // EWC : les invités (les meilleurs), puis les mieux classés des qualifications
+  if (spec && spec.ewcQual) {
+    const inv = tournamentField(game, tiers, spec.invite, region, null, week, raw).filter(id => raw || !(isMine(id) && declinedFor(id, game, name, week)));
+    const o = (S.tourOrder || {})[game + "|" + spec.ewcQual];
+    if (!o) return tournamentField(game, tiers, size, region, null, week, raw).filter(id => raw || !(isMine(id) && declinedFor(id, game, name, week)));
+    const out = inv.slice();
+    for (const id of o) { if (out.length >= size) break; if (!out.includes(id) && S.clubs[id] && divOf(id, game) && (raw || !(isMine(id) && declinedFor(id, game, name, week)))) out.push(id); }
+    return GAMES[game].fmt === "br" ? out : out.slice(0, 2 ** Math.floor(Math.log2(out.length)));
+  }
   // jeux à classement mondial (CS2) : les invitations suivent les points du classement
   const rp = {}; if (RANKED_GAMES.includes(game)) rankingOf(game).forEach(x => rp[x.id] = x.pts);
   const ranked = tournamentPool(game, tiers, region).filter(id => raw || !(isMine(id) && name && declinedFor(id, game, name, week)))
@@ -2255,8 +2300,8 @@ const tourWeek = (game, name) => { const t = allTournaments(game).find(x => x[0]
 const optedOut = (game, name) => !!(S.tourChoice && S.tourChoice[game + "|" + name] === "out");
 // tournois de la semaine auxquels l'équipe peut participer (inscrite à l'open ou invitée), hors ceux qu'elle a déclinés
 function tourCandidates(game, week, id) {
-  return allTournaments(game).filter(t => t[1] === week && !optedOut(game, t[0]) && tournamentPool(game, t[3], t[5]).includes(id)
-    && (!invitational(t[3]) || tournamentField(game, t[3], t[4], t[5], t[0], week, true).includes(id)));
+  return allTournaments(game).filter(t => t[1] === week && !optedOut(game, t[0]) && (t[6] && t[6].ewcQual ? tournamentField(game, t[3], t[4], t[5], t[0], week, true).includes(id)
+    : tournamentPool(game, t[3], t[5]).includes(id) && (!invitational(t[3]) || tournamentField(game, t[3], t[4], t[5], t[0], week, true).includes(id))));
 }
 // importance d'un tournoi : points de classement (dotation) et prestige des invitations
 const tourValue = t => t[2] + (t[3] === "1" ? 1e6 : invitational(t[3]) ? 2e5 : 0);
@@ -2319,6 +2364,12 @@ function playTournament(game, t) {
   // classement complet gardé pour les étapes suivantes (qualifications FNCS…) et messages de qualification
   (S.tourOrder = S.tourOrder || {})[game + "|" + name] = order.slice(0, 250);
   const next = (TOURNAMENTS[game] || []).find(x => x[6] && x[6].from === name);
+  // qualifications EWC : les mieux classés qui ne sont pas déjà invités prennent les places restantes
+  const ewcT = (TOURNAMENTS[game] || []).find(x => x[6] && x[6].ewcQual === name);
+  if (ewcT) { const inv = tournamentField(game, ewcT[3], ewcT[6].invite, ewcT[5], null, ewcT[1], true), slots = ewcT[4] - inv.length;
+    const qual = order.filter(id => !inv.includes(id)).slice(0, slots);
+    for (const id of order.filter(isMine)) { const i = order.indexOf(id) + 1;
+      mail(qual.includes(id) ? `✅ Qualifié pour l'${ewcT[0]}` : inv.includes(id) ? `🎟️ Déjà invité : ${ewcT[0]}` : `❌ Pas de place à l'EWC`, `${clubLabel(id, game)} termine <b>${i}e</b> des qualifications. ${qual.includes(id) ? `Il décroche une des ${slots} places qualificatives pour <b>${ewcT[0]}</b> (${weekLabel(S.season, ewcT[1])}).` : inv.includes(id) ? "L'équipe était déjà invitée grâce à son classement." : `Il fallait finir parmi les ${slots} meilleurs non invités.`}`, "info", game); } }
   if (next) { const top = qualTop(next[6], order.length, game);
     for (const id of order.filter(isMine)) { const i = order.indexOf(id) + 1;
       mail(i <= top ? `✅ Qualifié : ${next[0]}` : `❌ Éliminé : ${name}`, `${clubLabel(id, game)} termine <b>${i}e</b> de ${name}${i <= top ? ` et se qualifie pour <b>${next[0]}</b> (${weekLabel(S.season, next[1])}).` : ` : il fallait finir dans les ${top} premiers pour aller en ${next[0]}.`}`, "info", game); } }
@@ -2694,6 +2745,12 @@ const BRANDS = [
   ["CryptoMoon Exchange", "Cryptomonnaies", "controverse", 3], ["Royal Spin Casino", "Casino en ligne", "controverse", 3], ["PetroGulf Energy", "Pétrole", "controverse", 3], ["MegaBet", "Paris sportifs", "controverse", 3],
 ];
 const BRAND_SIZE = ["", "Local", "National", "International"];
+// ce que valent les sections du club pour un sponsor : tier, audience du jeu et attrait pour les marques
+function sponsorWeight(u = user()) {
+  return Object.entries(u.divisions).reduce((s, [g, d]) => { const e = ecoOf(g); return s + [3000, 600, 80][d.tier - 1] * e.spon * (0.4 + 1.2 * Math.sqrt(e.view / 100)); }, 0);
+}
+// une marque paie plus si le club joue aux jeux qu'elle vise (automobile en Rocket League, périphériques en CS2…)
+function brandFit(sector) { const gs = SECTOR_GAMES[sector]; if (!gs) return 1; return Object.keys(user().divisions).some(g => gs.includes(g)) ? 1.15 : 0.85; }
 const brandOf = name => { const b = BRANDS.find(x => x[0] === name); return b ? { brand: b[0], sector: b[1], ethic: b[2], size: b[3] } : { brand: name, sector: "Divers", ethic: "neutre", size: 1 }; };
 // taille des marques que le club peut attirer, d'après sa notoriété
 const brandReach = () => user().fame >= 55 ? 3 : user().fame >= 25 ? 2 : 1;
@@ -2731,13 +2788,15 @@ function sponsorOffer(arg) {
   let b;
   if (arg && !["ethique", "neutre", "controverse"].includes(arg)) b = brandOf(arg);
   else {
-    const reach = brandReach(), ethic = arg || (Math.random() < 0.25 ? "ethique" : Math.random() < 0.3 ? "controverse" : "neutre");
+    // le type de marque dépend du jeu phare du club : beaucoup de paris en CS2, des marques grand public en LoL ou Rocket League
+    const e = ecoOf(mainGame()), x = Math.random();
+    const reach = brandReach(), ethic = arg || (x < e.eth ? "ethique" : x < e.eth + e.bet ? "controverse" : "neutre");
     b = brandOf(pick(BRANDS.filter(x => x[2] === ethic && x[3] === reach && !u.sponsorDeals.some(d => d.name === x[0])).map(x => x[0]).concat(["PC Shop Local"])));
   }
-  const tierBonus = Object.values(u.divisions).reduce((s, d) => s + [3000, 600, 80][d.tier - 1], 0);
+  const tierBonus = sponsorWeight(u), fit = brandFit(b.sector);
   // les marques controversées paient bien plus cher, les marques éthiques un peu moins (et regardent l'image du club) ; une grande marque paie plus qu'un commerce local
   const mult = (b.ethic === "controverse" ? rand(1.6, 2.2) : b.ethic === "ethique" ? rand(0.8, 0.95) * (0.7 + (u.image ?? 60) / 200) : 1) * [0, 0.6, 0.9, 1.2][b.size];
-  const weekly = round50((200 + u.fame * u.fame * rand(1.5, 3) + tierBonus * rand(0.5, 1)) * mult);
+  const weekly = round50((200 + u.fame * u.fame * rand(1.5, 3) + tierBonus * rand(0.5, 1)) * mult * fit);
   // plafond secret de la marque : plus le club a de fans, plus elle est prête à payer
   const max = weekly * rand(1.1, 1.45) * (1 + Math.min(0.3, u.fans / 3e6));
   const o = { ...b, weekly, weeks: randi(20, 40), max, patience: randi(2, 4), round: 0, history: [], level: 1 };
@@ -2840,7 +2899,10 @@ function sponsorWeek(report) {
 const esc0 = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 function refreshSponsorMarket() {
   const u = user(), reach = brandReach(), taken = new Set(u.sponsorDeals.map(d => d.name));
-  const pool = shuffle(BRANDS.filter(b => !taken.has(b[0]) && b[3] <= reach && b[3] >= reach - 1 && !(b[2] === "ethique" && (u.image ?? 60) < 40)));
+  const e = ecoOf(mainGame()), w = b => (b[2] === "controverse" ? e.bet : b[2] === "ethique" ? e.eth : 1 - e.bet - e.eth) * (brandFit(b[1]) > 1 ? 1.6 : 1);
+  // tirage pondéré : les marques qui visent les jeux du club et le profil de sponsors de son jeu phare d'abord
+  const pool = BRANDS.filter(b => !taken.has(b[0]) && b[3] <= reach && b[3] >= reach - 1 && !(b[2] === "ethique" && (u.image ?? 60) < 40))
+    .map(b => [b, Math.random() ** (1 / Math.max(0.01, w(b)))]).sort((a, b) => b[1] - a[1]).map(x => x[0]);
   S.sponsorMarket = { at: nowIndex(), season: S.season, list: pool.slice(0, randi(3, 5)).map(b => ({ brand: b[0], interest: randi(45, 95) })) };
 }
 // fiche d'une marque : chiffres indicatifs générés par le jeu (stables d'une partie à l'autre), jeux visés, exigences, offre estimée
@@ -2864,8 +2926,8 @@ function brandStats(name) {
     .filter(c => b.size === 3 ? c.fame >= 65 : b.size === 2 ? c.fame >= 30 && c.fame < 75 : c.fame < 35).sort((x, y) => x.id < y.id ? -1 : 1);
   const partners = pool.length ? [0, 1, 2].slice(0, 1 + h % 3).map(k => pool[(h + k * 7919) % pool.length]).filter((c, i, a) => a.indexOf(c) === i) : [];
   // offre estimée pour le club du joueur (sans la part de hasard de la négociation)
-  const u = user(), tierBonus = Object.values(u.divisions).reduce((s, d) => s + [3000, 600, 80][d.tier - 1], 0);
-  const mult = (b.ethic === "controverse" ? 1.9 : b.ethic === "ethique" ? 0.87 * (0.7 + (u.image ?? 60) / 200) : 1) * [0, 0.6, 0.9, 1.2][b.size];
+  const u = user(), tierBonus = sponsorWeight(u);
+  const mult = (b.ethic === "controverse" ? 1.9 : b.ethic === "ethique" ? 0.87 * (0.7 + (u.image ?? 60) / 200) : 1) * [0, 0.6, 0.9, 1.2][b.size] * brandFit(b.sector);
   const mid = (200 + u.fame * u.fame * 2.25 + tierBonus * 0.75) * mult;
   return { ...b, revenue: rev, profit: rev * margin, margin, followers, esport, growth, games, partners, offer: [round50(mid * 0.75), round50(mid * 1.35)],
     minFame: [0, 0, 25, 55][b.size], minImage: b.ethic === "ethique" ? 50 : 0, audience: SECTOR_AUDIENCE[b.sector] || "grand public, 15-45 ans" };

@@ -834,8 +834,11 @@ function resTxt(r) {
 function tourState(game, t) {
   const [name, week, prize, tiers, size, region] = t;
   if (!user().divisions[game]) return { st: "none" };
-  const pool = tournamentPool(game, tiers, region);
-  if (!pool.some(isMine)) {
+  const pool = tournamentPool(game, tiers, region), sp0 = qualSpec(game, name);
+  // EWC : une équipe d'un tier inférieur peut y aller en passant par les qualifications
+  if (sp0 && sp0.ewcQual && !pool.some(isMine) && !tournamentField(game, tiers, size, region, name, week, true).some(isMine))
+    return { st: "noinv", html: (S.tourOrder || {})[game + "|" + sp0.ewcQual] ? "<span class='warn'>Non qualifié</span>" : `<span class='muted'>Passez par les qualifications</span>` };
+  if (!pool.some(isMine) && !(sp0 && sp0.ewcQual)) {
     const anyRegion = tournamentPool(game, tiers, "").some(isMine);
     return { st: "no", html: anyRegion ? `<span class='muted' title='Réservé à : ${REGION_LABEL(region)}'>Autre région</span>` : "<span class='muted'>Non éligible</span>" };
   }
@@ -1645,6 +1648,17 @@ ACTIONS["staff-game"] = v => { UI.staffGame = v; render(); };
 ACTIONS["coach-hire"] = v => { const e = hireCoach(v); toast(e || "🧑‍🏫 Entraîneur engagé !"); scheduleSave(); render(); };
 ACTIONS["coach-fire"] = v => { fireCoach(v); toast("Entraîneur licencié."); scheduleSave(); render(); };
 // ---------- sponsors (onglet) ----------
+// audience et profil de sponsors des jeux du club : ce qui fixe le montant des offres et le type de marques
+function ecoCard() {
+  const u = user(), gs = Object.keys(u.divisions); if (!gs.length) return "";
+  const mg = mainGame(), lvl = v => v >= 60 ? "très forte" : v >= 30 ? "forte" : v >= 12 ? "moyenne" : "faible";
+  const rows = gs.sort((a, b) => ecoOf(b).view - ecoOf(a).view).map(g => { const e = ecoOf(g), d = u.divisions[g];
+    return `<tr class="${g === mg ? "me" : ""}"><td>${gchip(g)}${g === mg ? " <small class='muted'>jeu phare</small>" : ""}</td><td>${lvl(e.view)} ${bar(Math.min(100, e.view))}</td><td>${tchip(d.tier, g)}</td>
+      <td><span class="ok">🌱 ${Math.round(e.eth * 100)} %</span> · 🤝 ${Math.round((1 - e.eth - e.bet) * 100)} % · <span class="bad">🎰 ${Math.round(e.bet * 100)} %</span></td><td>×${e.spon.toFixed(2)}</td></tr>`; }).join("");
+  return `<details class="fold" ${UI.ecoOpen ? "open" : ""} data-fold="ecoOpen"><summary>📺 Audience et sponsors de vos jeux <span class="muted">(jeu phare : ${GAMES[mg] ? GAMES[mg].name : "—"})</span></summary>
+    <p class="muted" style="font-size:13px">Le montant des offres dépend de vos sections : leur tier, l'audience du jeu et son attrait pour les marques. Le type de marques qui vous contactent suit le profil de votre jeu phare : beaucoup de paris et de crypto en CS2 ou Dota, des marques grand public et éthiques en LoL, Rocket League ou Fortnite. Une marque paie aussi plus si vous jouez aux jeux qu'elle vise. La valeur et le salaire des joueurs suivent l'audience du jeu et le tier de leur club.</p>
+    <div class="table-wrap"><table><tr><th>Jeu</th><th>Audience</th><th>Tier</th><th>Sponsors (éthiques · classiques · paris/crypto)</th><th>Attrait marques</th></tr>${rows}</table></div></details>`;
+}
 function viewSponsors() {
   const u = user();
   if (!S.sponsorMarket) refreshSponsorMarket();
@@ -1670,7 +1684,7 @@ function viewSponsors() {
       return `<tr><td class="link-row" data-act="brand-info" data-v="${esc(b[0])}" data-sort="${esc(b[0].toLowerCase())}">${brandLogo(b[0])} <b class="link">${esc(b[0])}</b></td><td class="muted">${esc(b[1])}</td><td>${BRAND_SIZE[b[3]]}</td><td class="${e[2]}">${e[0]} ${e[1]}</td><td><span class="${ch >= 50 ? "ok" : ch >= 20 ? "warn" : "bad"}">${ch} %</span></td>
         <td>${cd ? "<span class='muted'>a refusé récemment</span>" : `<button class="small" data-act="sp-contact" data-v="${esc(b[0])}">📞 Contacter</button>`}</td></tr>`; }).join("");
   const opt = (k, cur, list) => list.map(([v, l]) => `<option value="${v}" ${cur === v ? "selected" : ""}>${l}</option>`).join("");
-  return `<h2>🤝 Sponsors</h2>
+  return `<h2>🤝 Sponsors</h2>${ecoCard()}
     <div class="grid g3">
       <div class="card"><h3>Revenus sponsors</h3><div class="kpi">${money(u.sponsorDeals.reduce((s, d) => s + d.weekly, 0))}<span class="muted" style="font-size:14px">/sem</span></div><div class="muted">${u.sponsorDeals.length} partenaire(s) · hors partenaires historiques et droits</div></div>
       <div class="card"><h3>Image du club</h3><div class="kpi">${imageTxt(u.image ?? 60)} <span class="muted" style="font-size:14px">${Math.round(u.image ?? 60)}/100</span></div>${bar(u.image ?? 60)}</div>
