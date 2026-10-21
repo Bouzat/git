@@ -578,8 +578,9 @@ function canJoin(game, tier) {
   if (u.budget < tierEntry(game, tier)) return "Budget insuffisant.";
   return null;
 }
-function openDivision(game, tier) {
+function openDivision(game, tier, sub) {
   const e = canJoin(game, tier); if (e) return e;
+  if (sub) setWantSub(game, sub);
   const fee = tierEntry(game, tier);
   book("entry", -fee, game, "Droit d'entrée : " + tierName(game, tier));
   const late = joinLeague(game, tier);
@@ -641,8 +642,18 @@ function applyFranchise(game, zone, sellerId, price) {
   mail(`🔒 Bienvenue en ${tierName(game, 1, zone)} !`, `${u.name} occupe désormais la place de ${seller.name} en <b>${tierName(game, 1, zone)}</b>${price ? ` (rachetée ${money(price)})` : ""}. Ligue fermée : pas de relégation possible. Il vous faut ${GAMES[game].size} joueurs titulaires.`, "info", game);
 }
 // place le club du joueur dans un circuit, en prenant si possible la place d'un club fictif
+// ligue nationale choisie par le joueur (LFL, Prime League…) pour un tier découpé ; sinon celle de son pays
+function userSub(game, tier, zone) {
+  const u = user(), subs = subsOf(game, tier, zone); if (!subs) return null;
+  const w = u.wantSub && u.wantSub[game];
+  return w && subs.includes(w) ? w : subFor(game, tier, zone, u.country);
+}
+function setWantSub(game, sub) {
+  const u = user(); u.wantSub = u.wantSub || {};
+  if (sub) u.wantSub[game] = sub; else delete u.wantSub[game];
+}
 function joinLeague(game, tier) {
-  const u = user(), zone = zoneFrom(game, clubRegion(u, game), u.country), sub = subFor(game, tier, zone, u.country), L = S.leagues[lkey(game, tier, zone, sub)];
+  const u = user(), zone = zoneFrom(game, clubRegion(u, game), u.country), sub = userSub(game, tier, zone), L = S.leagues[lkey(game, tier, zone, sub)];
   u.divisions[game] = { tier, zone, players: [] };
   if (sub) u.divisions[game].sub = sub;
   const fid = L.teams.find(id => S.clubs[id].filler);
@@ -2111,14 +2122,17 @@ function promoteSubs(game, t, zone, moves) {
   for (const L of ups) { const d = finalOrder(L).slice(-nDown); vac[L.key] = d.length; downs.push(...d.map(id => [id, L])); }
   const lowOrder = lows.flatMap(L => finalOrder(L).slice(0, 2).map(id => [id, L])).filter(([id]) => !blocked(id));
   // les meilleurs des ligues du tier inférieur, à la place des relégués
-  const promos = lowOrder.sort((a, b) => teamStrength(b[0], game).str - teamStrength(a[0], game).str).slice(0, downs.length);
+  // le club du joueur passe en premier : il obtient toujours la ligue nationale qu'il a choisie
+  const promos = lowOrder.sort((a, b) => teamStrength(b[0], game).str - teamStrength(a[0], game).str).slice(0, downs.length)
+    .sort((a, b) => (b[0] === u.id) - (a[0] === u.id));
+  const wantOf = (id, tt) => id === u.id ? userSub(game, tt, zone) : subFor(game, tt, zone, S.clubs[id].country);
   for (const [id, L] of downs) {
-    const c = S.clubs[id], d = c.divisions[game], sub = subFor(game, t + 1, zone, c.country), low = lows.find(x => x.sub === sub) || lows[0];
+    const c = S.clubs[id], d = c.divisions[game], sub = wantOf(id, t + 1), low = lows.find(x => x.sub === sub) || lows[0];
     L.teams = L.teams.filter(x => x !== id); low.teams.push(id); d.tier = t + 1; if (low.sub) d.sub = low.sub; else delete d.sub;
     if (isMine(id) && id === u.id) moves.push(`⬇️ ${GAMES[game].short} : relégation en ${TIER_LABEL[t]} (${leagueName(low)})`);
   }
   for (const [id, L] of promos) {
-    const c = S.clubs[id], d = c.divisions[game], want = subFor(game, t, zone, c.country);
+    const c = S.clubs[id], d = c.divisions[game], want = wantOf(id, t);
     const up = ups.find(x => x.sub === want && vac[x.key] > 0) || ups.find(x => vac[x.key] > 0);
     if (!up) break;
     vac[up.key]--; L.teams = L.teams.filter(x => x !== id); up.teams.push(id); d.tier = t; if (up.sub) d.sub = up.sub; else delete d.sub;
@@ -2133,6 +2147,21 @@ function promoteSubs(game, t, zone, moves) {
     if (!cand) break;
     const [id, L] = cand, d = divOf(id, game);
     vac[up.key]--; L.teams = L.teams.filter(x => x !== id); up.teams.push(id); d.tier = t; if (up.sub) d.sub = up.sub; else delete d.sub;
+  }
+  // le club du joueur a demandé à changer de ligue nationale : il échange sa place avec un club de la ligue voulue
+  const ud = u.divisions[game];
+  if (ud && ud.tier === t && ud.sub && (ud.zone || "W") === zone) {
+    const want = userSub(game, t, zone), cur = ups.find(x => x.sub === ud.sub), dest = ups.find(x => x.sub === want);
+    if (cur && dest && cur !== dest) {
+      const fit = id => subFor(game, t, zone, S.clubs[id].country) === cur.sub ? 1 : 0;
+      const swap = dest.teams.filter(id => S.clubs[id] && !isMine(id) && !blocked(id))
+        .sort((a, b) => fit(b) - fit(a) || teamStrength(a, game).str - teamStrength(b, game).str)[0];
+      if (swap) {
+        cur.teams = cur.teams.map(x => x === u.id ? swap : x); dest.teams = dest.teams.map(x => x === swap ? u.id : x);
+        ud.sub = dest.sub; S.clubs[swap].divisions[game].sub = cur.sub;
+        moves.push(`🔁 ${GAMES[game].short} : transfert de ligue, le club jouera en ${leagueName(dest)} (${S.clubs[swap].name} part en ${leagueName(cur)})`);
+      }
+    }
   }
 }
 function endSeason() {

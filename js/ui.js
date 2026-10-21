@@ -308,6 +308,15 @@ function lobbyRow(l) {
 }
 
 // ---------- effectifs ----------
+// choix de la ligue nationale (LFL, Prime League…) quand le tier 2 de la zone en compte plusieurs
+function subPicker(game, d) {
+  const zone = d.zone || "W", subs = !GAMES[game].open && d.tier >= 2 && subsOf(game, 2, zone);
+  if (!subs || subs.length < 2) return "";
+  const want = userSub(game, 2, zone), now = d.tier === 2 && d.sub;
+  const hint = d.tier === 2 ? (want !== now ? "transfert à la fin de la saison" : "changer pour la saison prochaine") : "en cas de montée en tier 2";
+  return `<label class="muted" style="font-size:12px">Ligue nationale visée (${hint}) :
+    <select class="small-sel" data-change="want-sub" data-game="${game}" aria-label="Ligue nationale visée">${subs.map(s => `<option value="${s}" ${s === want ? "selected" : ""}>${esc(tierName(game, 2, zone, s))}</option>`).join("")}</select></label>`;
+}
 function viewRoster() {
   const u = user(), divs = Object.keys(u.divisions);
   if (!UI.rosterGame || !u.divisions[UI.rosterGame]) UI.rosterGame = divs[0] || null;
@@ -339,7 +348,7 @@ function viewRoster() {
   if (unitGame(UI.rosterGame)) return `<h2>Effectifs</h2><div class="tabs">${tabs}</div>${unitRoster(UI.rosterGame)}${open}`;
   return `<h2>Effectifs</h2><div class="tabs">${tabs}</div>
     <div class="card"><div class="toolbar"><div style="flex:1;min-width:0"><h3 style="margin:0">${g.icon} ${g.name}${d.label ? ` (${esc(d.label)})` : ""} — Titulaires ${nSt}/${g.size}${teamRegion(u.id, UI.rosterGame) ? " · " + REGIONS[teamRegion(u.id, UI.rosterGame)] : ""} · Force ${R(Math.round(teamStrength(u.id, UI.rosterGame).str))}</h3>
-      <div style="margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">${tchip(d.tier, UI.rosterGame)}<span class="muted">${esc(divName(u.id, UI.rosterGame))}</span></div></div>
+      <div style="margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">${tchip(d.tier, UI.rosterGame)}<span class="muted">${esc(divName(u.id, UI.rosterGame))}</span>${subPicker(UI.rosterGame, d)}</div></div>
       <button class="small" data-act="auto-lineup">⚡ Composition auto</button>
       <button class="small" data-act="team-talk" data-v="${UI.rosterGame}">💬 Réunion d'équipe</button>
       ${franchiseZones(UI.rosterGame).length && !isClosed(UI.rosterGame, d.tier, d.zone) ? `<button class="small" data-act="franchise" data-v="${UI.rosterGame}">🔒 Racheter une franchise</button>` : ""}
@@ -1072,11 +1081,13 @@ Object.assign(ACTIONS, {
   "open-div": v => {
     const [game, t] = v.split("|"), tier = +t, g = GAMES[game];
     const z = zoneFrom(game, REGION_OF[user().country] || "EU", user().country);
+    const subs = !g.open && subsOf(game, tier, z), pick = subs && subs.length > 1
+      ? `<p>Ligue nationale : <select id="open-sub" aria-label="Ligue nationale">${subs.map(s => `<option value="${s}" ${s === userSub(game, tier, z) ? "selected" : ""}>${esc(tierName(game, tier, z, s))}</option>`).join("")}</select></p>` : "";
     modal(`<h2>${g.icon} ${g.name} · ${tierLabel(game, tier)}</h2><p>Entrée dans le <b>${esc(tierName(game, g.open ? 1 : tier, z))}</b> (${ZONE_NAMES[z]}) : <b>${money(tierEntry(game, tier))}</b>.<br>
-      Il vous faudra ${g.size} joueur(s) titulaire(s). Frais de fonctionnement : ${money(TIER_OP[tier - 1] * g.size * g.mult)}/sem. Cashprize du circuit : ${money(tierPrize(game, tier))}.</p>
+      Il vous faudra ${g.size} joueur(s) titulaire(s). Frais de fonctionnement : ${money(TIER_OP[tier - 1] * g.size * g.mult)}/sem. Cashprize du circuit : ${money(tierPrize(game, tier))}.</p>${pick}
       <div class="actions"><button data-act="close-modal">Annuler</button><button class="primary" data-act="confirm-open" data-v="${v}">Confirmer</button></div>`);
   },
-  "confirm-open": v => { const [game, t] = v.split("|"); const e = openDivision(game, +t); closeModal(); if (e) toast(e); else { UI.rosterGame = game; toast("Division ouverte !"); } render(); },
+  "confirm-open": v => { const [game, t] = v.split("|"); const sel = document.getElementById("open-sub"), e = openDivision(game, +t, sel && sel.value); closeModal(); if (e) toast(e); else { UI.rosterGame = game; toast("Division ouverte !"); } render(); },
   "close-div": () => modal(`<h2>Fermer la division ${GAMES[UI.rosterGame].name} ?</h2><p>Tous les joueurs seront libérés (indemnités de rupture) et le club perdra en notoriété.</p><div class="actions"><button data-act="close-modal">Annuler</button><button class="danger" data-act="confirm-close">Fermer la division</button></div>`),
   "create-academy": () => { const e = createAcademy(UI.rosterGame); toast(e || "🎓 Académie créée !"); save(); render(); },
   "to-academy": v => { toast(moveToAcademy(v)); save(); render(); },
@@ -1793,6 +1804,7 @@ document.addEventListener("click", e => {
 });
 document.addEventListener("change", e => {
   const k = e.target.dataset.change; if (!k) return;
+  if (k === "want-sub") { setWantSub(e.target.dataset.game, e.target.value); toast(`Ligue visée : ${tierName(e.target.dataset.game, 2, divOf(S.userId, e.target.dataset.game).zone || "W", e.target.value)}`); scheduleSave(); return render(); }
   if (k === "unit-move") { if (e.target.value) { const err = assignUnit(e.target.dataset.pid, e.target.value); if (err) toast(err); scheduleSave(); } return render(); }
   if (k.startsWith("al-")) return allocSum();
   if (k === "fin-game") { UI.finGame = e.target.value; return render(); }

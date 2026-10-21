@@ -32,6 +32,8 @@ Pour les jeux ajoutés, les échecs (Carlsen, Nakamura, Firouzja, Gukesh…), Te
 
 Les 2 premiers de chaque ligue montent dans le tier au-dessus de leur région, les 2 derniers descendent.
 
+**Choisir sa ligue nationale.** Quand le tier 2 est découpé en ligues nationales (LoL : LFL, Prime League, SuperLiga…), l'onglet Effectifs propose « Ligue nationale visée » : en tier 3, c'est la ligue où le club arrive en cas de montée ; en tier 2, le club change de ligue à la fin de la saison (il échange sa place avec un club de la ligue voulue). On peut aussi choisir la ligue en achetant directement une place en tier 2.
+
 **League of Legends** utilise les fichiers de l'utilisateur (Google Sheet d'après Liquipedia, dans `tools/sources/lol/`) : 313 équipes et 1 450 joueurs, avec leur pays, venus du portail des joueurs. Les tiers par région :
 - **Europe** : LEC en tier 1. En tier 2, chaque ligue nationale (ERL) joue séparément : LFL, Prime League, LVP SuperLiga, Rift Legends (Ultraliga), TCL, Esports Balkan League, Road of Legends (Elite Series), Hitpoint Masters, Hellenic Legends League, LIT, LPLOL, NLC, Arabian League. Les deuxièmes divisions et les académies sont en tier 3.
 - **Corée** : LCK, LCK CL, LCK Academy.
