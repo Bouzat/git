@@ -394,6 +394,7 @@ function viewRoster() {
       <button class="small" data-act="auto-lineup">⚡ Composition auto</button>
       <button class="small" data-act="team-talk" data-v="${UI.rosterGame}">💬 Réunion d'équipe</button>
       ${franchiseZones(UI.rosterGame).length && !isClosed(UI.rosterGame, d.tier, d.zone) ? `<button class="small" data-act="franchise" data-v="${UI.rosterGame}">🔒 Racheter une franchise</button>` : ""}
+      ${!g.open && !RANKED_GAMES.includes(UI.rosterGame) ? `<button class="small" data-act="tier-modal" data-v="${UI.rosterGame}" title="Acheter une place plus haut ou redescendre">🔀 Changer de tier${(user().tierReq || {})[UI.rosterGame] ? " (demandé)" : ""}</button>` : ""}
       <button class="small" data-act="goto-market" data-v="${UI.rosterGame}">🔎 Recruter</button>
       <button class="small danger" data-act="close-div">Fermer la division</button></div>
     ${chemLine(u.id, UI.rosterGame)}
@@ -923,20 +924,20 @@ function viewTours() {
   const games = UI.tourGame === "mine" ? (Object.keys(u.divisions).length ? Object.keys(u.divisions) : Object.keys(GAMES)) : UI.tourGame === "all" ? Object.keys(GAMES) : [UI.tourGame];
   const tabs = [["mine", "Mes jeux"], ["all", "Tous"]].concat(Object.keys(GAMES).map(k => [k, GAMES[k].icon + " " + GAMES[k].short]))
     .map(([k, l]) => `<button class="tab small ${UI.tourGame === k ? "active" : ""}" data-act="tour-game" data-v="${k}">${l}</button>`).join("");
-  const rows = games.flatMap(g => allTournaments(g).map(t => [g, t])).filter(([g, t]) => UI.tourSize === "all" || (UI.tourSize === "big") === !(S.smallTours || []).some(x => x[5] === g && x[0] === t[0] && x[1] === t[1]))
+  const rows = games.flatMap(g => allTournaments(g).map(t => [g, t])).filter(([g, t]) => UI.tourSize === "all" || (["S", "A", "B", "C"].includes(UI.tourSize) ? tourTier(t) === UI.tourSize : (UI.tourSize === "big") === !(S.smallTours || []).some(x => x[5] === g && x[0] === t[0] && x[1] === t[1])))
     .sort((a, b) => a[1][1] - b[1][1] || b[1][2] - a[1][2]).map(([g, t]) => {
     const [name, week, prize, tiers, size, region] = t;
     const r = tourStatus(g, name, week);
     const status = r ? `🏆 ${displayName(r.top[0], g)}${r.mine ? ` · <b>vous : ${r.mine}e</b>` : ""}` : week < S.week ? "<span class='muted'>Annulé</span>" : week === S.week ? "<b class='warn'>Cette semaine</b>" : "À venir";
     const st = tourState(g, t);
-    return `<tr class="${r && r.mine === 1 ? "me" : ""}"><td style="white-space:nowrap" data-sort="${week}">${weekLabel(S.season, week)}</td><td>${gchip(g)}</td><td><b>${esc(name)}</b>${region ? ` <small class="muted">${REGION_LABEL(region)}</small>` : ""}</td><td>${prize ? money(prize) : "<span class='muted' title='Pas de cashprize : qualification et prestige'>—</span>"}</td><td>${accessLabel(tiers)}</td><td>${r ? r.n : tournamentField(g, tiers, size, region || "", name).length}${GAMES[g].fmt === "br" ? " " + GAMES[g].unit + "s" : ""}</td><td style="white-space:nowrap">${st.html || "<span class='muted'>—</span>"}</td><td>${status}</td></tr>`;
+    return `<tr class="${r && r.mine === 1 ? "me" : ""}"><td style="white-space:nowrap" data-sort="${week}">${weekLabel(S.season, week)}</td><td>${gchip(g)}</td><td data-sort="${"SABC".indexOf(tourTier(t))}"><span class="imp-chip imp-${TIER_IMP[tourTier(t)]}">${tourTier(t)}</span></td><td><b>${esc(name)}</b>${region ? ` <small class="muted">${REGION_LABEL(region)}</small>` : ""}</td><td>${prize ? money(prize) : "<span class='muted' title='Pas de cashprize : qualification et prestige'>—</span>"}</td><td>${accessLabel(tiers)}</td><td>${r ? r.n : tournamentField(g, tiers, size, region || "", name).length}${GAMES[g].fmt === "br" ? " " + GAMES[g].unit + "s" : ""}</td><td style="white-space:nowrap">${st.html || "<span class='muted'>—</span>"}</td><td>${status}</td></tr>`;
   }).join("");
   if (!UI.tourSize) UI.tourSize = "all";
-  const stabs = [["all", "Tous les tournois"], ["big", "Grands tournois"], ["small", "Petits tournois & cash cups"]].map(([k, l]) => `<button class="tab small ${UI.tourSize === k ? "active" : ""}" data-act="tour-size" data-v="${k}">${l}</button>`).join("");
+  const stabs = [["all", "Tous les tournois"], ["S", "S-Tier"], ["A", "A-Tier"], ["B", "B-Tier"], ["C", "C-Tier"], ["big", "Grands tournois"], ["small", "Petits tournois & cash cups"]].map(([k, l]) => `<button class="tab small ${UI.tourSize === k ? "active" : ""}" data-act="tour-size" data-v="${k}">${l}</button>`).join("");
   return `<h2>📅 Tournois de la saison ${S.season}</h2>${tourPickCard(games)}${ewcCard()}
     <p class="muted" style="margin-top:-6px">En plus des ligues, les tournois à cashprize, à leurs vraies dates. Les tournois sur invitation prennent les meilleures équipes ; les opens accueillent tous les clubs des tiers admis. Vous pouvez décliner un tournoi (pas de déplacement à payer, vos joueurs se reposent). Les gains sont partagés avec les joueurs selon leurs contrats.</p>
     <div class="tabs">${tabs}</div><div class="tabs">${stabs}</div>
-    <div class="card table-wrap"><table><tr><th>Dates</th><th>Jeu</th><th>Tournoi</th><th>Dotation</th><th>Accès</th><th>Places</th><th>Vous</th><th>Résultat</th></tr>${rows}</table></div>`;
+    <div class="card table-wrap"><table><tr><th>Dates</th><th>Jeu</th><th title="Niveau du tournoi façon Liquipedia : S (les plus grands), A, B, C (cash cups)">Niveau</th><th>Tournoi</th><th>Dotation</th><th>Accès</th><th>Places</th><th>Vous</th><th>Résultat</th></tr>${rows}</table></div>`;
 }
 
 // ---------- finances ----------
@@ -1757,7 +1758,7 @@ function mercatoTime(info) {
 // jour de match : les rencontres du club cette semaine, à lancer une par une
 function matchDayModal(last) {
   const evs = weekEvents(), left = evs.filter(e => !e.done);
-  const rows = evs.slice().sort((a, b) => (a.when || "").localeCompare(b.when || "")).map(e => `<div class="md-ev ${e.done ? "done" : ""}"><div class="md-when">${esc(e.when || "")}</div><div style="min-width:0;flex:1">${gchip(e.game)} <b>${esc(e.title)}</b><div class="muted" style="font-size:13px">${esc(e.what)}</div></div>
+  const rows = evs.slice().sort((a, b) => (a.when || "").localeCompare(b.when || "")).map(e => `<div class="md-ev imp-${e.imp || "normal"} ${e.done ? "done" : ""}"><div class="md-when">${esc(e.when || "")}</div><div style="min-width:0;flex:1">${gchip(e.game)} ${e.impLabel ? `<span class="imp-chip imp-${e.imp}">${esc(e.impLabel)}</span> ` : ""}<b>${esc(e.title)}</b><div class="muted" style="font-size:13px">${esc(e.what)}</div></div>
     ${e.done ? "<span class='ok'>✓ Joué</span>" : `<button class="primary small" data-act="md-play" data-v="${esc(e.id)}">▶ Lancer</button>`}</div>`).join("");
   modal(`<h2>🎮 Jour de match — ${weekLabel(S.season, S.week, true)}</h2>
     ${last || ""}
@@ -1931,6 +1932,23 @@ function contractsModal() {
     <div class="actions"><button data-act="close-modal">Rester sur cette semaine</button><button class="primary" data-act="check-continue">Les laisser partir et continuer ▶</button></div>`);
 }
 ACTIONS["contracts"] = () => contractsModal();
+// changer de tier : acheter une place plus haut (notoriété et droit d'entrée) ou redescendre volontairement
+function tierModal(game) {
+  const u = user(), d = u.divisions[game], g = GAMES[game], zone = d.zone || "W", req = (u.tierReq || {})[game], started = seasonStarted(game);
+  const rows = [1, 2, 3].map(t => {
+    const e = t === d.tier ? null : tierChangeCheck(game, t), up = t < d.tier;
+    return `<tr class="${t === d.tier ? "me" : ""}"><td>${tchip(t, game)}</td><td>${esc(tierName(game, t, zone, subPrefFor(u.id, game, t, zone)))}</td>
+      <td>${t === d.tier ? "<b>Tier actuel</b>" : up ? `Droit d'entrée <b>${money(tierEntry(game, t))}</b> · notoriété ${TIER_FAME_REQ[t - 1]} requise` : "Gratuit · notoriété −2, confiance du conseil −5"}</td>
+      <td>${t === d.tier ? "" : req === t ? "<b class='ok'>Demandé pour la fin de saison</b>" : e ? `<span class="muted" style="font-size:12px">${esc(e)}</span>` : `<button class="small ${up ? "primary" : ""}" data-act="tier-req" data-v="${game}|${t}">${up ? "⬆️ Acheter la place" : "⬇️ Descendre"}</button>`}</td></tr>`;
+  }).join("");
+  modal(`<h2>🔀 ${g.icon} ${g.name} : changer de tier</h2>
+    <p class="muted" style="margin-top:-6px">Comme en vrai, une organisation peut racheter une place dans une division plus haute, ou redescendre pour reconstruire. ${started ? "<b>La saison de votre équipe a commencé : le changement se fera à la fin de la saison</b> (le droit d'entrée sera payé à ce moment-là)." : "La saison de votre équipe n'a pas commencé : le changement est immédiat."} Votre équipe prend la place du club le plus faible du tier visé si elle monte, du plus fort si elle descend.</p>
+    <div class="table-wrap"><table>${rows}</table></div>
+    <div class="actions">${req ? `<button data-act="tier-cancel" data-v="${game}">Annuler la demande</button>` : ""}<button class="primary" data-act="close-modal">Fermer</button></div>`);
+}
+ACTIONS["tier-modal"] = v => tierModal(v);
+ACTIONS["tier-req"] = v => { const [g, t] = v.split("|"), r = requestTier(g, +t); if (r.err) return toast(r.err); toast(r.now ? `Votre équipe joue désormais en ${TIER_LABEL[+t - 1]}.` : `Demande enregistrée : passage en ${TIER_LABEL[+t - 1]} à la fin de la saison.`); scheduleSave(); render(); tierModal(g); };
+ACTIONS["tier-cancel"] = v => { const u = user(); if (u.tierReq) delete u.tierReq[v]; toast("Demande annulée."); scheduleSave(); render(); tierModal(v); };
 ACTIONS["check-continue"] = () => { closeModal(); const a = UI.afterCheck || "next"; UI.afterCheck = null; ACTIONS[a](); };
 ACTIONS["md-finish"] = () => { if (pendingOffers().length) return offersModal(); if (!preWeekChecks("md-finish")) playWeek(); };
 // bouton principal : jour de match s'il reste des rencontres à lancer, sinon semaine suivante

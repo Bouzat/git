@@ -290,3 +290,13 @@ th.sorted-asc::after { content: " ▲"; color: var(--accent2); } th.sorted-desc:
 .afford { background: var(--panel2); border-radius: 10px; padding: 8px 12px; font-size: 13px; }
 .price-range { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; } .price-range input { width: 120px; }
 .mw-chip b { color: #06d6a0; } .mw-chip.last b { color: #ffd166; }
+
+/* importance des matchs et niveau des tournois (S/A/B/C) */
+.imp-chip { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 800; letter-spacing: .3px; background: var(--panel2); color: var(--muted); vertical-align: middle; }
+.imp-chip.imp-gold { background: linear-gradient(135deg, #f7d774, #c9971c); color: #2b1d00; }
+.imp-chip.imp-silver { background: linear-gradient(135deg, #e6e9ef, #9aa3b2); color: #1b2230; }
+.imp-chip.imp-normal { background: color-mix(in srgb, var(--accent) 22%, var(--panel2)); color: var(--text); }
+.md-ev.imp-gold { border: 1px solid #d4a72c; background: linear-gradient(90deg, color-mix(in srgb, #d4a72c 22%, var(--panel)), var(--panel)); box-shadow: 0 0 0 1px color-mix(in srgb, #d4a72c 35%, transparent), 0 4px 18px color-mix(in srgb, #d4a72c 25%, transparent); }
+.md-ev.imp-silver { border: 1px solid #a9b2c3; background: linear-gradient(90deg, color-mix(in srgb, #a9b2c3 14%, var(--panel)), var(--panel)); }
+.md-ev.imp-minor { opacity: .8; }
+.md-ev.imp-minor b { font-weight: 600; }

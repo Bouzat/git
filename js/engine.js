@@ -578,6 +578,60 @@ function canJoin(game, tier) {
   if (u.budget < tierEntry(game, tier)) return "Budget insuffisant.";
   return null;
 }
+// ---------- changer de tier (achat d'une place plus haut, ou descente volontaire) ----------
+// pas encore de match joué cette saison dans la ligue du club : le changement peut être immédiat
+function seasonStarted(game) {
+  const L = leagueOf(S.userId, game), r = L && L.table[S.userId];
+  return !L || !!L.playoffs || !!(r && (r.w || r.l || r.games));
+}
+function tierChangeCheck(game, t) {
+  const u = user(), d = u.divisions[game], g = GAMES[game]; if (!d) return "Pas de section dans ce jeu.";
+  if (g.open) return `${g.name} est un circuit ouvert : le statut se gagne au classement du circuit.`;
+  if (RANKED_GAMES.includes(game)) return `En ${g.short}, les tiers suivent le classement mondial : montez en gagnant des matchs et des tournois.`;
+  if (!(t >= 1 && t <= 3)) return "Ce tier n'existe pas.";
+  if (t === d.tier) return "Votre équipe joue déjà dans ce tier.";
+  if (isClosed(game, d.tier, d.zone || "W")) return `${tierName(game, d.tier, d.zone)} est une ligue fermée : il faut revendre votre franchise.`;
+  if (isClosed(game, t, d.zone || "W")) return `${tierName(game, t, d.zone)} est une ligue fermée : il faut racheter une franchise.`;
+  if (t < d.tier && u.fame < TIER_FAME_REQ[t - 1]) return `Notoriété ${TIER_FAME_REQ[t - 1]} requise pour acheter une place en ${TIER_LABEL[t - 1]} (vous êtes à ${Math.round(u.fame)}).`;
+  if (t < d.tier && u.budget < tierEntry(game, t)) return `Budget insuffisant : la place coûte ${money(tierEntry(game, t))}.`;
+  const aca = academyOf(game);
+  if (t > d.tier && aca && aca.divisions[game].tier <= t) return "Votre académie joue dans ce tier ou plus bas : l'équipe première ne peut pas y descendre.";
+  return null;
+}
+// le club du joueur prend la place d'un club du tier visé (le plus faible s'il monte, le plus fort s'il descend), qui prend la sienne
+function moveTier(game, t) {
+  const u = user(), d = u.divisions[game], zone = d.zone || "W", from = leagueOf(u.id, game);
+  const sub = subPrefFor(u.id, game, t, zone), to = S.leagues[lkey(game, t, zone, sub)];
+  if (!from || !to) return "Ligue introuvable.";
+  const cand = to.teams.filter(id => S.clubs[id] && !isMine(id) && !S.clubs[id].parent).sort((a, b) => teamStrength(a, game).str - teamStrength(b, game).str);
+  const swap = t < d.tier ? cand[0] : cand[cand.length - 1];
+  if (!swap) return "Aucune place disponible.";
+  const fee = t < d.tier ? tierEntry(game, t) : 0;
+  if (fee) book("entry", -fee, game, `Place achetée en ${tierName(game, t, zone, sub)}`);
+  const old = { tier: d.tier, sub: d.sub }, sd = S.clubs[swap].divisions[game];
+  swapInLeague(to, swap, "__swap"); swapInLeague(from, u.id, swap); swapInLeague(to, "__swap", u.id);
+  d.tier = t; if (sub) d.sub = sub; else delete d.sub;
+  sd.tier = old.tier; if (old.sub) sd.sub = old.sub; else delete sd.sub;
+  if (t > old.tier) { u.fame = Math.max(1, u.fame - 2); S.board.confidence = clamp(S.board.confidence - 5, 0, 100); }
+  mail(`${t < old.tier ? "⬆️" : "⬇️"} ${GAMES[game].short} : changement de tier`, `${u.name} joue désormais en <b>${tierName(game, t, zone, sub)}</b> (${TIER_LABEL[t - 1]})${fee ? `, place achetée ${money(fee)}` : ""}. ${clubLabel(swap, game)} prend votre ancienne place.${t > old.tier ? " Le conseil et les fans n'apprécient pas la descente volontaire." : ""}`, "info", game);
+  return null;
+}
+// demande de changement : tout de suite si la saison du club n'a pas commencé, sinon à la fin de la saison
+function requestTier(game, t) {
+  const e = tierChangeCheck(game, t); if (e) return { err: e };
+  if (!seasonStarted(game)) { const er = moveTier(game, t); return er ? { err: er } : { now: true }; }
+  (user().tierReq = user().tierReq || {})[game] = t;
+  return { later: true };
+}
+function applyTierRequests(moves) {
+  const u = user();
+  for (const [game, t] of Object.entries(u.tierReq || {})) {
+    delete u.tierReq[game];
+    if (!u.divisions[game]) continue;
+    const e = tierChangeCheck(game, t) || moveTier(game, t);
+    moves.push(e ? `❌ ${GAMES[game].short} : changement de tier impossible (${e})` : `🔀 ${GAMES[game].short} : votre équipe passe en ${TIER_LABEL[t - 1]} comme demandé`);
+  }
+}
 function openDivision(game, tier, sub) {
   const e = canJoin(game, tier); if (e) return e;
   if (sub) (user().subPref || (user().subPref = {}))[game] = sub;
@@ -1869,6 +1923,15 @@ function crown(L, winner, runnerUp, detail) {
   S.titles.push({ season: S.season, game: L.game, tier: L.tier, zone: L.zone, name: leagueName(L), club: clubLabel(winner, L.game), clubId: champ.id });
   if (isMine(winner)) mail(`🏆 CHAMPIONS ! ${label}`, `${user().name} remporte le <b>${label}</b> (${tierLabel(L.game, L.tier)}) face à ${clubLabel(runnerUp, L.game)} — ${detail}.`, "trophy", L.game);
 }
+// niveau d'un tournoi façon Liquipedia (S, A, B, C) : selon l'accès (invitation des meilleurs ou open) et la dotation
+function tourTier(t) {
+  const prize = t[2] || 0, tiers = t[3] || "";
+  if (prize >= 500000 || (tiers === "1" && prize >= 250000)) return "S";
+  if (tiers === "1" || tiers === "12" || tiers === "123" || prize >= 100000) return "A";
+  if (prize >= 15000 || tiers.includes("2")) return "B";
+  return "C";
+}
+const TIER_IMP = { S: "gold", A: "silver", B: "normal", C: "minor" };
 // tournois de la semaine : [jeu, tournoi]
 function weekTournaments(w = S.week) {
   const out = [];
@@ -1900,11 +1963,14 @@ function weekEvents() {
       if (m) what = `Journée ${md} : contre ${clubLabel(isMine(m[0]) ? m[1] : m[0], L.game)} (BO3)`;
     } else if (w === PO_SEMI) { if (standings(L.key).slice(0, 4).some(x => isMine(x.id))) what = "Demi-finale des playoffs (BO3)"; }
     else if (w === PO_FINAL && L.playoffs && L.playoffs.semis.some(x => isMine(x.winner))) what = "Grande finale des playoffs (BO5)";
-    if (what) out.push({ id: "L:" + L.key, kind: "league", game: L.game, title: leagueName(L), what, done: !!rep.done["L:" + L.key], when: dayLabel(S.season, w, md ? LEAGUE_WEEKDAY[L.game] ?? 5 : w === PO_FINAL ? 6 : 5) });
+    // importance : la finale en or, les playoffs en argent, les journées de ligue normales
+    const imp = md ? ["normal", "Ligue"] : w === PO_FINAL ? [["gold", "silver", "normal"][L.tier - 1], "🏆 Finale"] : [L.tier === 1 ? "silver" : "normal", "🔥 Playoffs"];
+    if (what) out.push({ id: "L:" + L.key, kind: "league", game: L.game, title: leagueName(L), what, imp: imp[0], impLabel: imp[1], done: !!rep.done["L:" + L.key], when: dayLabel(S.season, w, md ? LEAGUE_WEEKDAY[L.game] ?? 5 : w === PO_FINAL ? 6 : 5) });
   }
   for (const [game, t] of weekTournaments()) {
     const field = weekField(game, t);
-    if (field.length >= 2 && field.some(isMine)) out.push({ id: tourKey(game, t[0]), kind: "tour", game, title: t[0], what: `${t[2] ? "Dotation " + money(t[2]) + " · " : ""}${field.length} ${GAMES[game].fmt === "br" ? GAMES[game].unit + "s" : "participants"}`, done: !!rep.done[tourKey(game, t[0])], when: `${dayLabel(S.season, w, 3)} → ${dayLabel(S.season, w, 6)}` });
+    const tt = tourTier(t);
+    if (field.length >= 2 && field.some(isMine)) out.push({ id: tourKey(game, t[0]), kind: "tour", game, title: t[0], imp: TIER_IMP[tt], impLabel: tt === "C" ? "C-Tier · cash cup" : tt + "-Tier", what: `${t[2] ? "Dotation " + money(t[2]) + " · " : ""}${field.length} ${GAMES[game].fmt === "br" ? GAMES[game].unit + "s" : "participants"}`, done: !!rep.done[tourKey(game, t[0])], when: `${dayLabel(S.season, w, 3)} → ${dayLabel(S.season, w, 6)}` });
   }
   return out;
 }
@@ -2338,6 +2404,7 @@ function endSeason() {
     if (want && ud.sub && ud.sub !== want && (subsOf(game, ud.tier, ud.zone) || []).includes(want) && moveToSub(game, want))
       moves.push(`🔁 ${GAMES[game].short} : votre club rejoint la ${SUB_NAMES[want] || want} comme demandé.`);
   }
+  applyTierRequests(moves);
   for (const aca of userAcademies()) {
     const game = aca.academyOf, main = u.divisions[game];
     if (!main) { closeAcademy(game); moves.push(`🎓 ${GAMES[game].short} : sans équipe première, l'académie ferme.`); continue; }

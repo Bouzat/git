@@ -158,6 +158,10 @@ Le **calendrier Rocket League** est la vraie saison RLCS 2026 (`tools/sources/ro
 
 Chaque tournoi CS2 rapporte des points selon sa dotation et la place. Chaque match compte aussi, façon Elo (comme le face-à-face de la VRS) : le vainqueur prend des points au perdant, d'autant plus que l'écart de classement était grand (battre Vitality rapporte gros, perdre contre une équipe mal classée coûte cher), et les matchs des grands tournois pèsent plus. Le gain ou la perte s'affiche sous chaque match. Les points comptent pleinement 3 mois, à 75 % jusqu'à 6 mois et à 40 % jusqu'à un an. Les invitations aux grands tournois suivent ce classement, et en fin de saison les tiers sont refaits d'après lui. Comme la VRS de Valve, il y a un classement mondial et un classement par région (Europe, Amériques, Asie-Pacifique), visibles dans Compétitions.
 
+**Importance des matchs.** Dans la journée de match, chaque rencontre affiche son importance : finales de tier 1 et tournois S-Tier en or, playoffs de tier 1, finales de tier 2 et tournois A-Tier en argent, journées de ligue et tournois B-Tier normaux, cash cups (C-Tier) en discret. Chaque tournoi a un niveau S, A, B ou C selon son accès et sa dotation, avec un filtre dans l'onglet Tournois.
+
+**Changer de tier.** Dans l'onglet Effectifs, « 🔀 Changer de tier » permet d'acheter une place dans une division plus haute (notoriété et droit d'entrée requis) ou de redescendre volontairement (notoriété −2, confiance du conseil −5). Le changement est immédiat si la saison de l'équipe n'a pas commencé, sinon il se fait à la fin de la saison. Pas pour les ligues fermées (franchise), les circuits ouverts ni CS2 (classement mondial).
+
 **Un tournoi par semaine.** Comme en vrai, une équipe ne peut pas jouer deux tournois en même temps (tous les jeux). Quand elle est retenue dans plusieurs tournois la même semaine (une invitation et un open, deux invitations…), l'onglet Tournois propose « 🎯 Choix des tournois » : dotation, accès, niveau du plateau et points de classement selon la place (1er, 2e, top 4, top 8) de chaque option. Par défaut, le club joue le plus important.
 
 ## Contrats et négociation (façon FM)
