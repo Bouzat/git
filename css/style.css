@@ -372,3 +372,7 @@ details.fold[open] > summary { margin-bottom: 6px; }
 .world-shelf { border-color: #ffd16666; background: radial-gradient(circle at 50% 0, #ffd16618, transparent 70%), var(--panel); }
 .medals { display: flex; flex-direction: column; gap: 6px; } .medal { font-size: 14px; }
 .empty-shelf { text-align: center; padding: 26px; }
+.ewc-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; cursor: pointer; margin-bottom: 16px; border-color: #ffd16655; background: linear-gradient(90deg, #ffd16614, transparent 60%), var(--panel); }
+.ewc-banner:hover { border-color: #ffd166aa; }
+.cel-list { display: flex; flex-direction: column; gap: 4px; margin: 10px auto; max-height: 40vh; overflow: auto; text-align: left; max-width: 460px; }
+.cel-item { background: #ffd16614; border: 1px solid #ffd16644; border-radius: 8px; padding: 5px 10px; font-size: 14px; }

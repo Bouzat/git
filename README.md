@@ -236,3 +236,11 @@ Les trophées peuvent être filtrés par jeu.
 Le classement des structures affiche les points, les titres, les 2es et 3es places, les top 8 et la dotation. Les éditions jouées sont gardées dans un historique, et l'EWC 2026 réelle (classement des clubs et podiums par jeu) sert de référence. Les qualifications EWC ne rapportent plus de points au Club Championship.
 
 **Jeux solo** : SF6, Tekken, Fatal Fury, échecs, StarCraft II, EA FC, TFT et Trackmania n'ont pas de banc. Chaque joueur sous contrat est titulaire et joue de son côté, sous les couleurs du club. Il a sa propre place dans la ligue du club et dans les tournois, et vos joueurs peuvent s'affronter. Un joueur recruté en cours de saison dispute tout de suite les tournois ; ses matchs de ligue commencent la saison suivante. Les résultats affichent aussi la place de vos autres engagés.
+
+**Onglet EWC** : un onglet dédié dans le menu Jouer. Il contient :
+- la dotation totale et le classement complet du Club Championship, avec le cashprize visé à chaque place ;
+- les 24 tournois avec leur dotation et les gains des trois premières places ;
+- le vainqueur de chaque tournoi, votre place, vos gains et vos points ;
+- l'historique des éditions jouées et la référence de l'EWC 2026 réelle.
+
+Un bandeau sur le tableau de bord pendant l'EWC et dans l'onglet Tournois y renvoie. Quand vous gagnez plusieurs titres la même semaine, la célébration les liste tous, avec leurs gains.
