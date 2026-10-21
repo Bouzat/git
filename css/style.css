@@ -337,3 +337,4 @@ details.fold[open] > summary { margin-bottom: 6px; }
 .help-i { font-size: 26px; line-height: 1; }
 .help-step p { margin: 4px 0 0; font-size: 14px; color: var(--muted); }
 .help-step p b { color: var(--text); }
+.res-qual { margin: 2px 0; font-size: .92em; }

@@ -212,3 +212,5 @@ tools/          scripts de récupération des données
 js/engine.js    simulation (matchs, économie, mercato, saisons)
 js/ui.js        interface
 ```
+
+**Qualifications visibles** : après chaque étape qualificative (qualifications, demi-finales et grande finale FNCS, qualifications EWC), le résultat indique clairement ✅ Qualifié pour l'étape suivante ou ❌ Éliminé avec le top requis ; pour chaque équipe quand vous en alignez plusieurs. Après une grande finale FNCS, il affiche votre place provisoire dans la course au Global Championship par rapport au quota de votre région. Le statut apparaît dans le jour de match, le direct, le bilan de la semaine et la colonne Résultat des Tournois.

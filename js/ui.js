@@ -974,6 +974,13 @@ function ewcCard() {
     <p class="muted" style="margin-top:-6px;font-size:13px">L'Esports World Cup regroupe un tournoi par jeu. Chaque top 8 rapporte des points au club (1 000 pour un titre). Pour être classé, il faut un top 8 dans au moins 2 jeux ; 24 clubs se partagent 30 M€ (7 M€ pour le champion).</p>
     ${rows ? `<div class="table-wrap"><table><tr><th>#</th><th>Club</th><th>Pts</th><th>Top 8</th><th>Titres</th><th>${done ? "Dotation" : "Statut"}</th></tr>${rows}</table></div>${me >= 12 ? `<p>Vous : ${me + 1}e (${list[me].pts} pts)</p>` : ""}` : "<p class='muted'>Aucun point attribué pour l'instant.</p>"}</div>`;
 }
+// qualifié ou éliminé pour l'étape suivante (qualifs FNCS, course aux Worlds, qualifs EWC)
+function qualBadge(q, short) {
+  if (!q) return "";
+  if (q.invited) return `<b class="ok">🎟️ Déjà invité${short ? "" : " : " + esc(q.next)}</b>`;
+  if (q.worlds) return q.ok ? `<b class="ok">✅ ${short ? "Worlds" : `Qualifié provisoirement pour le ${esc(q.next)}`} (${q.rank}e/${q.top} places)</b>` : `<b class="bad">❌ ${short ? "Hors Worlds" : `Hors des places pour le ${esc(q.next)}`} (${q.rank ? q.rank + "e, " : ""}top ${q.top} requis)</b>`;
+  return q.ok ? `<b class="ok">✅ Qualifié${short ? "" : " pour " + esc(q.next)}</b>` : `<b class="bad">❌ Éliminé${short ? "" : ` (il fallait le top ${q.top}${q.ewc ? " hors invités" : ""})`}</b>`;
+}
 function tourRow(t) {
   const g = GAMES[t.game];
   return `<div class="lobby"><div><b>${g.icon} ${esc(t.name)}</b> — ${t.place === 1 ? "<b class='win'>🏆 VAINQUEUR</b>" : `<b>${t.place}e</b> sur ${t.n}`}</div>
@@ -989,7 +996,7 @@ function viewTours() {
     .sort((a, b) => a[1][1] - b[1][1] || b[1][2] - a[1][2]).map(([g, t]) => {
     const [name, week, prize, tiers, size, region] = t;
     const r = tourStatus(g, name, week);
-    const status = r ? `🏆 ${displayName(r.top[0], g)}${r.mine ? ` · <b>vous : ${r.mine}e</b>` : ""}` : week < S.week ? "<span class='muted'>Annulé</span>" : week === S.week ? "<b class='warn'>Cette semaine</b>" : "À venir";
+    const status = r ? `🏆 ${displayName(r.top[0], g)}${r.mine ? ` · <b>vous : ${r.mine}e</b>` : ""}${r.qual ? " · " + qualBadge(r.qual, true) : ""}` : week < S.week ? "<span class='muted'>Annulé</span>" : week === S.week ? "<b class='warn'>Cette semaine</b>" : "À venir";
     const st = tourState(g, t);
     return `<tr class="${r && r.mine === 1 ? "me" : ""}"><td style="white-space:nowrap" data-sort="${week}">${weekLabel(S.season, week)}</td><td>${gchip(g)}</td><td data-sort="${"SABC".indexOf(tourTier(t))}"><span class="imp-chip imp-${TIER_IMP[tourTier(t)]}">${tourTier(t)}</span></td><td><b>${esc(name)}</b>${region ? ` <small class="muted">${REGION_LABEL(region)}</small>` : ""}</td><td>${prize ? money(prize) : "<span class='muted' title='Pas de cashprize : qualification et prestige'>—</span>"}</td><td>${accessLabel(tiers)}</td><td>${r ? r.n : tournamentField(g, tiers, size, region || "", name).length}${GAMES[g].fmt === "br" ? " " + GAMES[g].unit + "s" : ""}</td><td style="white-space:nowrap">${st.html || "<span class='muted'>—</span>"}</td><td>${status}</td></tr>`;
   }).join("");
@@ -1793,7 +1800,7 @@ function resultsHtml(r) {
   }
   for (const t of r.tournaments) items.push({ k: (t.week || r.week || 0) * 10 + 7, html: `<div class="res-row ${t.place === 1 ? "w trophy" : "n"}"><div class="res-date">${t.week ? dayLabel(season, t.week, 6) : ""}</div>
       <div class="res-main"><div class="res-title">${t.place === 1 ? "🏆 <b>VAINQUEUR</b>" : `<span class="res-badge">${t.place}e</span> sur ${t.n}`} · <b>${esc(t.name)}</b>${t.prize ? ` · <b class="ok">+${money(t.prize)}</b>` : ""}</div>
-      <div class="muted res-sub">${GAMES[t.game].icon} Bilan du tournoi${t.place > 1 ? ` · vainqueur : ${displayName(t.winner, t.game)}` : ""}</div></div></div>` });
+      ${t.quals && t.quals.length > 1 ? t.quals.map(q => `<div class="res-qual">${displayName(q.id, t.game)} (${q.place}e) : ${qualBadge(q)}</div>`).join("") : t.qual ? `<div class="res-qual">${qualBadge(t.qual)}</div>` : ""}<div class="muted res-sub">${GAMES[t.game].icon} Bilan du tournoi${t.place > 1 ? ` · vainqueur : ${displayName(t.winner, t.game)}` : ""}</div></div></div>` });
   return items.sort((a, b) => a.k - b.k).map(x => x.html).join("");
 }
 // victoire en tournoi ou titre : confettis et gains, comme un pari gagnant
@@ -1931,7 +1938,7 @@ function liveSteps(r) {
     const mvp = grp.teams[0].l.mvp;
     steps.push({ t: 1100, grp, k: games, end: true, log: `🏁 ${fin} ${grp.tour ? "du tournoi" : "de la journée"}${mvp ? ` · meilleur joueur du lobby : ${esc(mvp)}` : ""}` });
   }
-  for (const t of r.tournaments) steps.push({ t: 1200, tour: t, log: `🏆 ${esc(t.name)} : ${t.place === 1 ? "<b class='win'>VAINQUEUR !</b>" : `<b>${t.place}e</b> sur ${t.n}`}` });
+  for (const t of r.tournaments) steps.push({ t: 1200, tour: t, log: `🏆 ${esc(t.name)} : ${t.place === 1 ? "<b class='win'>VAINQUEUR !</b>" : `<b>${t.place}e</b> sur ${t.n}`}${t.quals && t.quals.length > 1 ? " · " + t.quals.map(q => `${displayName(q.id, t.game)} ${qualBadge(q, true)}`).join(" · ") : t.qual ? " · " + qualBadge(t.qual) : ""}` });
   return steps;
 }
 function liveRender() {

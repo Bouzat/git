@@ -2079,6 +2079,14 @@ function qualField(game, spec, name, week, raw) {
   }
   return null;
 }
+// place provisoire d'une équipe dans la course au Global Championship (points cumulés des grandes finales, par zone)
+function worldsStanding(game, id) {
+  const O = S.tourOrder || {}, pts = {};
+  for (const k of Object.keys(O)) if (k.startsWith(game + "|") && k.endsWith(" — Grande finale")) O[k].forEach((x, i) => pts[x] = (pts[x] || 0) + Math.max(1, 60 - i));
+  const d = divOf(id, game), z = (d && d.zone) || "W", quota = FNCS_QUOTA[z] || 0;
+  const zone = Object.keys(pts).filter(x => S.clubs[x] && divOf(x, game) && (divOf(x, game).zone || "W") === z).sort((a, b) => pts[b] - pts[a]);
+  return { rank: zone.indexOf(id) + 1, quota, pts: pts[id] || 0, zone: z };
+}
 // tournois de la semaine : [jeu, tournoi]
 function weekTournaments(w = S.week) {
   const out = [];
@@ -2434,14 +2442,17 @@ function playTournament(game, t) {
   const next = (TOURNAMENTS[game] || []).find(x => x[6] && x[6].from === name);
   // qualifications EWC : les mieux classés qui ne sont pas déjà invités prennent les places restantes
   const ewcT = (TOURNAMENTS[game] || []).find(x => x[6] && x[6].ewcQual === name);
+  const quals = {}; // statut de qualification de chacune de vos équipes, affiché dans les résultats
   if (ewcT) { const inv = tournamentField(game, ewcT[3], ewcT[6].invite, ewcT[5], null, ewcT[1], true), slots = ewcT[4] - inv.length;
     const qual = order.filter(id => !inv.includes(id)).slice(0, slots);
+    for (const id of order.filter(isMine)) quals[id] = { ok: qual.includes(id) || inv.includes(id), next: ewcT[0], top: slots, invited: inv.includes(id), ewc: true };
     for (const id of order.filter(isMine)) { const i = order.indexOf(id) + 1;
       mail(qual.includes(id) ? `✅ Qualifié pour l'${ewcT[0]}` : inv.includes(id) ? `🎟️ Déjà invité : ${ewcT[0]}` : `❌ Pas de place à l'EWC`, `${clubLabel(id, game)} termine <b>${i}e</b> des qualifications. ${qual.includes(id) ? `Il décroche une des ${slots} places qualificatives pour <b>${ewcT[0]}</b> (${weekLabel(S.season, ewcT[1])}).` : inv.includes(id) ? "L'équipe était déjà invitée grâce à son classement." : `Il fallait finir parmi les ${slots} meilleurs non invités.`}`, "info", game); } }
   if (next) { const top = qualTop(next[6], order.length, game);
     for (const id of order.filter(isMine)) { const i = order.indexOf(id) + 1;
+      quals[id] = { ok: i <= top, next: next[0], top };
       mail(i <= top ? `✅ Qualifié : ${next[0]}` : `❌ Éliminé : ${name}`, `${clubLabel(id, game)} termine <b>${i}e</b> de ${name}${i <= top ? ` et se qualifie pour <b>${next[0]}</b> (${weekLabel(S.season, next[1])}).` : ` : il fallait finir dans les ${top} premiers pour aller en ${next[0]}.`}`, "info", game); } }
-  else if (/ — Grande finale$/.test(name)) for (const id of order.filter(isMine)) mail(`🌍 Global Championship : ${clubLabel(id, game)}`, `${clubLabel(id, game)} termine <b>${order.indexOf(id) + 1}e</b> de ${name}. Les meilleurs de chaque région aux grandes finales des Majors (${Object.entries(FNCS_QUOTA).map(([z, q]) => `${ZONE_NAMES[z]} ${q}`).join(", ")}) jouent le FNCS Global Championship.`, "info", game);
+  else if (/ — Grande finale$/.test(name)) for (const id of order.filter(isMine)) { const ws = worldsStanding(game, id); quals[id] = { worlds: true, next: "FNCS Global Championship", top: ws.quota, rank: ws.rank, ok: ws.rank > 0 && ws.rank <= ws.quota }; mail(`🌍 Global Championship : ${clubLabel(id, game)}`, `${clubLabel(id, game)} termine <b>${order.indexOf(id) + 1}e</b> de ${name}. Les meilleurs de chaque région aux grandes finales des Majors (${Object.entries(FNCS_QUOTA).map(([z, q]) => `${ZONE_NAMES[z]} ${q}`).join(", ")}) jouent le FNCS Global Championship.`, "info", game); }
   // les grands tournois se jouent en LAN : billets d'avion et hôtel pour les joueurs
   const mineIn = field.filter(isMine);
   if (prize >= 100000 && mineIn.length) book("travel", -mineIn.length * g.size * (t[5] ? 900 : 2200), game, name);
@@ -2455,10 +2466,10 @@ function playTournament(game, t) {
   if (RANKED_GAMES.includes(game)) rankTournament(game, order, prize, name);
   if (name.startsWith("EWC")) ewcPoints(order.map(id => S.clubs[id] && S.clubs[id].parent === S.userId && !S.clubs[id].academyOf ? S.userId : id), game);
   const mine = order.findIndex(isMine) + 1;
-  (S.tourResults || (S.tourResults = [])).push({ season: S.season, week: w, game, name, prize, n: field.length, top: order.slice(0, 4), mine: mine || null });
+  (S.tourResults || (S.tourResults = [])).push({ season: S.season, week: w, game, name, prize, n: field.length, top: order.slice(0, 4), mine: mine || null, qual: mine ? quals[order[mine - 1]] || null : null });
   if (mine) {
     const won = Math.round(prize * (PLACE_SHARE[mine - 1] || 0) * clubKeep(game));
-    rep.tournaments.push({ game, name, place: mine, n: field.length, prize: won, winner: order[0], week: w, dd: 6 });
+    rep.tournaments.push({ game, name, place: mine, n: field.length, prize: won, winner: order[0], week: w, dd: 6, qual: quals[order[mine - 1]] || null, quals: order.filter(id => isMine(id) && quals[id]).map(id => ({ id, place: order.indexOf(id) + 1, ...quals[id] })) });
     if (mine === 1) mail(`🏆 ${name} remporté !`, `${user().name} remporte le <b>${name} ${S.season}</b> (${GAMES[game].name}) et empoche ${money(won)}.`, "trophy", game);
   }
 }
