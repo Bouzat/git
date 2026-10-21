@@ -765,11 +765,26 @@ function setAlloc(map) {
   S.alloc.set = true;
   return null;
 }
+// change l'enveloppe et le plafond salarial d'une section ; si l'argent non réparti ne suffit pas,
+// la différence est reprise sur ce qui reste dans les enveloppes des autres sections (les plus garnies d'abord)
+function adjustAlloc(game, transfer, wages) {
+  const u = user(), cur = allocOf(game), games = Object.keys(u.divisions);
+  transfer = Math.max(0, Math.round(transfer)); wages = Math.max(0, round50(wages));
+  const left = g => Math.max(0, allocOf(g).transfer - Math.max(0, allocOf(g).spent));
+  const free = Math.max(0, u.budget) - games.reduce((s, g) => s + left(g), 0);
+  let need = Math.max(0, transfer - Math.max(0, cur.spent)) - left(game) - Math.max(0, free);
+  const others = games.filter(g => g !== game && left(g) > 0).sort((a, b) => left(b) - left(a));
+  if (need > others.reduce((s, g) => s + left(g), 0)) return { err: `Pas assez d'argent : votre budget (${money(u.budget)}) ne couvre pas une enveloppe de ${money(transfer)} en ${GAMES[game].short}.` };
+  const moved = [];
+  for (const g of others) { if (need <= 0) break; const take = Math.min(need, left(g)); allocOf(g).transfer -= take; need -= take; moved.push([g, take]); }
+  cur.transfer = transfer; cur.wages = wages; S.alloc.set = true;
+  return { moved };
+}
 // une dépense de mercato rentre-t-elle dans le budget total, l'enveloppe du jeu et sa masse salariale ?
 function budgetCheck(game, upfront, extraWeekly = 0) {
   if (upfront > user().budget) return `Budget insuffisant : il faut ${money(upfront)} tout de suite.`;
-  if (upfront > transferRoom(game)) return `Enveloppe mercato ${GAMES[game].short} dépassée : il reste ${money(Math.max(0, transferRoom(game)))} sur ${money(allocOf(game).transfer)}. Modifiez la répartition dans l'onglet Finances.`;
-  if (extraWeekly > 0 && extraWeekly > wageRoom(game)) return `Masse salariale ${GAMES[game].short} dépassée : ${money(gameWages(game))}/sem sur ${money(allocOf(game).wages)}/sem autorisés (il faudrait ${money(extraWeekly)}/sem de plus). Modifiez la répartition dans l'onglet Finances.`;
+  if (upfront > transferRoom(game)) return `Enveloppe mercato ${GAMES[game].short} dépassée : il reste ${money(Math.max(0, transferRoom(game)))} sur ${money(allocOf(game).transfer)}. Ajustez la répartition (ci-dessous ou dans l'onglet Finances).`;
+  if (extraWeekly > 0 && extraWeekly > wageRoom(game)) return `Masse salariale ${GAMES[game].short} dépassée : ${money(gameWages(game))}/sem sur ${money(allocOf(game).wages)}/sem autorisés (il faudrait ${money(extraWeekly)}/sem de plus). Ajustez la répartition (ci-dessous ou dans l'onglet Finances).`;
   return null;
 }
 

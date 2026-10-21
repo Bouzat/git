@@ -1154,19 +1154,22 @@ Object.assign(ACTIONS, {
     if (!u.divisions[p.game]) return toast(`Ouvrez d'abord une division ${GAMES[p.game].name} (onglet Effectifs).`);
     openNego(startNegotiation(v, "sign"));
   },
-  "offer": v => {
+  "offer": (v, reply, fee) => {
     const p = S.players[v], u = user(), c = S.clubs[p.club];
     if (!u.divisions[p.game]) return toast(`Ouvrez d'abord une division ${GAMES[p.game].name} (onglet Effectifs).`);
     const ask = askingPrice(p);
     modal(`<h2>${c.solo ? "Recruter" : "Offre pour"} ${flag(p.nat)} ${esc(p.handle)}</h2><p>${c.solo ? "Pro indépendant" : esc(c.name)} · ${GAMES[p.game].name} · ${p.role} · ${ageTxt(p)} ans · ${R(p.rating)} · potentiel ${potTxt(p)}</p>
       <p>Valeur estimée : ${money(playerValue(p))} · ${c.solo ? "Prime demandée" : "Le club en attend"} environ <b>${money(ask)}</b>.${p.clause ? `<br>Clause libératoire : <b>${money(p.clause)}</b> (le club ne peut pas refuser si vous la payez).` : ""}</p>
-      <div class="form-row"><label for="f-fee">${c.solo ? "Prime de recrutement" : "Indemnité de transfert"} (€)</label><input id="f-fee" type="number" step="500" value="${ask}"></div>
+      <div class="form-row"><label for="f-fee">${c.solo ? "Prime de recrutement" : "Indemnité de transfert"} (€)</label><input id="f-fee" type="number" step="500" value="${fee || ask}"></div>
+      ${reply ? `<div class="reply bad">${reply}</div>${allocFix(p.game, fee || ask, 0, "offer:" + v)}` : ""}
       <p class="afford">💰 ${affordTxt(p)}<br><small class="muted">Il demande environ ${money(salaryDemand(p, u))}/sem. L'indemnité, la prime de signature et la commission de l'agent sont prises sur la même enveloppe.</small></p>
       <p class="muted" style="font-size:12px">Si l'offre est acceptée, vous négocierez ensuite le contrat avec le joueur et son agent.</p>
       <div class="actions"><button data-act="close-modal">Annuler</button>${p.clause ? `<button data-act="pay-clause" data-v="${v}">Payer la clause</button>` : ""}<button class="primary" data-act="do-offer" data-v="${v}">Envoyer l'offre</button></div>`);
   },
   "do-offer": v => {
     const fee = +document.getElementById("f-fee").value, e = transferFeeCheck(v, fee);
+    // enveloppe dépassée : on reste sur l'offre pour pouvoir ajuster le budget de la section
+    if (e && fee > transferRoom(S.players[v].game) && fee <= user().budget) return ACTIONS.offer(v, e, fee);
     if (e) { closeModal(); return toast(e); }
     openNego(startNegotiation(v, "transfer", fee), `Offre acceptée par le club (${money(fee)}). Place à la négociation avec le joueur.`);
   },
@@ -1178,6 +1181,20 @@ Object.assign(ACTIONS, {
   "close-modal": () => closeModal(),
 });
 
+// encadré pour ajuster tout de suite l'enveloppe et le plafond salarial d'une section quand une offre les dépasse
+// back : écran à réafficher après l'ajustement ("nego" ou "offer:<id du joueur>")
+function allocFix(game, upfront, weekly, back) {
+  const a = allocOf(game), lack = Math.max(0, upfront - transferRoom(game)), wlack = Math.max(0, weekly - wageRoom(game));
+  if (!lack && !wlack) return "";
+  const u = user(), games = Object.keys(u.divisions), left = g => Math.max(0, allocOf(g).transfer - Math.max(0, allocOf(g).spent));
+  const free = Math.max(0, Math.max(0, u.budget) - games.reduce((s, g) => s + left(g), 0)), elsewhere = games.filter(g => g !== game).reduce((s, g) => s + left(g), 0);
+  return `<div class="counter-box"><b>⚖️ Ajuster le budget ${GAMES[game].short} sans quitter</b>
+    <div class="muted" style="font-size:12px;margin:4px 0">Non réparti : ${money(free)} · encore libre dans les autres sections : ${money(elsewhere)} (repris si besoin, les plus garnies d'abord).</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end">
+      <div class="form-row" style="margin:0"><label for="fx-t">Enveloppe mercato (€)</label><input id="fx-t" type="number" min="0" step="1000" value="${a.transfer + lack}" style="width:130px"><small class="muted">actuelle : ${money(a.transfer)}${lack ? ` (+${money(lack)} nécessaires)` : ""}</small></div>
+      <div class="form-row" style="margin:0"><label for="fx-w">Plafond salarial (€/sem)</label><input id="fx-w" type="number" min="0" step="50" value="${round50(a.wages + wlack)}" style="width:110px"><small class="muted">actuel : ${money(a.wages)}${wlack ? ` (+${money(wlack)} nécessaires)` : ""}</small></div>
+      <button class="small primary" data-act="fix-alloc" data-v="${game}|${back}">✅ Appliquer</button></div></div>`;
+}
 // ---------- négociation de contrats ----------
 let NEGO = null;
 const CTX_LABEL = { sign: "Signature", transfer: "Transfert", renew: "Prolongation" };
@@ -1200,7 +1217,7 @@ function negoModal(reply, tone) {
     <div class="nego-head"><div><span class="muted">Personnalité</span><b>${pers}</b><small class="muted">${PERSONALITIES[pers].desc}</small></div>
       <div><span class="muted">Patience</span><b>${moodTxt}</b>${bar(mood * 100)}</div></div>
     <p class="afford">💰 ${affordTxt(p)}${N.ctx === "transfer" ? ` <small class="muted">(l'indemnité de ${money(N.fee)} sera prise sur cette somme)</small>` : ""}</p>
-    ${reply ? `<div class="reply ${tone || ""}">${reply}</div>` : ""}
+    ${reply ? `<div class="reply ${tone || ""}">${reply}</div>` : ""}${tone === "bad" ? allocFix(p.game, o.bonus + o.agentFee + (N.ctx === "transfer" ? N.fee : 0), o.salary - (N.ctx === "renew" ? p.salary : 0), "nego") : ""}
     <div class="nego-grid">
       <div class="form-row nego-f"><label for="n-region">Région de jeu</label><select id="n-region">${Object.entries(REGIONS).map(([k, l]) => `<option value="${k}" ${k === (o.region || d.region) ? "selected" : ""}>${l}</option>`).join("")}</select><small class="muted">Originaire de : ${REGIONS[homeRegion(p)]}${d.region !== homeRegion(p) ? ` · joue en ${REGIONS[d.region]}` : ""}</small></div>
       <div class="form-row nego-f"><label for="n-status">Statut promis</label><select id="n-status">${STATUSES.slice().reverse().map(x => `<option ${x === o.status ? "selected" : ""}>${x}</option>`).join("")}</select><small class="muted">Demande : ${d.status}</small></div>
@@ -1257,6 +1274,16 @@ ACTIONS["nego-take"] = () => {
   NEGO.draft = r.counter || offer; NEGO.counter = r.counter || null; negoModal(r.msg, r.tone);
 };
 ACTIONS["nego-quit"] = () => { NEGO = null; closeModal(); };
+ACTIONS["fix-alloc"] = v => {
+  const [game, back] = v.split("|"), r = adjustAlloc(game, +document.getElementById("fx-t").value || 0, +document.getElementById("fx-w").value || 0);
+  if (r.err) return toast(r.err);
+  const fee = document.getElementById("f-fee"), keep = fee && +fee.value;
+  if (back === "nego" && NEGO) NEGO.draft = readOffer();
+  toast(`Budget ${GAMES[game].short} : enveloppe ${money(allocOf(game).transfer)}, plafond ${money(allocOf(game).wages)}/sem${r.moved.length ? " (repris : " + r.moved.map(([g, x]) => GAMES[g].short + " " + money(x)).join(", ") + ")" : ""}.`);
+  scheduleSave();
+  if (back === "nego" && NEGO) return negoModal(`✅ Budget ajusté. ${affordTxt(S.players[NEGO.pid])} Vous pouvez refaire l'offre.`, "ok");
+  if (back.startsWith("offer:")) { const pid = back.slice(6); ACTIONS.offer(pid); const f = document.getElementById("f-fee"); if (f && keep) f.value = keep; }
+};
 
 // ---------- négociation de sponsors ----------
 let SP = null;
