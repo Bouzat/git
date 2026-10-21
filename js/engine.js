@@ -536,16 +536,19 @@ function newSeasonSetup(first) {
   for (const game of changed) {
     if (first) continue;
     const g = GAMES[game];
-    // les clubs de l'IA complètent (ou réduisent) leurs équipes ; le joueur doit recruter lui-même
+    // les clubs de l'IA complètent (ou réduisent) leurs équipes ; vos équipes (y compris vos duos/trios secondaires)
+    // ne recrutent jamais seules : en Fortnite, les places libres sont prises par des partenaires extérieurs non payés
     for (const c of Object.values(S.clubs)) {
       if (!c.divisions[game]) continue;
-      if (c.id !== S.userId) aiFillRoster(c.id, game);
-      if (c.id !== S.userId || g.size < clubPlayers(c.id, game).filter(p => p.starter).length) autoStarters(c.id, game);
+      if (!isMine(c.id)) aiFillRoster(c.id, game);
+      if (!isMine(c.id) || (!unitGame(game) && g.size < clubPlayers(c.id, game).filter(p => p.starter).length)) autoStarters(c.id, game);
     }
     if (user().divisions[game]) {
+      arrangeUnits(game);
       const n = clubPlayers(S.userId, game).length;
       mail(`${g.icon} ${g.name} ${S.season} : place aux ${g.unit}s !`, `La FNCS change de format cette saison : les équipes jouent en <b>${g.unit}s</b> (${g.size} joueurs, lobbies de ${g.lobby * g.size} joueurs).` +
-        (n < g.size ? `<br>Votre effectif n'a que ${n} joueur(s) : recrutez vite, une place vide coûte très cher en lobby.` : `<br>Vérifiez vos titulaires dans l'onglet Effectifs.`), "info");
+        (unitGame(game) ? `<br>Aucun joueur n'a été recruté : vos joueurs sont répartis en ${g.unit}s et les places libres sont complétées par des partenaires extérieurs de leur niveau, que le club ne paie pas. Vous pouvez réorganiser vos équipes dans l'onglet Effectifs.`
+          : n < g.size ? `<br>Votre effectif n'a que ${n} joueur(s) : recrutez vite, une place vide coûte très cher en lobby.` : `<br>Vérifiez vos titulaires dans l'onglet Effectifs.`), "info");
     }
   }
   for (const L of Object.values(S.leagues)) {
