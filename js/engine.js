@@ -553,7 +553,7 @@ function newSeasonSetup(first) {
     L.results = []; L.playoffs = null; L.champion = null;
   }
   S.week = SEASON_FIRST;
-  S.rep = null; S.tourChoice = {}; S.tourOrder = {};
+  S.rep = null; S.tourChoice = {}; S.tourOrder = {}; if (S.moves) S.moves = S.moves.filter(m => m[0] >= S.season - 1);
   S.smallTours = genSmallEvents();
   S.ewc = {};
   S.board.objective = pickObjective(first);
@@ -1014,8 +1014,10 @@ function sellPlayer(pid, buyerId, offerFee) {
   const fee = offerFee || Math.round(playerValue(p) * rand(0.75, 1.1) / 500) * 500;
   unlistPlayer(p.id);
   const game = p.game;
+  const sellerId = p.club;
   removeFromClub(p);
   joinClub(p, buyer, salaryDemand(p, buyer), randi(1, 3));
+  logMove(p, sellerId, buyer.id, fee);
   book("sales", fee, game, `Vente de ${p.handle} à ${buyer.name}`);
   arrangeUnits(game);
   const roster = clubPlayers(buyer.id, p.game);
@@ -1350,7 +1352,7 @@ function aiTransferList() {
     const seller = S.clubs[p.club], fee = p.askPrice;
     unlistPlayer(p.id); removeFromClub(p); buyer.budget -= fee; seller.budget += fee;
     joinClub(p, buyer, salaryDemand(p, buyer), randi(1, 3)); aiFillRoster(seller.id, p.game);
-    news(`${flag(p.nat)} ${p.handle} quitte ${seller.name} pour ${buyer.name} (${GAMES[p.game].short}, ${money(fee)}).`);
+    logMove(p, seller.id, buyer.id, fee);
   }
 }
 
@@ -1588,10 +1590,12 @@ function acceptContract(N, offer) {
     seller.budget += N.fee;
     removeFromClub(p);
     joinClub(p, u, offer.salary, offer.years);
+    logMove(p, seller.id, u.id, N.fee);
     aiFillRoster(seller.id, p.game);
     u.fame = clamp(u.fame + Math.max(0, (p.rating - 80) * 0.15), 0, 100);
   } else if (N.ctx === "sign") {
     joinClub(p, u, offer.salary, offer.years);
+    logMove(p, null, u.id, 0);
   }
   Object.assign(p, { salary: offer.salary, years: offer.years, prizeShare: offer.prizeShare, winBonus: offer.winBonus, clause: offer.clause, status: offer.status, promiseBroken: 0 });
   const region = offer.region || prevRegion;
@@ -1626,8 +1630,10 @@ function weeklyContractEffects() {
       if (!buyers.length) continue;
       const buyer = pick(buyers);
       book("clauses", p.clause, p.game, `Clause libératoire de ${p.handle} payée par ${buyer.name}`);
+      const sellerId = p.club;
       removeFromClub(p);
       joinClub(p, buyer, salaryDemand(p, buyer), randi(2, 4));
+      logMove(p, sellerId, buyer.id, p.clause);
       const roster = clubPlayers(buyer.id, p.game);
       if (roster.length > GAMES[p.game].size + 2) { const worst = roster.filter(x => x.id !== p.id).sort((a, b) => a.rating - b.rating)[0]; removeFromClub(worst); worst.years = 0; }
       mail(`💸 Clause activée : ${p.handle}`, `<b>${buyer.name}</b> a payé la clause libératoire de ${p.handle} (${money(p.clause)}). Le joueur quitte le club.`, "transfer");
@@ -2204,6 +2210,8 @@ function advanceWeek() {
   if (Math.random() < 0.1) { const ev = randomEvent(); if (ev) report.events.push(ev); }
   aiMarket();
   aiTransferList();
+  aiMercato();
+  mercatoDigest();
   // un message de résultats par jeu (comme le compte rendu de match de Football Manager)
   const byGame = {};
   for (const r of report.matches) (byGame[r.game] = byGame[r.game] || []).push(`${r.stage || ""} : <b>${clubLabel(r.a, r.game)} ${r.sa}-${r.sb} ${clubLabel(r.b, r.game)}</b>${r.mvp ? " · MVP " + r.mvp : ""}`);
@@ -2483,6 +2491,8 @@ function promoteSubs(game, t, zone, moves) {
 }
 function endSeason() {
   const u = user();
+  // classement final de chaque club (le mercato de l'intersaison en dépend)
+  for (const L of Object.values(S.leagues)) { const o = finalOrder(L), n = o.length; o.forEach((id, i) => { const c = S.clubs[id]; if (c) (c.lastPos = c.lastPos || {})[L.game] = n > 1 ? i / (n - 1) : 0.5; }); }
   const o = S.board.objective;
   let ok = false, titles = 0, playoffs = false;
   const lines = [];
@@ -2664,6 +2674,65 @@ function endSeason() {
   return { ok, moves };
 }
 
+// ---------- mercato de l'IA ----------
+// mouvements de la saison : [saison, semaine, jeu, pseudo, id joueur, club quitté (ou null), club rejoint, indemnité, note]
+function logMove(p, fromId, toId, fee) {
+  (S.moves = S.moves || []).push([S.season, S.week, p.game, p.handle, p.id, fromId || null, toId, Math.round(fee || 0), p.rating]);
+  if (S.moves.length > 1500) S.moves.splice(0, S.moves.length - 1500);
+  (S.movesWeek = S.movesWeek || []).push(S.moves[S.moves.length - 1]);
+}
+// Pendant les fenêtres de chaque jeu, les clubs de l'IA se renforcent : plus leurs résultats sont mauvais, plus ils bougent
+// (un club en tête change rarement une équipe qui gagne). Ils remplacent leur joueur le plus faible par un agent libre
+// ou par un joueur d'un club de même niveau ou plus modeste, s'ils peuvent payer l'indemnité.
+function aiMercato() {
+  const pools = {}, perGame = {};
+  const poolOf = (g, zone) => {
+    const k = g + "|" + zone;
+    if (!pools[k]) pools[k] = Object.values(S.players).filter(p => p.game === g && p.rating >= 55 && !isMine(p.club) && !(p.club && S.clubs[p.club] && (S.clubs[p.club].solo || !S.clubs[p.club].ai)) && playerZone(p, g) === zone && !(p.suspendedUntil > nowIndex()));
+    return pools[k];
+  };
+  for (const L of Object.values(S.leagues)) {
+    const g = L.game, G = GAMES[g];
+    if (G.size < 2 || !mercatoOpen(g) || (perGame[g] || 0) >= 8) continue;
+    const order = finalOrder(L), n = order.length, offseason = !matchday(S.week);
+    const byStr = L.teams.slice().sort((a, b) => teamStrength(b, g).str - teamStrength(a, g).str);
+    for (const id of shuffle(L.teams.slice())) {
+      const c = S.clubs[id];
+      if (!c || !c.ai || c.solo || c.filler || c.parent || isMine(id) || (perGame[g] || 0) >= 8) continue;
+      // résultats : le classement actuel si la saison a assez avancé, sinon celui de la saison passée (ou le niveau de l'équipe)
+      const row = L.table[id] || {}, played = (row.w || 0) + (row.l || 0) + (row.games || 0);
+      const pos = played >= 4 && n > 1 ? order.indexOf(id) / (n - 1) : c.lastPos && c.lastPos[g] !== undefined ? c.lastPos[g] : n > 1 ? byStr.indexOf(id) / (n - 1) : 0.5;
+      // jeux au mercato toujours ouvert (CS2, Fortnite…) : l'essentiel des mouvements se fait pendant leurs périodes chaudes
+      const calm = mercatoRules(g).always && !windowAt(g) ? 0.25 : 1;
+      const chance = (pos < 0.2 ? 0.006 : pos < 0.45 ? 0.025 : pos < 0.7 ? 0.05 : 0.12) * (offseason ? 1.6 : 1) * calm;
+      if (Math.random() > chance) continue;
+      const roster = clubPlayers(id, g); if (!roster.length) continue;
+      const weakest = roster.slice().sort((a, b) => a.rating - b.rating)[0], need = weakest.rating + 3, zone = L.zone || "W";
+      const cands = poolOf(g, zone).filter(p => p.club !== id && p.rating >= need && p.rating <= need + 12 && (!p.club || (S.clubs[p.club] && divOf(p.club, g) && divOf(p.club, g).tier >= L.tier && S.clubs[p.club] !== c)))
+        .map(p => ({ p, fee: p.club ? askingPrice(p) : 0 })).filter(x => !x.fee || x.fee <= Math.max(0, c.budget || 0) * 0.6)
+        .sort((a, b) => b.p.rating - a.p.rating).slice(0, 3);
+      if (!cands.length) continue;
+      const { p, fee } = pick(cands), from = p.club, seller = from && S.clubs[from];
+      if (seller) { removeFromClub(p); seller.budget = (seller.budget || 0) + fee; c.budget = (c.budget || 0) - fee; aiFillRoster(seller.id, g); }
+      joinClub(p, c, salaryDemand(p, c), randi(1, 3));
+      logMove(p, from, id, fee);
+      // effectif trop large : le plus faible est libéré
+      if (clubPlayers(id, g).length > G.size + 2) { const out = clubPlayers(id, g).sort((a, b) => a.rating - b.rating)[0]; removeFromClub(out); out.years = 0; logMove(out, id, null, 0); }
+      autoStarters(id, g);
+      const i = poolOf(g, zone).indexOf(p); if (i >= 0) poolOf(g, zone).splice(i, 1);
+      perGame[g] = (perGame[g] || 0) + 1;
+    }
+  }
+}
+// récap hebdomadaire des transferts de l'IA dans les jeux du club (les plus gros d'abord)
+function mercatoDigest() {
+  const W = S.movesWeek || []; S.movesWeek = [];
+  const mine = W.filter(m => user().divisions[m[2]] && m[6]);
+  if (!mine.length) return;
+  const nm = id => id ? (S.clubs[id] ? clubLabel(id, mine[0][2]) : "?") : "agent libre";
+  const top = mine.slice().sort((a, b) => b[8] - a[8]).slice(0, 8);
+  mail(`📰 Mercato : ${mine.length} transfert(s) cette semaine`, top.map(m => `${GAMES[m[2]].icon} <b>${esc0(m[3])}</b> (${m[8]}) : ${m[5] ? esc0(S.clubs[m[5]] ? S.clubs[m[5]].name : "?") : "agent libre"} → <b>${esc0(S.clubs[m[6]] ? S.clubs[m[6]].name : "?")}</b>${m[7] ? ` (${money(m[7])})` : ""}`).join("<br>") + (mine.length > 8 ? `<br>… et ${mine.length - 8} autre(s) : tout est dans Mercato → 📰 Mouvements.` : "<br>Tous les transferts : Mercato → 📰 Mouvements."), "transfer");
+}
 function aiMarket() {
   if (Math.random() > 0.15) return;
   const fas = shuffle(Object.values(S.players).filter(p => !p.club && p.rating >= 72));
@@ -2675,7 +2744,7 @@ function aiMarket() {
     if (worst && worst.rating < p.rating - 2) {
       removeFromClub(worst); worst.years = 0;
       joinClub(p, c, salaryDemand(p, c), randi(1, 3));
-      news(`${flag(p.nat)} ${p.handle} signe chez ${c.name} (${GAMES[p.game].short}).`);
+      logMove(p, null, c.id, 0);
     }
   }
 }

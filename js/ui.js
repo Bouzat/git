@@ -540,9 +540,22 @@ function estPot(p) {
 }
 
 // ---------- mercato ----------
+// tous les transferts de la saison (clubs de l'IA et vous) : qui part, qui arrive, pour combien
+function viewMoves() {
+  const m = UI.market, g = m.game, u = user();
+  const list = (S.moves || []).filter(x => (g === "all" ? true : x[2] === g)).slice().reverse();
+  const nm = (id, game) => id ? (S.clubs[id] ? teamLink(S.clubs[id].parent && S.clubs[S.clubs[id].parent] ? S.clubs[S.clubs[id].parent] : S.clubs[id], game) : "?") : "<span class='muted'>agent libre</span>";
+  const rows = list.slice(0, 300).map(x => `<tr class="${isMine(x[5]) || isMine(x[6]) ? "me" : ""}"><td style="white-space:nowrap" data-sort="${x[0] * 100 + x[1]}">${weekLabel(x[0], x[1])}</td><td>${gchip(x[2])}</td>
+    <td>${S.players[x[4]] ? `<b class="link" data-act="player-info" data-v="${x[4]}">${esc(x[3])}</b>` : esc(x[3])}</td><td>${R(x[8])}</td><td>${nm(x[5], x[2])}</td><td>→ ${x[6] ? nm(x[6], x[2]) : "<span class='muted'>libéré</span>"}</td><td>${x[7] ? money(x[7]) : "<span class='muted'>libre</span>"}</td></tr>`).join("");
+  const gameOpts = `<option value="all">Tous les jeux</option>` + Object.entries(GAMES).map(([k, gg]) => `<option value="${k}" ${g === k ? "selected" : ""}>${gg.icon} ${gg.name}</option>`).join("");
+  return `<h2>Mercato</h2>${marketTabs()}
+    <p class="muted" style="margin-top:-6px">Pendant les fenêtres de mercato, les clubs se renforcent : plus leurs résultats sont mauvais, plus ils changent de joueurs (un club qui gagne touche peu à son équipe). Les plus gros transferts de vos jeux arrivent aussi chaque semaine dans la messagerie.</p>
+    <div class="toolbar"><select data-change="m-game" aria-label="Jeu">${gameOpts}</select><span class="muted">${list.length} mouvement(s)</span></div>
+    <div class="card table-wrap"><table><tr><th>Date</th><th>Jeu</th><th>Joueur</th><th>Note</th><th>De</th><th>Vers</th><th>Indemnité</th></tr>${rows || `<tr><td colspan="7" class="muted">Aucun mouvement pour l'instant : ils ont lieu pendant les fenêtres de mercato.</td></tr>`}</table></div>`;
+}
 function marketTabs() {
   const n = allUserPlayers().filter(p => p.listed).length, offers = allUserPlayers().reduce((t, p) => t + ((p.listed && p.offers) || []).length, 0);
-  return `<div class="tabs"><button class="tab ${UI.market.tab !== "list" ? "active" : ""}" data-act="m-tab" data-v="search">🔎 Recherche de joueurs</button><button class="tab ${UI.market.tab === "list" ? "active" : ""}" data-act="m-tab" data-v="list">📋 Liste des transferts${n ? ` (${n})` : ""}${offers ? ` <span class="pill">${offers}</span>` : ""}</button></div>`;
+  return `<div class="tabs"><button class="tab ${!["list", "moves"].includes(UI.market.tab) ? "active" : ""}" data-act="m-tab" data-v="search">🔎 Recherche de joueurs</button><button class="tab ${UI.market.tab === "list" ? "active" : ""}" data-act="m-tab" data-v="list">📋 Liste des transferts${n ? ` (${n})` : ""}${offers ? ` <span class="pill">${offers}</span>` : ""}</button><button class="tab ${UI.market.tab === "moves" ? "active" : ""}" data-act="m-tab" data-v="moves">📰 Mouvements</button></div>`;
 }
 ACTIONS["m-tab"] = v => { UI.market.tab = v; render(); };
 const sellBtn = p => p.listed ? `<button class="small" data-act="sell" data-v="${p.id}" title="Sur la liste des transferts">📋 En vente${(p.offers || []).length ? ` (${p.offers.length})` : ""}</button>` : `<button class="small" data-act="sell" data-v="${p.id}">Vendre</button>`;
@@ -613,6 +626,7 @@ document.addEventListener("input", e => { if (e.target.dataset && e.target.datas
 function viewMarket() {
   const u = user(), m = UI.market;
   if (m.tab === "list") return viewTransferList();
+  if (m.tab === "moves") return viewMoves();
   let ps = Object.values(S.players).filter(p => p.club !== u.id && !(S.clubs[p.club] && S.clubs[p.club].parent === u.id));
   if (m.game !== "all") ps = ps.filter(p => p.game === m.game);
   if (m.status === "free") ps = ps.filter(p => !p.club);
