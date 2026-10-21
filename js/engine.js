@@ -965,6 +965,45 @@ function transferFeeCheck(pid, fee) {
   if (fee < ask * rand(0.88, 1.08)) { p.offerRefused = nowIndex() + ":" + fee; return `${seller.solo ? p.handle : seller.name} refuse votre offre de ${money(fee)}. (Prix estimé : ~${money(ask)})`; }
   return null;
 }
+// ---------- négociation de l'indemnité avec le club vendeur ----------
+// Le club a un prix plancher secret (plus bas si le contrat se termine, si le joueur est remplaçant ou en vente, si le club
+// manque d'argent ; plus haut pour un titulaire ou un jeune à fort potentiel) et une patience limitée. Il répond par des
+// contre-propositions qui se rapprochent de son plancher ; une offre ridicule l'agace, et à bout de patience il rompt
+// les discussions pour 4 semaines.
+function feeTalk(pid) {
+  const p = S.players[pid], c = S.clubs[p.club], T = S.feeTalk = S.feeTalk || {};
+  let t = T[pid];
+  if (t && (t.club !== p.club || nowIndex() - t.at > 6) && !(t.walked && nowIndex() - t.walked < 4)) t = null;
+  if (!t) {
+    const ask = askingPrice(p), why = [];
+    let k = rand(0.8, 0.94);
+    if (p.years <= 1) { k *= 0.72; why.push("son contrat se termine à la fin de la saison"); }
+    if (!p.starter) { k *= 0.88; why.push("il est remplaçant"); }
+    if (p.listed) { k *= 0.85; why.push("le club l'a mis en vente"); }
+    if (c.budget !== undefined && c.budget < 0) { k *= 0.85; why.push("le club a besoin d'argent"); }
+    if (p.starter && p.rating >= 85) { k *= 1.06; why.push("c'est un pilier de l'équipe"); }
+    if (p.age <= 20 && p.pot - p.rating >= 8) { k *= 1.08; why.push("c'est un jeune à fort potentiel"); }
+    t = T[pid] = { club: p.club, at: nowIndex(), ask, counter: ask, reserve: round50(ask * k), patience: randi(3, 5), max: 0, log: [], why };
+  }
+  return t;
+}
+function clubTalk(pid, fee) {
+  const p = S.players[pid], u = user(), seller = S.clubs[p.club], t = feeTalk(pid), who = seller.solo ? p.handle : seller.name;
+  if (t.walked && nowIndex() - t.walked < 4) return { status: "closed", msg: `${who} ne veut plus discuter de ${p.handle} pour l'instant (encore ${4 - (nowIndex() - t.walked)} semaine(s)).` };
+  fee = Math.max(0, Math.round(fee));
+  t.log.push({ you: fee });
+  if (fee >= t.reserve || fee >= t.counter) { t.log.push({ them: fee, ok: true }); t.accepted = fee; return { status: "accept", fee, msg: `${who} accepte ${money(fee)} pour ${p.handle}.` }; }
+  const ratio = fee / t.reserve;
+  t.patience -= ratio < 0.55 ? 2 : 1;
+  if (t.patience <= 0) { t.walked = nowIndex(); t.log.push({ walk: true }); return { status: "walk", msg: `${who} met fin aux discussions : ${ratio < 0.55 ? "votre offre est jugée insultante" : "les positions sont trop éloignées"}. Pas de nouvelle offre possible pendant 4 semaines.` }; }
+  // contre-proposition : le club fait un pas vers vous, sans descendre sous son plancher
+  const step = ratio < 0.55 ? rand(0.05, 0.12) : ratio < 0.8 ? rand(0.18, 0.32) : rand(0.3, 0.5);
+  t.counter = Math.max(t.reserve, round50(t.counter - (t.counter - fee) * step));
+  const last = t.patience === 1;
+  t.log.push({ them: t.counter, last });
+  const tone = ratio < 0.55 ? "Offre jugée insultante." : ratio < 0.8 ? "Le club trouve l'offre bien trop basse." : ratio < 0.95 ? "On se rapproche." : "Le club est tout près d'accepter.";
+  return { status: "counter", counter: t.counter, last, msg: `${tone} ${who} demande désormais <b>${money(t.counter)}</b>${t.counter <= t.reserve ? " et <b>ne descendra pas plus bas</b>" : ""}${last ? " — <b>dernière offre</b> avant de rompre les discussions" : ""}.` };
+}
 // vente à un club de l'IA (buyerId et fee : offre reçue pour un joueur placé sur la liste des transferts)
 function sellPlayer(pid, buyerId, offerFee) {
   const p = S.players[pid], u = user();

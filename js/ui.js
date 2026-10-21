@@ -1310,25 +1310,19 @@ Object.assign(ACTIONS, {
     if (!u.divisions[p.game]) return toast(`Ouvrez d'abord une division ${GAMES[p.game].name} (onglet Effectifs).`);
     openNego(startNegotiation(v, "sign"));
   },
-  "offer": (v, reply, fee) => {
-    const p = S.players[v], u = user(), c = S.clubs[p.club];
-    if (!u.divisions[p.game]) return toast(`Ouvrez d'abord une division ${GAMES[p.game].name} (onglet Effectifs).`);
-    const ask = askingPrice(p);
-    modal(`<h2>${c.solo ? "Recruter" : "Offre pour"} ${flag(p.nat)} ${esc(p.handle)}</h2><p>${c.solo ? "Pro indépendant" : esc(c.name)} · ${GAMES[p.game].name} · ${p.role} · ${ageTxt(p)} ans · ${R(p.rating)} · potentiel ${potTxt(p)}</p>
-      <p>Valeur estimée : ${money(playerValue(p))} · ${c.solo ? "Prime demandée" : "Le club en attend"} environ <b>${money(ask)}</b>.${p.clause ? `<br>Clause libératoire : <b>${money(p.clause)}</b> (le club ne peut pas refuser si vous la payez).` : ""}</p>
-      <div class="form-row"><label for="f-fee">${c.solo ? "Prime de recrutement" : "Indemnité de transfert"} (€)</label><input id="f-fee" type="number" step="500" value="${fee || ask}"></div>
-      ${reply ? `<div class="reply bad">${reply}</div>${allocFix(p.game, fee || ask, 0, "offer:" + v)}` : ""}
-      <p class="afford">💰 ${affordTxt(p)}<br><small class="muted">Il demande environ ${money(salaryDemand(p, u))}/sem. L'indemnité, la prime de signature et la commission de l'agent sont prises sur la même enveloppe.</small></p>
-      <p class="muted" style="font-size:12px">Si l'offre est acceptée, vous négocierez ensuite le contrat avec le joueur et son agent.</p>
-      <div class="actions"><button data-act="close-modal">Annuler</button>${p.clause ? `<button data-act="pay-clause" data-v="${v}">Payer la clause</button>` : ""}<button class="primary" data-act="do-offer" data-v="${v}">Envoyer l'offre</button></div>`);
-  },
+  "offer": (v, reply, fee, tone) => feeModal(v, reply, fee, tone),
   "do-offer": v => {
-    const fee = +document.getElementById("f-fee").value, e = transferFeeCheck(v, fee);
-    // enveloppe dépassée : on reste sur l'offre pour pouvoir ajuster le budget de la section
-    if (e && fee > transferRoom(S.players[v].game) && fee <= user().budget) return ACTIONS.offer(v, e, fee);
-    if (e) { closeModal(); return toast(e); }
-    openNego(startNegotiation(v, "transfer", fee), `Offre acceptée par le club (${money(fee)}). Place à la négociation avec le joueur.`);
+    const p = S.players[v], fee = Math.max(0, +document.getElementById("f-fee").value || 0);
+    // vérifications (mercato, budget, intérêt) avant de parler au club
+    const e = feeChecks(v, fee);
+    if (e && fee > transferRoom(p.game) && fee <= user().budget) return feeModal(v, e, fee, "bad");
+    if (e) return feeModal(v, e, fee, "bad");
+    const r = clubTalk(v, fee);
+    if (r.status === "accept") return openNego(startNegotiation(v, "transfer", r.fee), `${r.msg} Place à la négociation avec le joueur.`);
+    if (r.status === "walk" || r.status === "closed") { closeModal(); render(); return toast(r.msg.replace(/<[^>]+>/g, "")); }
+    feeModal(v, r.msg, Math.round(r.counter * 0.95 / 500) * 500, r.last ? "bad" : "");
   },
+  "fee-take": v => { const t = feeTalk(v), e = feeChecks(v, t.counter); if (e) return feeModal(v, e, t.counter, "bad"); const r = clubTalk(v, t.counter); if (r.status === "accept") openNego(startNegotiation(v, "transfer", r.fee), `${r.msg} Place à la négociation avec le joueur.`); },
   "pay-clause": v => openNego(payClause(v), `Vous payez la clause libératoire (${money(S.players[v].clause)}). Il reste à convaincre le joueur.`),
   "upgrade": v => { const e = upgradeFacility(v); if (e) toast(e); render(); },
   "open-mail": v => { const m = S.inbox.find(x => x.id === v); if (m) { m.read = true; UI.mailOpen = v; } if (UI.view !== "inbox") { UI.view = "inbox"; UI.inbox = { cat: "all", game: "all", q: "" }; } render(); },
@@ -1350,6 +1344,33 @@ function allocFix(game, upfront, weekly, back) {
       <div class="form-row" style="margin:0"><label for="fx-t">Enveloppe mercato (€)</label><input id="fx-t" type="number" min="0" step="1000" value="${a.transfer + lack}" style="width:130px"><small class="muted">actuelle : ${money(a.transfer)}${lack ? ` (+${money(lack)} nécessaires)` : ""}</small></div>
       <div class="form-row" style="margin:0"><label for="fx-w">Plafond salarial (€/sem)</label><input id="fx-w" type="number" min="0" step="50" value="${round50(a.wages + wlack)}" style="width:110px"><small class="muted">actuel : ${money(a.wages)}${wlack ? ` (+${money(wlack)} nécessaires)` : ""}</small></div>
       <button class="small primary" data-act="fix-alloc" data-v="${game}|${back}">✅ Appliquer</button></div></div>`;
+}
+// vérifications avant une offre au club (mercato, intérêt du joueur, budget) ; le prix se négocie ensuite
+function feeChecks(pid, fee) {
+  const p = S.players[pid], u = user();
+  if (!p.club || isMine(p.club)) return "Offre impossible.";
+  if (!u.divisions[p.game]) return `Ouvrez d'abord une division ${GAMES[p.game].name}.`;
+  const we = windowCheck(p); if (we) return we;
+  if (!interestCheck(p)) return `${p.handle} n'est pas intéressé par le projet : votre club manque de notoriété (${u.fame.toFixed(0)}) ou évolue trop bas.`;
+  return budgetCheck(p.game, fee);
+}
+// négociation de l'indemnité avec le club vendeur
+function feeModal(v, reply, fee, tone) {
+  const p = S.players[v], u = user(), c = S.clubs[p.club], t = feeTalk(v), closed = t.walked && nowIndex() - t.walked < 4;
+  const mood = t.patience >= 4 ? "😊 Ouvert" : t.patience === 3 ? "😐 Attentif" : t.patience === 2 ? "😠 Agacé" : "🤬 Dernière chance";
+  const log = t.log.map(x => x.you !== undefined ? `<li>Vous : <b>${money(x.you)}</b></li>` : x.walk ? `<li class="bad">Le club rompt les discussions</li>` : `<li>${esc(c.solo ? p.handle : c.name)} : <b>${money(x.them)}</b>${x.ok ? " ✅" : x.last ? " (dernière offre)" : ""}</li>`).join("");
+  modal(`<h2>${c.solo ? "Recruter" : "Transfert"} : ${flag(p.nat)} ${esc(p.handle)}</h2>
+    <p class="muted" style="margin-top:-6px">${c.solo ? "Pro indépendant" : teamLink(c, p.game)} · ${GAMES[p.game].icon} ${GAMES[p.game].short} · ${p.role} · ${ageTxt(p)} ans · ${R(p.rating)} · potentiel ${potTxt(p)} · contrat ${p.years} an(s)</p>
+    <div class="nego-head"><div><span class="muted">${c.solo ? "Prime demandée" : "Le club demande"}</span><b>${money(t.counter)}</b><small class="muted">valeur estimée ${money(playerValue(p))}</small></div>
+      <div><span class="muted">Patience du ${c.solo ? "joueur" : "club"}</span><b>${closed ? "🚫 Discussions rompues" : mood}</b>${bar(Math.min(100, t.patience * 22))}</div></div>
+    ${t.why.length ? `<p style="font-size:13px">💡 Ce qui peut faire baisser ou monter le prix : ${t.why.join(", ")}.</p>` : `<p class="muted" style="font-size:13px">💡 Un club vend moins cher un remplaçant, un joueur en fin de contrat ou mis en vente, ou quand il manque d'argent.</p>`}
+    ${p.clause ? `<p style="font-size:13px">🔓 Clause libératoire : <b>${money(p.clause)}</b> — si vous la payez, le club ne peut pas refuser.</p>` : ""}
+    ${reply ? `<div class="reply ${tone || ""}">${reply}</div>${tone === "bad" ? allocFix(p.game, fee || t.counter, 0, "offer:" + v) : ""}` : ""}
+    ${closed ? "" : `<div class="form-row"><label for="f-fee">Votre offre (${c.solo ? "prime" : "indemnité"}, €)</label><input id="f-fee" type="number" step="500" value="${fee || Math.round(t.counter * 0.85 / 500) * 500}"></div>`}
+    <p class="afford">💰 ${affordTxt(p)}<br><small class="muted">Il demandera environ ${money(salaryDemand(p, u))}/sem. L'indemnité, la prime de signature et la commission de l'agent sont prises sur la même enveloppe.</small></p>
+    ${log ? `<ul class="muted" style="font-size:12px;margin:4px 0">${log}</ul>` : ""}
+    <p class="muted" style="font-size:12px">Négociez : le club répond par des contre-propositions. Une offre trop basse l'agace ; à bout de patience, il rompt les discussions pour 4 semaines. Si l'accord est trouvé, vous négocierez ensuite le contrat avec le joueur.</p>
+    <div class="actions"><button data-act="close-modal">Fermer</button>${p.clause ? `<button data-act="pay-clause" data-v="${v}">Payer la clause</button>` : ""}${closed ? "" : `${t.log.length ? `<button data-act="fee-take" data-v="${v}">✅ Accepter leur prix (${money(t.counter)})</button>` : ""}<button class="primary" data-act="do-offer" data-v="${v}">Faire l'offre</button>`}</div>`);
 }
 // ---------- négociation de contrats ----------
 let NEGO = null;
