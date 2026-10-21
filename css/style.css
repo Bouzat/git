@@ -90,7 +90,13 @@ tr:hover td { background: #ffffff06; }
   .side { position: static; height: auto; flex-direction: row; overflow-x: auto; padding: 8px; }
   .side .club-badge { display: none; }
   .nav { white-space: nowrap; }
-  .main { padding: 0 16px 40px; }
+  .nav-h { display: none; }
+  .main { padding: 0 16px 96px; }
+  /* téléphone : le bouton pour avancer reste toujours sous le pouce */
+  .go-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px)); background: color-mix(in srgb, var(--bg) 94%, transparent); backdrop-filter: blur(8px); border-top: 1px solid var(--line); }
+  .go-main { flex: 1; }
+  .topbar { gap: 10px 16px; padding: 10px 0; position: static; backdrop-filter: none; }
+  .topbar .stat b { font-size: 15px; }
   .logo { font-size: 32px; }
 }
 
@@ -300,3 +306,34 @@ th.sorted-asc::after { content: " ▲"; color: var(--accent2); } th.sorted-desc:
 .md-ev.imp-silver { border: 1px solid #a9b2c3; background: linear-gradient(90deg, color-mix(in srgb, #a9b2c3 14%, var(--panel)), var(--panel)); }
 .md-ev.imp-minor { opacity: .8; }
 .md-ev.imp-minor b { font-weight: 600; }
+
+/* ---------- ergonomie : menu groupé, bouton Continuer, Cette semaine, mercato replié, effectifs ---------- */
+.nav-h { font-size: 11px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); opacity: .7; padding: 12px 12px 2px; }
+.go-bar { display: flex; gap: 8px; align-items: stretch; }
+.go-main { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 8px 18px; min-width: 210px; }
+.go-main b { font-size: 16px; }
+.go-main small { font-size: 12px; opacity: .9; font-weight: 500; }
+.go-skip { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+@media (max-width: 800px) { .go-skip span { display: none; } .go-skip { font-size: 18px; padding: 0 14px; } }
+.week-card { margin-bottom: 16px; border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+.wk-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.wk-list { display: grid; gap: 6px; margin-top: 12px; }
+.wk-ev { padding: 8px 10px; border-radius: 10px; background: var(--panel2); border: 1px solid var(--line); font-size: 14px; }
+.wk-ev.imp-gold { border-color: #d4a72c; background: linear-gradient(90deg, color-mix(in srgb, #d4a72c 20%, var(--panel2)), var(--panel2)); }
+.wk-ev.imp-silver { border-color: #a9b2c3; }
+.wk-ev.imp-minor { opacity: .75; }
+.wk-alerts, .wk-next { display: grid; gap: 6px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 14px; }
+.quick-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 4px 0 10px; }
+.chip-btn { border-radius: 999px; padding: 6px 12px; font-size: 13px; background: var(--panel2); border: 1px solid var(--line); }
+.chip-btn.on { background: color-mix(in srgb, var(--accent) 30%, var(--panel2)); border-color: var(--accent); color: var(--text); font-weight: 700; }
+details.fold { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; margin-bottom: 10px; }
+details.fold > summary { cursor: pointer; font-weight: 600; font-size: 14px; list-style-position: inside; }
+details.fold[open] > summary { margin-bottom: 6px; }
+.roster-head { display: grid; gap: 8px; }
+.roster-kpis { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; font-size: 14px; }
+.roster-actions { margin: 12px 0 4px; gap: 6px; }
+.help-steps { display: grid; gap: 10px; margin: 12px 0; }
+.help-step { display: flex; gap: 12px; align-items: flex-start; background: var(--panel2); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+.help-i { font-size: 26px; line-height: 1; }
+.help-step p { margin: 4px 0 0; font-size: 14px; color: var(--muted); }
+.help-step p b { color: var(--text); }

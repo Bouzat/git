@@ -13,6 +13,11 @@ const MARKET_DEFAULT = { game: "all", q: "", status: "all", min: 0, sort: "ratin
   nat: "all", role: "all", ageMin: 0, ageMax: 99, potMin: 0, tier: "all", minPrice: 0, maxPrice: 0, budgetOnly: false, keenOnly: false };
 const UI = { screen: "home", view: "dash", rosterGame: null, compGame: null, compTier: null,
   market: { ...MARKET_DEFAULT }, pickClub: null, mailOpen: null };
+try { UI.rosterFull = !!localStorage.getItem("em-rosterFull"); } catch (e) { }
+// une section repliable garde son état quand l'écran est redessiné
+document.addEventListener("toggle", e => { const f = e.target && e.target.dataset && e.target.dataset.fold; if (f) UI[f] = e.target.open; }, true);
+// le guide s'ouvre au tout premier lancement d'une partie
+function firstHelp() { let seen = false; try { seen = !!localStorage.getItem("em-helpSeen"); localStorage.setItem("em-helpSeen", "1"); } catch (e) { } if (!seen) { helpModal(); return true; } return false; }
 const $app = document.getElementById("app");
 const ACTIONS = {};   // actions des boutons (data-act), complétées plus bas
 
@@ -195,7 +200,8 @@ function render() {
     <aside class="side">
       <div class="club-badge">${badge(u)}<div><b>${esc(u.name)}</b><div class="muted" style="font-size:12px">CEO : ${esc(S.ceo)}</div></div></div>
       <div class="side-search"><input id="g-search" placeholder="🔎 Équipe ou joueur…" autocomplete="off" aria-label="Rechercher une équipe ou un joueur"><div id="g-results" class="search-res hidden"></div></div>
-      ${navs.map(([k, l]) => `<button class="nav ${UI.view === k ? "active" : ""}" data-act="view" data-v="${k}"><span>${l}</span>${k === "inbox" && unread ? `<span class="pill">${unread}</span>` : ""}</button>`).join("")}
+      ${NAV_GROUPS.map(([title, keys]) => `<div class="nav-h">${title}</div>` + keys.map(k => { const l = navs.find(x => x[0] === k)[1]; return `<button class="nav ${UI.view === k ? "active" : ""}" data-act="view" data-v="${k}"><span>${l}</span>${k === "inbox" && unread ? `<span class="pill">${unread}</span>` : ""}</button>`; }).join("")).join("")}
+      <button class="nav" data-act="help">❓ Comment jouer</button>
       <div style="flex:1"></div>
       <button class="nav" data-act="quit">🚪 Menu principal</button>
     </aside>
@@ -208,14 +214,16 @@ function render() {
         <div class="stat link-row" data-act="explain-board" title="Comment marche la confiance du conseil ?"><b class="${S.board.confidence < 30 ? "bad" : S.board.confidence < 55 ? "warn" : "ok"}">${Math.round(S.board.confidence)}%</b><span>Confiance du conseil ⓘ</span></div>
         ${mercatoChip()}
         <div class="spacer"></div>
-        ${S.over ? `<button class="danger" data-act="quit">Partie terminée — Menu</button>` : `<button data-act="skip" title="Joue cette semaine puis passe les semaines sans match jusqu'au prochain">⏭ Prochain match</button>
-          <button class="primary" data-act="next">${pendingOffers().length ? `📨 Offres à traiter (${pendingOffers().length})` : pending.length ? `🎮 Jour de match (${pending.length})` : "Semaine suivante ▶"}</button>`}
+        ${S.over ? `<button class="danger" data-act="quit">Partie terminée — Menu</button>` : `<div class="go-bar"><button class="go-skip" data-act="skip" title="Joue cette semaine puis passe les semaines sans match jusqu'au prochain">⏭<span>Aller au prochain match</span></button>
+          <button class="primary go-main" data-act="next"><b>▶ Continuer</b><small>${pendingOffers().length ? `📨 ${pendingOffers().length} offre(s) à traiter` : pending.length ? `🎮 ${pending.length} match(s) à jouer cette semaine` : "Passer à la semaine suivante"}</small></button></div>`}
       </div>
       ${({ dash: viewDash, roster: viewRoster, market: viewMarket, calendar: viewCalendar, comp: viewComp, tours: viewTours, finance: viewFinance, sponsors: viewSponsors, staff: viewStaff, facilities: viewFacilities, inbox: viewInbox, world: viewWorld })[UI.view]()}
     </main></div>`;
   applyTableSorts($app, UI.view);
 }
 
+// menu : les écrans regroupés par usage
+const NAV_GROUPS = [["Jouer", ["dash", "calendar", "comp", "tours"]], ["Équipes", ["roster", "market", "staff"]], ["Club", ["finance", "sponsors", "facilities"]], ["Infos", ["inbox", "world"]]];
 // période de la saison (barre du haut)
 function seasonPhase() {
   const w = S.week, md = matchday(w);
@@ -256,7 +264,22 @@ function alertsCard() {
   if (exp.length && S.week >= 26) items.push(`<div class="warn">⏳ ${exp.length} joueur(s) en fin de contrat à la fin de la saison : ${exp.slice(0, 6).map(p => `${GAMES[p.game].icon} ${esc(p.handle)}`).join(", ")}${exp.length > 6 ? "…" : ""}. <span class="link" data-act="contracts">Prolonger</span></div>`);
   for (const [d, c, risk] of sponsorAlerts()) items.push(`<div class="warn">📉 ${esc(d.name)} — clause en danger : ${esc(c.label)} (${risk}). Prime : ${money(c.bonus)}.</div>`);
   for (const d of u.sponsorDeals.filter(d => d.weeks <= 4)) items.push(`<div class="warn">🤝 Contrat ${esc(d.name)} : fin dans ${d.weeks} semaine(s)${d.renew === "yes" ? " (prolongation acceptée, à négocier à la fin)" : d.renew === "no" ? " (vous ne renouvelez pas)" : d.renew === "refused" ? " (la marque ne prolonge pas)" : d.weeks <= 2 ? "" : " — décision de renouvellement dans " + (d.weeks - 2) + " semaine(s)"}.</div>`);
-  return items.length ? `<div class="card alerts-card" style="margin-bottom:16px;border-color:var(--warn)"><h3>⚠️ À traiter</h3><div style="display:grid;gap:6px">${items.join("")}</div></div>` : "";
+  return items;
+}
+// en haut du tableau de bord : ce qui se passe cette semaine, ce qui arrive, ce qui demande une action
+function weekCard() {
+  const u = user(), evs = S.over ? [] : weekEvents(), left = evs.filter(e => !e.done), alerts = alertsCard();
+  const evRows = evs.map(e => `<div class="wk-ev imp-${e.imp || "normal"}">${gchip(e.game)} ${e.impLabel ? `<span class="imp-chip imp-${e.imp}">${esc(e.impLabel)}</span>` : ""} <b>${esc(e.title)}</b> <span class="muted">${esc(e.what || "")}</span>${e.done ? " <span class='ok'>✓</span>" : ""}</div>`).join("");
+  // les grands rendez-vous à venir (finales, S et A-Tier) des jeux du club
+  const soon = [];
+  for (const g of Object.keys(u.divisions)) for (const t of allTournaments(g)) if (t[1] > S.week && t[1] <= S.week + 6 && "SA".includes(tourTier(t))) { const st = tourState(g, t); if (st.st === "in") soon.push([g, t]); }
+  soon.sort((a, b) => a[1][1] - b[1][1]);
+  const next = soon.slice(0, 4).map(([g, t]) => `<div class="wk-soon">${gchip(g)} <span class="imp-chip imp-${TIER_IMP[tourTier(t)]}">${tourTier(t)}</span> <b>${esc(t[0])}</b> <span class="muted">· ${weekLabel(S.season, t[1])}</span></div>`).join("");
+  return `<div class="card week-card"><div class="wk-head"><div><h3 style="margin:0">📋 Cette semaine</h3><div class="muted" style="font-size:13px">${weekLabel(S.season, S.week, true)} · ${seasonPhase()}</div></div>
+      ${S.over ? "" : `<button class="primary" data-act="next">${left.length ? `🎮 Jouer les matchs (${left.length})` : "Semaine suivante ▶"}</button>`}</div>
+    ${evRows ? `<div class="wk-list">${evRows}</div>` : `<p class="muted" style="margin:8px 0 0">Pas de match pour votre club cette semaine.</p>`}
+    ${alerts.length ? `<div class="wk-alerts"><b>⚠️ À traiter</b>${alerts.join("")}</div>` : `<p class="ok" style="margin:10px 0 0;font-size:13px">✅ Rien d'urgent à régler.</p>`}
+    ${next ? `<div class="wk-next"><b>📅 Bientôt</b>${next}</div>` : ""}</div>`;
 }
 function viewDash() {
   const u = user(), Ls = userLeagues();
@@ -275,7 +298,7 @@ function viewDash() {
   const lastHtml = last && (last.matches.length || last.lobbies.length) ? last.matches.map(matchRow).join("") + last.lobbies.map(lobbyRow).join("") : `<p class="muted">Aucun match joué la semaine dernière.</p>`;
   const mails = S.inbox.slice(0, 5).map(m => `<div class="mail ${m.read ? "" : "unread"}" data-act="open-mail" data-v="${m.id}"><div class="t">${m.title}</div><div class="muted" style="font-size:12px">${weekLabel(m.season, m.week, true)}</div></div>`).join("");
   const obj = objectiveText();
-  return `${alertsCard()}<div class="grid g2">
+  return `${weekCard()}<div class="grid g2">
     <div class="card"><h3>🎯 Objectif du conseil</h3><p style="font-size:16px"><b>${obj[0].toUpperCase() + obj.slice(1)}</b></p>
       <div>Confiance ${bar(S.board.confidence)} ${Math.round(S.board.confidence)}% <span class="link" data-act="explain-board" title="Comment marche la confiance du conseil ?">ⓘ comment ça marche</span></div>
       <p class="muted" style="font-size:12px">À la fin de chaque saison, les 2 premiers d'un tier montent et les 2 derniers descendent. Si la confiance tombe à 0 % ou si les dettes deviennent trop lourdes, vous êtes licencié.</p></div>
@@ -377,9 +400,9 @@ function viewRoster() {
     <td>${p.starter ? "⭐" : "<span class='muted'>banc</span>"}</td>
     <td>${flag(p.nat)} <b class="link" data-act="player-info" data-v="${p.id}">${esc(p.handle)}</b> <small class="muted" title="Région de jeu">${playRegion(p)}</small>${adaptFactor(p) < 1 ? ` <small class="warn" title="Adaptation à sa nouvelle région">✈️</small>` : ""}${playerBadges(p)}</td><td>${p.role}</td><td>${ageTxt(p)}</td><td>${R(p.rating)}</td>
     <td>${potTxt(p)}</td><td>${evoCell(p)}</td>
-    <td>${noteChip(avgNote(p))}</td><td>${formSpark(p)}</td>
+    <td>${noteChip(avgNote(p))}</td>${UI.rosterFull ? `<td>${formSpark(p)}</td>` : ""}
     <td>${bar(p.form)}</td><td>${bar(p.morale)}</td>
-    <td>${money(p.salary)}/sem</td><td class="${p.years <= 1 ? "warn" : ""}">${p.years} an(s)</td><td>${p.clause ? money(p.clause) : "<span class='muted'>—</span>"}</td><td>${money(playerValue(p))}</td>
+    <td>${money(p.salary)}/sem</td><td class="${p.years <= 1 ? "warn" : ""}">${p.years} an(s)</td>${UI.rosterFull ? `<td>${p.clause ? money(p.clause) : "<span class='muted'>—</span>"}</td><td>${money(playerValue(p))}</td>` : ""}
     <td style="white-space:nowrap">
       <button class="small" data-act="starter" data-v="${p.id}">${p.starter ? "→ Banc" : "→ Titulaire"}</button>
       <button class="small" data-act="talk" data-v="${p.id}" title="Parler au joueur">💬</button>
@@ -389,16 +412,18 @@ function viewRoster() {
       <button class="small danger" data-act="release" data-v="${p.id}">Libérer</button></td></tr>`).join("");
   if (unitGame(UI.rosterGame)) return `<h2>Effectifs</h2><div class="tabs">${tabs}</div>${unitRoster(UI.rosterGame)}${open}`;
   return `<h2>Effectifs</h2><div class="tabs">${tabs}</div>
-    <div class="card"><div class="toolbar"><div style="flex:1;min-width:0"><h3 style="margin:0">${g.icon} ${g.name}${d.label ? ` (${esc(d.label)})` : ""} — Titulaires ${nSt}/${g.size}${teamRegion(u.id, UI.rosterGame) ? " · " + REGIONS[teamRegion(u.id, UI.rosterGame)] : ""} · Force ${R(Math.round(teamStrength(u.id, UI.rosterGame).str))}</h3>
-      <div style="margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">${tchip(d.tier, UI.rosterGame)}<span class="muted">${esc(divName(u.id, UI.rosterGame))}</span>${subPicker(UI.rosterGame, d)}</div></div>
-      <button class="small" data-act="auto-lineup">⚡ Composition auto</button>
+    <div class="card"><div class="roster-head"><h3 style="margin:0">${g.icon} ${g.name}${d.label ? ` (${esc(d.label)})` : ""}</h3>
+      <div class="roster-kpis"><span>Force ${R(Math.round(teamStrength(u.id, UI.rosterGame).str))}</span><span class="${nSt < g.size ? "bad" : ""}">Titulaires <b>${nSt}/${g.size}</b></span>${tchip(d.tier, UI.rosterGame)}<span class="muted">${esc(divName(u.id, UI.rosterGame))}${teamRegion(u.id, UI.rosterGame) ? " · " + REGIONS[teamRegion(u.id, UI.rosterGame)] : ""}</span></div>
+      ${subPicker(UI.rosterGame, d)}</div>
+      <div class="toolbar roster-actions"><button class="small" data-act="auto-lineup">⚡ Composition auto</button>
       <button class="small" data-act="team-talk" data-v="${UI.rosterGame}">💬 Réunion d'équipe</button>
       ${franchiseZones(UI.rosterGame).length && !isClosed(UI.rosterGame, d.tier, d.zone) ? `<button class="small" data-act="franchise" data-v="${UI.rosterGame}">🔒 Racheter une franchise</button>` : ""}
       ${!g.open && !RANKED_GAMES.includes(UI.rosterGame) ? `<button class="small" data-act="tier-modal" data-v="${UI.rosterGame}" title="Acheter une place plus haut ou redescendre">🔀 Changer de tier${(user().tierReq || {})[UI.rosterGame] ? " (demandé)" : ""}</button>` : ""}
       <button class="small" data-act="goto-market" data-v="${UI.rosterGame}">🔎 Recruter</button>
+      <button class="small" data-act="roster-full" title="Afficher ou masquer les colonnes détaillées">${UI.rosterFull ? "➖ Moins de colonnes" : "➕ Plus de colonnes"}</button>
       <button class="small danger" data-act="close-div">Fermer la division</button></div>
     ${chemLine(u.id, UI.rosterGame)}
-    <div class="table-wrap"><table><tr><th></th><th>Joueur</th><th>Rôle</th><th>Âge</th><th>Note</th><th>Potentiel</th><th title="Points gagnés depuis son arrivée et rythme de progression (▲▲ rapide, ▲ normal, ↗ lent, → à l'arrêt)">Évol.</th><th title="Note moyenne en match cette saison (sur 10)">Moy.</th><th title="5 derniers matchs">Derniers matchs</th><th>Forme</th><th>Moral</th><th>Salaire</th><th>Contrat</th><th>Clause</th><th>Valeur</th><th></th></tr>${rows || `<tr><td colspan="15" class="muted">Aucun joueur. Rendez-vous au mercato !</td></tr>`}</table></div></div>
+    <div class="table-wrap"><table><tr><th></th><th>Joueur</th><th>Rôle</th><th>Âge</th><th>Note</th><th>Potentiel</th><th title="Points gagnés depuis son arrivée et rythme de progression (▲▲ rapide, ▲ normal, ↗ lent, → à l'arrêt)">Évol.</th><th title="Note moyenne en match cette saison (sur 10)">Moy.</th>${UI.rosterFull ? `<th title="5 derniers matchs">Derniers matchs</th>` : ""}<th>Forme</th><th>Moral</th><th>Salaire</th><th>Contrat</th>${UI.rosterFull ? "<th>Clause</th><th>Valeur</th>" : ""}<th></th></tr>${rows || `<tr><td colspan="15" class="muted">Aucun joueur. Rendez-vous au mercato !</td></tr>`}</table></div></div>
     ${academyCard(UI.rosterGame)}
     ${open}`;
 }
@@ -522,6 +547,13 @@ function marketTabs() {
 ACTIONS["m-tab"] = v => { UI.market.tab = v; render(); };
 const sellBtn = p => p.listed ? `<button class="small" data-act="sell" data-v="${p.id}" title="Sur la liste des transferts">📋 En vente${(p.offers || []).length ? ` (${p.offers.length})` : ""}</button>` : `<button class="small" data-act="sell" data-v="${p.id}">Vendre</button>`;
 // ce que le club peut payer : indemnité / prime (enveloppe du jeu) et salaire (marge sur la masse salariale du jeu)
+// une ligne qui résume l'état du mercato et le budget, avant de déplier le détail
+function marketSummary(game) {
+  const u = user(), games = game !== "all" ? [game] : Object.keys(u.divisions);
+  if (!games.length) return "🔁 État du mercato et budget";
+  const parts = games.filter(g => u.divisions[g]).slice(0, 6).map(g => { const st = mercatoStatus(g); return `${GAMES[g].icon} ${st.open ? "🟢" : "🔴"} ${money(spendRoom(g))}`; });
+  return `🔁 Mercato et budget : ${parts.join(" · ")}${games.length > 6 ? " …" : ""} <span class="muted">(détails)</span>`;
+}
 function mercatoMoney(game) {
   const u = user(), games = game !== "all" ? [game] : Object.keys(u.divisions);
   if (!games.length) return "";
@@ -643,6 +675,11 @@ function viewMarket() {
       <select id="m-status" data-change="m-status" aria-label="Statut">${[["all", "Tous les statuts"], ["free", "Agents libres"], ["solo", "Pros indépendants"], ["club", "Sous contrat en club"]].map(([k, l]) => `<option value="${k}" ${m.status === k ? "selected" : ""}>${l}</option>`).join("")}</select>
       <select id="m-min" data-change="m-min" aria-label="Note minimale">${[0, 60, 70, 75, 80, 85, 90].map(v => `<option value="${v}" ${m.min == v ? "selected" : ""}>${v ? "Note ≥ " + v : "Toutes notes"}</option>`).join("")}</select>
       <select id="m-sort" data-change="m-sort" aria-label="Tri">${[["rating", "Tri : note"], ["pot", "Tri : potentiel"], ["age", "Tri : âge"], ["value", "Tri : valeur"], ["price", "Tri : coût"], ["salary", "Tri : salaire"], ["name", "Tri : nom"], ["nat", "Tri : nationalité"], ["role", "Tri : rôle"], ["club", "Tri : club"]].map(([k, l]) => `<option value="${k}" ${m.sort === k ? "selected" : ""}>${l}</option>`).join("")}</select>
+    </div>
+    <div class="quick-chips">${[["m-qfree", "🆓 Agents libres", m.status === "free"], ["m-qbudget", "💰 Dans mon budget", m.budgetOnly], ["m-qkeen", "🤝 Intéressés par mon club", m.keenOnly], ["m-qyoung", "🌱 Jeunes talents", m.ageMax == 21 && m.potMin >= 80]].map(([a, l, on]) => `<button class="chip-btn ${on ? "on" : ""}" data-act="${a}">${l}</button>`).join("")}
+      ${active ? `<button class="chip-btn" data-act="m-reset">✕ Tout effacer</button>` : ""}<span class="muted" style="font-size:13px">${total} joueur(s)</span></div>
+    <details class="fold" ${UI.mMore || [m.region !== "all", m.nat !== "all", m.role !== "all", +m.ageMin, m.ageMax < 99, +m.potMin, m.tier !== "all", m.minPrice, m.maxPrice].some(Boolean) ? "open" : ""} data-fold="mMore"><summary>⚙️ Plus de filtres (région, nationalité, rôle, âge, potentiel, coût…)</summary>
+    <div class="toolbar" style="margin-top:8px">
       <select id="m-region" data-change="m-region" aria-label="Région">${[["all", "Toutes les régions"], ...Object.entries(REGIONS)].map(([k, l]) => `<option value="${k}" ${m.region === k ? "selected" : ""}>${l}</option>`).join("")}</select>
       <select id="m-per" data-change="m-per" aria-label="Joueurs par page">${[25, 50, 100, 200].map(v => `<option value="${v}" ${(m.per || 50) === v ? "selected" : ""}>${v} par page</option>`).join("")}</select>
     </div>
@@ -656,13 +693,12 @@ function viewMarket() {
       <span class="price-range" title="Coût de l'opération : indemnité de transfert, ou prime de signature pour un agent libre. Exemples : 50000, 50k, 1,5M">Coût <input id="m-minprice" data-change="m-minprice" inputmode="decimal" placeholder="min (ex. 20k)" value="${m.minPrice ? money(m.minPrice) : ""}" aria-label="Coût minimum"> à <input id="m-maxprice" data-change="m-maxprice" inputmode="decimal" placeholder="max (ex. 1,5M)" value="${m.maxPrice ? money(m.maxPrice) : ""}" aria-label="Coût maximum"></span>
       <label class="muted"><input type="checkbox" data-change="m-budget" ${m.budgetOnly ? "checked" : ""}> Dans mon budget</label>
       <label class="muted"><input type="checkbox" data-change="m-keen" ${m.keenOnly ? "checked" : ""}> Intéressés par mon club</label>
-      ${active ? `<button class="small" data-act="m-reset">✕ Réinitialiser les filtres</button>` : ""}
-      <span class="muted">${total} joueur(s)${total ? ` · ${first + 1}–${Math.min(total, first + per)} · page ${m.page + 1}/${pages}` : ""}</span>
-    </div>
-    ${pager}
+    </div></details>
+    <details class="fold" ${UI.mInfo ? "open" : ""} data-fold="mInfo"><summary>${marketSummary(m.game)}</summary>
     ${mercatoBanner(m.game)}${mercatoMoney(m.game)}
     <p class="interest-hint">⭐ Notoriété ${Math.round(u.fame)}/100 : ${m.game !== "all" ? `en ${GAMES[m.game].short}, les joueurs notés jusqu'à <b>${interestMax(m.game)}</b> acceptent de discuter avec vous` : `les joueurs notés jusqu'à <b>${Math.min(99, Math.floor(u.fame + 70))}</b> acceptent de discuter avec vous (plus haut dans les jeux où votre équipe est en tier 1 ou 2)`}. Au-delà, ils sont « 🔒 hors de portée ». <span class="link" data-act="explain-fame">En savoir plus</span></p>
-    <p class="muted" style="font-size:12px;margin-top:-4px">Agent libre : sans contrat, signature directe. Indépendant : pro sans organisation, il demande une prime. Sous contrat : il faut payer une indemnité de transfert à son club.</p>
+    <p class="muted" style="font-size:12px;margin-top:-4px">Agent libre : sans contrat, signature directe. Indépendant : pro sans organisation, il demande une prime. Sous contrat : il faut payer une indemnité de transfert à son club.</p></details>
+    ${total ? `<div class="muted" style="font-size:13px;margin:6px 0">${first + 1}–${Math.min(total, first + per)} sur ${total} · page ${m.page + 1}/${pages}</div>` : ""}
     <div class="card table-wrap"><table><tr>${head}</tr>${rows || `<tr><td colspan="11" class="muted">Aucun joueur ne correspond à ces filtres.</td></tr>`}</table></div>${pager}`;
 }
 
@@ -1190,11 +1226,11 @@ Object.assign(ACTIONS, {
     const name = val("f-name"), tag = val("f-tag").toUpperCase();
     if (!name || tag.length < 2) return toast("Indiquez un nom de club et un tag de 2 à 4 lettres.");
     newWorld({ ceo: val("f-ceo") || "Le CEO", mode: "create", name, tag, country: val("f-country"), color: val("f-color"), firstGame: val("f-game") });
-    UI.view = "dash"; UI.market.status = "free"; UI.market.game = val("f-game"); render(); maybeAlloc();
+    UI.view = "dash"; UI.market.status = "free"; UI.market.game = val("f-game"); render(); if (!firstHelp()) maybeAlloc();
   },
   "start-takeover": () => {
     newWorld({ ceo: document.getElementById("f-ceo").value.trim() || "Le CEO", mode: "takeover", clubId: UI.pickClub });
-    UI.view = "dash"; render(); maybeAlloc();
+    UI.view = "dash"; render(); if (!firstHelp()) maybeAlloc();
   },
   "continue": () => { if (load()) { UI.view = "dash"; render(); } },
   "wipe": () => modal(`<h2>Effacer la sauvegarde ?</h2><p>La partie en cours sera définitivement perdue.</p><div class="actions"><button data-act="close-modal">Annuler</button><button class="danger" data-act="do-wipe">Effacer</button></div>`),
@@ -1936,6 +1972,28 @@ function contractsModal() {
     <div class="actions"><button data-act="close-modal">Rester sur cette semaine</button><button class="primary" data-act="check-continue">Les laisser partir et continuer ▶</button></div>`);
 }
 ACTIONS["contracts"] = () => contractsModal();
+ACTIONS["roster-full"] = () => { UI.rosterFull = !UI.rosterFull; try { localStorage.setItem("em-rosterFull", UI.rosterFull ? "1" : ""); } catch (e) { } render(); };
+const setM = f => { f(UI.market); UI.market.page = 0; render(); };
+ACTIONS["m-qfree"] = () => setM(m => m.status = m.status === "free" ? "all" : "free");
+ACTIONS["m-qbudget"] = () => setM(m => m.budgetOnly = !m.budgetOnly);
+ACTIONS["m-qkeen"] = () => setM(m => m.keenOnly = !m.keenOnly);
+ACTIONS["m-qyoung"] = () => setM(m => { const on = m.ageMax == 21 && m.potMin >= 80; m.ageMax = on ? 99 : 21; m.potMin = on ? 0 : 80; m.sort = on ? m.sort : "pot"; });
+// guide pour débuter : les étapes d'une saison, en quelques lignes
+const HELP_STEPS = [
+  ["🎮", "Jouer une semaine", "Le gros bouton <b>▶ Continuer</b> (en haut à droite, ou en bas sur téléphone) fait avancer le jeu : il lance la journée de match quand vos équipes jouent, sinon il passe à la semaine suivante. <b>⏭ Aller au prochain match</b> saute les semaines vides."],
+  ["📋", "Savoir quoi faire", "Le <b>Tableau de bord</b> résume la semaine : vos matchs (les finales et les grands tournois en or), ce qui demande une action (effectif incomplet, contrats, sponsors) et les grands rendez-vous à venir."],
+  ["👥", "Gérer ses équipes", "Dans <b>Effectifs</b>, choisissez vos titulaires (⭐), suivez la progression (colonne Évol.) et prolongez les contrats. <b>⚡ Composition auto</b> aligne les meilleurs."],
+  ["💱", "Recruter", "Au <b>Mercato</b>, les boutons rapides (agents libres, dans mon budget, jeunes talents) trouvent vite un joueur. Cliquez sur un club pour voir tout son effectif. Hors période de mercato, seuls les agents libres signent."],
+  ["💰", "Tenir le budget", "Chaque jeu a une enveloppe mercato et un plafond de salaires (onglet <b>Finances</b>). Les <b>Sponsors</b> paient chaque semaine et versent des primes si leurs objectifs sont atteints."],
+  ["🏆", "Gagner", "Finissez dans les 2 premiers d'un tier pour monter, visez l'objectif du <b>conseil</b> (ⓘ en haut) et jouez les tournois (onglet <b>Tournois</b> : un seul par semaine et par jeu)."],
+];
+function helpModal() {
+  modal(`<h2>❓ Comment jouer</h2><p class="muted" style="margin-top:-6px">Vous êtes le CEO d'un club esport. Chaque semaine : vos équipes jouent, vous recrutez, vous gérez l'argent. Voici l'essentiel.</p>
+    <div class="help-steps">${HELP_STEPS.map(([i, t, d]) => `<div class="help-step"><div class="help-i">${i}</div><div><b>${t}</b><p>${d}</p></div></div>`).join("")}</div>
+    <p class="muted" style="font-size:12px">Les petits ⓘ et les infobulles expliquent chaque chiffre. Ce guide reste accessible depuis le menu (❓ Comment jouer).</p>
+    <div class="actions"><button class="primary" data-act="close-modal">C'est parti !</button></div>`);
+}
+ACTIONS["help"] = () => helpModal();
 // changer de tier : acheter une place plus haut (notoriété et droit d'entrée) ou redescendre volontairement
 function tierModal(game) {
   const u = user(), d = u.divisions[game], g = GAMES[game], zone = d.zone || "W", req = (u.tierReq || {})[game], started = seasonStarted(game);
