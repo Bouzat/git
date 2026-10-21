@@ -183,7 +183,7 @@ function render() {
   document.documentElement.style.setProperty("--club", u.color);
   const unread = S.inbox.filter(m => !m.read).length;
   const navs = [["dash", "🏠 Tableau de bord"], ["roster", "👥 Effectifs"], ["market", "💱 Mercato"], ["calendar", "🗓️ Calendrier"], ["comp", "🏆 Compétitions"], ["tours", "📅 Tournois"],
-    ["finance", "💰 Finances"], ["sponsors", "🤝 Sponsors"], ["facilities", "🏗️ Infrastructures"], ["inbox", "✉️ Messagerie"], ["world", "🌍 Clubs & palmarès"]];
+    ["finance", "💰 Finances"], ["sponsors", "🤝 Sponsors"], ["staff", "🧑‍🏫 Staff"], ["facilities", "🏗️ Infrastructures"], ["inbox", "✉️ Messagerie"], ["world", "🌍 Clubs & palmarès"]];
   const pending = S.over ? [] : weekEvents().filter(e => !e.done);
   $app.innerHTML = `<div class="game">
     <aside class="side">
@@ -204,7 +204,7 @@ function render() {
         ${S.over ? `<button class="danger" data-act="quit">Partie terminée — Menu</button>` : `<button data-act="skip" title="Joue cette semaine puis passe les semaines sans match jusqu'au prochain">⏭ Prochain match</button>
           <button class="primary" data-act="next">${pending.length ? `🎮 Jour de match (${pending.length})` : "Semaine suivante ▶"}</button>`}
       </div>
-      ${({ dash: viewDash, roster: viewRoster, market: viewMarket, calendar: viewCalendar, comp: viewComp, tours: viewTours, finance: viewFinance, sponsors: viewSponsors, facilities: viewFacilities, inbox: viewInbox, world: viewWorld })[UI.view]()}
+      ${({ dash: viewDash, roster: viewRoster, market: viewMarket, calendar: viewCalendar, comp: viewComp, tours: viewTours, finance: viewFinance, sponsors: viewSponsors, staff: viewStaff, facilities: viewFacilities, inbox: viewInbox, world: viewWorld })[UI.view]()}
     </main></div>`;
   applyTableSorts($app, UI.view);
 }
@@ -272,7 +272,7 @@ function viewDash() {
 // note de match sur 10 (vert : très bon, rouge : mauvais)
 const noteCls = n => n >= 8 ? "n-top" : n >= 7 ? "n-good" : n >= 6 ? "n-ok" : "n-bad";
 const noteChip = n => n == null ? "<span class='muted'>—</span>" : `<span class="note ${noteCls(n)}">${n.toFixed(1)}</span>`;
-const notesLine = list => list && list.length ? `<div class="notes-line">${list.map(([h, n]) => `<span>${esc(h)} ${noteChip(n)}</span>`).join("")}</div>` : "";
+const notesLine = list => list && list.length ? `<div class="notes-line">${list.map(([h, n, id]) => `<span class="link-row" data-act="player-info" data-v="${id}">${esc(h)} ${noteChip(n)}</span>`).join("")}</div>` : "";
 // joueurs en difficulté et en forme (notes des 3 derniers matchs) : à aller voir pour les remotiver, les recadrer ou renégocier
 function formCard() {
   const ps = allUserPlayers().filter(p => recentNote(p) != null);
@@ -317,7 +317,7 @@ function viewRoster() {
   const nSt = ps.filter(p => p.starter).length;
   const rows = ps.map(p => `<tr>
     <td>${p.starter ? "⭐" : "<span class='muted'>banc</span>"}</td>
-    <td>${flag(p.nat)} <b>${esc(p.handle)}</b> <small class="muted" title="Région de jeu">${playRegion(p)}</small>${adaptFactor(p) < 1 ? ` <small class="warn" title="Adaptation à sa nouvelle région">✈️</small>` : ""}${playerBadges(p)}</td><td>${p.role}</td><td>${ageTxt(p)}</td><td>${R(p.rating)}</td>
+    <td>${flag(p.nat)} <b class="link" data-act="player-info" data-v="${p.id}">${esc(p.handle)}</b> <small class="muted" title="Région de jeu">${playRegion(p)}</small>${adaptFactor(p) < 1 ? ` <small class="warn" title="Adaptation à sa nouvelle région">✈️</small>` : ""}${playerBadges(p)}</td><td>${p.role}</td><td>${ageTxt(p)}</td><td>${R(p.rating)}</td>
     <td>${potTxt(p)}</td>
     <td>${noteChip(avgNote(p))}</td><td>${formSpark(p)}</td>
     <td>${bar(p.form)}</td><td>${bar(p.morale)}</td>
@@ -338,6 +338,7 @@ function viewRoster() {
       ${franchiseZones(UI.rosterGame).length && !isClosed(UI.rosterGame, d.tier, d.zone) ? `<button class="small" data-act="franchise" data-v="${UI.rosterGame}">🔒 Racheter une franchise</button>` : ""}
       <button class="small" data-act="goto-market" data-v="${UI.rosterGame}">🔎 Recruter</button>
       <button class="small danger" data-act="close-div">Fermer la division</button></div>
+    ${chemLine(u.id, UI.rosterGame)}
     <div class="table-wrap"><table><tr><th></th><th>Joueur</th><th>Rôle</th><th>Âge</th><th>Note</th><th>Potentiel</th><th title="Note moyenne en match cette saison (sur 10)">Moy.</th><th title="5 derniers matchs">Derniers matchs</th><th>Forme</th><th>Moral</th><th>Salaire</th><th>Contrat</th><th>Clause</th><th>Valeur</th><th></th></tr>${rows || `<tr><td colspan="15" class="muted">Aucun joueur. Rendez-vous au mercato !</td></tr>`}</table></div></div>
     ${academyCard(UI.rosterGame)}
     ${open}`;
@@ -351,7 +352,7 @@ function unitRoster(game) {
     const pos = standings(L.key).findIndex(r => r.id === id) + 1;
     const opts = p => teams.filter(t => t !== id && divOf(t, game).zone === playerZone(p) && clubPlayers(t, game).length < g.size)
       .map(t => `<option value="${t}">→ ${g.unit} ${teams.indexOf(t) + 1} (${esc(soloName(S.clubs[t], game))})</option>`).join("") + (ps.length > 1 ? `<option value="new">→ nouveau ${g.unit} (${ZONE_NAMES[playerZone(p)]})</option>` : "");
-    const rows = ps.map(p => `<tr><td>${flag(p.nat)} <b>${esc(p.handle)}</b> <small class="muted">${playRegion(p)}</small>${adaptFactor(p) < 1 ? ` <small class="warn" title="Adaptation à sa nouvelle région">✈️</small>` : ""}</td><td>${p.role}</td><td>${ageTxt(p)}</td><td>${R(p.rating)}</td><td>${potTxt(p)}</td><td>${noteChip(avgNote(p))}</td><td>${bar(p.form)}</td><td>${bar(p.morale)}</td>
+    const rows = ps.map(p => `<tr><td>${flag(p.nat)} <b class="link" data-act="player-info" data-v="${p.id}">${esc(p.handle)}</b> <small class="muted">${playRegion(p)}</small>${adaptFactor(p) < 1 ? ` <small class="warn" title="Adaptation à sa nouvelle région">✈️</small>` : ""}</td><td>${p.role}</td><td>${ageTxt(p)}</td><td>${R(p.rating)}</td><td>${potTxt(p)}</td><td>${noteChip(avgNote(p))}</td><td>${bar(p.form)}</td><td>${bar(p.morale)}</td>
       <td>${money(p.salary)}/sem</td><td class="${p.years <= 1 ? "warn" : ""}">${p.years} an(s)</td>
       <td style="white-space:nowrap"><button class="small" data-act="talk" data-v="${p.id}" title="Parler au joueur">💬</button> ${opts(p) ? `<select class="small-sel" data-change="unit-move" data-pid="${p.id}" aria-label="Changer d'équipe"><option value="">Changer d'équipe…</option>${opts(p)}</select>` : ""}
         <button class="small" data-act="contract" data-v="${p.id}">Contrat</button><button class="small" data-act="sell" data-v="${p.id}">Vendre</button><button class="small danger" data-act="release" data-v="${p.id}">Libérer</button></td></tr>`).join("")
@@ -363,6 +364,14 @@ function unitRoster(game) {
   return `<div class="card" style="margin-bottom:14px"><div class="toolbar"><div style="flex:1;min-width:0"><h3 style="margin:0">${g.icon} ${g.name} ${S.season} — ${g.unit}s (${g.size} joueurs)</h3>
       <p class="muted" style="margin:6px 0 0;font-size:13px">Pas de banc : chacun de vos joueurs joue dans un ${g.unit}. Vous pouvez aligner plusieurs ${g.unit}s, chacun dans la FNCS de sa région (un ${g.unit} américain en Amérique du Nord, un ${g.unit} européen en Europe). Un joueur seul se trouve un partenaire hors du club, que vous ne payez pas (marqué d'un astérisque). Pour changer un joueur de région, renégociez son contrat.</p></div>
       <button class="small" data-act="team-talk" data-v="${game}">💬 Réunion d'équipe</button><button class="small" data-act="goto-market" data-v="${game}">🔎 Recruter</button><button class="small danger" data-act="close-div">Fermer la division</button></div></div>${cards}`;
+}
+// entente des titulaires et entraîneur du jeu (effectifs)
+function chemLine(clubId, game) {
+  const st = teamStrength(clubId, game), co = coachOf(game), cf = conflicts(st.lineup);
+  const txt = st.chem >= 5 ? "excellente" : st.chem >= 1.5 ? "bonne" : st.chem > -1.5 ? "correcte" : st.chem > -5 ? "tendue" : "explosive";
+  return `<div class="chem-line"><span>🤝 Entente des titulaires : <b class="${st.chem >= 1.5 ? "ok" : st.chem > -1.5 ? "" : "bad"}">${txt} (${st.chem > 0 ? "+" : ""}${st.chem})</b> <small class="muted">jusqu'à ±3 % de niveau</small></span>
+    ${cf.map(([a, b, sc]) => `<span class="chip ${sc > 0 ? "ok" : "bad"}" title="${esc(traitOf(a))} / ${esc(traitOf(b))}">${sc > 0 ? "💚" : "⚡"} ${esc(a.handle)} & ${esc(b.handle)}</span>`).join("")}
+    <span>🧑‍🏫 ${co ? `<b class="link" data-act="view" data-v="staff">${esc(co.name)}</b> (niveau ${coachLevel(co).toFixed(1)})` : `<span class="link warn" data-act="view" data-v="staff">Pas d'entraîneur : en engager un</span>`}</span></div>`;
 }
 // 5 dernières notes en petites pastilles
 const formSpark = p => (p.notes || []).length ? `<span class="spark">${p.notes.slice(-5).map(n => `<i class="${noteCls(n)}" style="height:${Math.round(20 + (n - 3) * 11)}%" title="${n.toFixed(1)}"></i>`).join("")}</span>` : "<span class='muted'>—</span>";
@@ -493,7 +502,7 @@ function viewMarket() {
     const keen = interestCheck(p);
     const btn = !c ? `<button class="small primary" data-act="sign" data-v="${p.id}">Signer</button>`
       : `<button class="small" data-act="offer" data-v="${p.id}" ${keen ? "" : "disabled title='Votre club n&#39;est pas assez connu pour ce joueur'"}>${keen ? (c.solo ? "Recruter" : "Offre") + " (~" + money(askingPrice(p)) + ")" : "🔒 Hors de portée"}</button>`;
-    return `<tr><td>${flag(p.nat)} <b>${esc(p.handle)}</b></td><td>${gchip(p.game)}</td><td>${p.role}</td><td>${ageTxt(p)}</td><td>${R(p.rating)}</td><td>${potTxt(p)}</td>
+    return `<tr><td>${flag(p.nat)} <b class="link" data-act="player-info" data-v="${p.id}">${esc(p.handle)}</b></td><td>${gchip(p.game)}</td><td>${p.role}</td><td>${ageTxt(p)}</td><td>${R(p.rating)}</td><td>${potTxt(p)}</td>
       <td>${where}</td><td>${money(playerValue(p))}</td><td>${money(salaryDemand(p, u))}/sem</td><td class="${cost(p) > u.budget ? "bad" : ""}">${money(cost(p))}</td><td>${btn}</td></tr>`;
   }).join("");
   const head = [["name", "Joueur"], ["game", "Jeu"], ["role", "Rôle"], ["age", "Âge"], ["rating", "Note"], ["pot", "Potentiel"], ["club", "Statut"], ["value", "Valeur"], ["salary", "Salaire demandé"], ["price", "Coût"]]
@@ -785,6 +794,8 @@ function viewFinance() {
     <div class="card"><h3>Image & fans</h3><div class="kpi">${imageTxt(u.image ?? 60)} <span class="muted" style="font-size:14px">${Math.round(u.image ?? 60)}/100</span></div>${bar(u.image ?? 60)}<div class="muted">${u.fans.toLocaleString("fr-FR")} fans${fans0 ? ` · <b class="${u.fans >= fans0 ? "ok" : "bad"}">${u.fans >= fans0 ? "+" : ""}${(u.fans - fans0).toLocaleString("fr-FR")}</b> cette saison` : ""}</div></div>
   </div>
   <div class="card" style="margin-top:16px"><h3>Évolution du budget</h3>${chart}</div>
+  ${forecastCard()}
+  ${financeCharts(season, inc, exp)}
   <div class="card" style="margin-top:16px"><div class="toolbar"><h3 style="margin:0;flex:1">Budget par section</h3><button class="small primary" data-act="alloc">⚖️ Répartir le budget mercato</button></div>
     <p class="muted" style="margin-top:-4px;font-size:13px">Chaque section dispose d'une enveloppe mercato (indemnités, primes à la signature, commissions d'agents ; les ventes la renflouent) et d'un plafond de masse salariale. Les signatures qui les dépassent sont refusées : vous respectez ainsi votre budget total.</p>
     <div class="table-wrap"><table><tr><th>Jeu</th><th style="text-align:right">Recettes</th><th style="text-align:right">Dépenses</th><th style="text-align:right">Résultat</th><th style="text-align:right">Enveloppe mercato</th><th style="text-align:right">Reste</th><th style="text-align:right">Salaires / plafond (sem.)</th></tr>${gameRows || "<tr><td colspan='7' class='muted'>Aucune section.</td></tr>"}</table></div></div>
@@ -797,6 +808,57 @@ function viewFinance() {
   <div class="card" style="margin-top:16px"><div class="toolbar"><h3 style="margin:0;flex:1">Grand livre</h3>${gameSel}</div>
     <div class="table-wrap"><table><tr><th>Semaine</th><th>Section</th><th>Catégorie</th><th>Détail</th><th style="text-align:right">Montant</th></tr>${ledRows || "<tr><td colspan='5' class='muted'>Aucune opération.</td></tr>"}</table></div>
     ${led.length > 60 ? `<p class="muted" style="font-size:12px">Les 60 dernières opérations sont affichées.</p>` : ""}</div>`;
+}
+// prévisionnel : où en sera le budget à la mi-décembre si rien ne change (revenus et charges récurrents, contrats de sponsors qui se terminent)
+function forecast() {
+  const u = user(), rem = Math.max(0, SEASON_LAST - S.week + 1), fac = u.facilities;
+  const base = 300 + 3.6 * u.fame * u.fame + Object.values(u.divisions).reduce((s, d) => s + TIER_SPONSOR[d.tier - 1], 0) * (0.5 + u.fame / 100);
+  const deals = u.sponsorDeals.reduce((s, d) => s + d.weekly * Math.min(d.weeks, rem), 0);
+  const merch = u.fans * (0.012 + fac.content * 0.003);
+  const games = Object.keys(u.divisions);
+  const sal = games.reduce((s, g) => s + gameWages(g), 0), ops = games.reduce((s, g) => s + TIER_OP[u.divisions[g].tier - 1] * GAMES[g].size * GAMES[g].mult + (academyOf(g) ? TIER_OP[academyOf(g).divisions[g].tier - 1] * GAMES[g].size * GAMES[g].mult * 0.7 : 0), 0);
+  const coaches = games.reduce((s, g) => s + (coachOf(g) ? coachOf(g).wage : 0), 0), upkeep = Object.values(fac).reduce((s, l) => s + l * 800, 0);
+  const bonusPot = u.sponsorDeals.reduce((s, d) => s + (d.clauses || []).filter(c => c.status === "pending").reduce((a, c) => a + c.bonus, 0), 0);
+  const lines = [["Partenaires historiques et droits", base * rem], ["Contrats de sponsoring en cours", deals], ["Merch & streaming", merch * rem],
+    ["Salaires", -sal * rem], ["Frais de fonctionnement et académies", -ops * rem], ["Entraîneurs", -coaches * rem], ["Entretien des infrastructures", -upkeep * rem]];
+  const net = lines.reduce((s, [, v]) => s + v, 0);
+  return { rem, lines, net, end: u.budget + net, bonusPot, weekly: net / Math.max(1, rem) };
+}
+function forecastCard() {
+  const f = forecast(), u = user();
+  return `<div class="card" style="margin-top:16px"><h3>📊 Prévisionnel jusqu'à la fin de la saison (${f.rem} semaines)</h3>
+    <div class="grid g3" style="margin-bottom:10px">
+      <div><span class="muted">Budget prévu mi-décembre</span><div class="kpi ${f.end < 0 ? "bad" : ""}">${money(f.end)}</div></div>
+      <div><span class="muted">Solde récurrent par semaine</span><div class="kpi ${f.weekly < 0 ? "bad" : "ok"}">${f.weekly >= 0 ? "+" : ""}${money(f.weekly)}</div></div>
+      <div><span class="muted">Primes de sponsors en jeu</span><div class="kpi">${money(f.bonusPot)}</div><small class="muted">si les objectifs sont atteints</small></div>
+    </div>
+    ${hbars(f.lines.map(([l, v]) => [l, v]))}
+    <p class="muted" style="font-size:12px;margin-bottom:0">Hors cashprizes, transferts et événements, impossibles à prévoir.${f.end < 0 ? ` <b class="bad">Attention : sous ${money(-Math.max(100000, u.fame * 8000))}, un administrateur judiciaire prend le contrôle (ventes forcées, puis faillite).</b>` : ""}</p></div>`;
+}
+// barres horizontales (montants positifs en vert, négatifs en rouge)
+function hbars(rows) {
+  const max = Math.max(1, ...rows.map(([, v]) => Math.abs(v)));
+  return `<div class="hbars">${rows.map(([l, v]) => `<div class="hb"><span class="hb-l">${l}</span><span class="hb-t"><i class="${v >= 0 ? "pos" : "neg"}" style="width:${Math.max(1, Math.abs(v) / max * 100).toFixed(1)}%"></i></span><span class="hb-v ${v >= 0 ? "ok" : "bad"}">${v >= 0 ? "+" : ""}${money(v)}</span></div>`).join("")}</div>`;
+}
+// graphiques de la saison : recettes et dépenses semaine par semaine, répartition par catégorie, résultat par jeu
+function financeCharts(season, inc, exp) {
+  const F = S.finance.filter(f => f.season === season);
+  let weeks = "<p class='muted'>Jouez quelques semaines pour voir le graphique.</p>";
+  if (F.length >= 2) {
+    const W = 600, H = 160, max = Math.max(1, ...F.flatMap(f => [f.inc, f.exp])), bw = (W - 20) / F.length;
+    const bars = F.map((f, i) => `<rect x="${(10 + i * bw).toFixed(1)}" y="${(H - 14 - f.inc / max * (H - 24)).toFixed(1)}" width="${(bw * 0.42).toFixed(1)}" height="${(f.inc / max * (H - 24)).toFixed(1)}" fill="var(--ok)"><title>${f.label} : +${money(f.inc)}</title></rect>
+      <rect x="${(10 + i * bw + bw * 0.45).toFixed(1)}" y="${(H - 14 - f.exp / max * (H - 24)).toFixed(1)}" width="${(bw * 0.42).toFixed(1)}" height="${(f.exp / max * (H - 24)).toFixed(1)}" fill="var(--bad)"><title>${f.label} : -${money(f.exp)}</title></rect>`).join("");
+    weeks = `<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Recettes et dépenses par semaine">${bars}</svg>
+      <div class="muted" style="display:flex;justify-content:space-between;font-size:12px"><span>${F[0].label}</span><span><span class="ok">■</span> recettes · <span class="bad">■</span> dépenses · max ${money(max)}</span><span>${F[F.length - 1].label}</span></div>`;
+  }
+  const led = (S.ledger || []).filter(e => e[0] === season), byGame = {};
+  for (const [, , , amt, g] of led) if (g) byGame[g] = (byGame[g] || 0) + amt;
+  return `<div class="card" style="margin-top:16px"><h3>Recettes et dépenses par semaine</h3>${weeks}</div>
+    <div class="grid g2" style="margin-top:16px">
+      <div class="card"><h3>D'où vient l'argent</h3>${inc.length ? hbars(inc.map(([k, v]) => [BOOK_LABELS[k] || k, v])) : "<p class='muted'>—</p>"}</div>
+      <div class="card"><h3>Où part l'argent</h3>${exp.length ? hbars(exp.map(([k, v]) => [BOOK_LABELS[k] || k, v])) : "<p class='muted'>—</p>"}</div>
+    </div>
+    ${Object.keys(byGame).length ? `<div class="card" style="margin-top:16px"><h3>Résultat de chaque section</h3>${hbars(Object.entries(byGame).sort((a, b) => b[1] - a[1]).map(([g, v]) => [`${GAMES[g].icon} ${GAMES[g].short}`, v]))}</div>` : ""}`;
 }
 // répartition du budget mercato entre les sections (début de saison, ou à tout moment)
 function allocModal(intro) {
@@ -1044,7 +1106,21 @@ ACTIONS["nego-propose"] = () => {
     const h = S.players[NEGO.pid].handle; NEGO = null; closeModal(); toast(`${h} signe ! ✍️ ${r.msg}`); save(); return render();
   }
   if (r.status === "walk") { mail(`Négociations rompues : ${S.players[NEGO.pid].handle}`, r.msg, "transfer"); NEGO = null; closeModal(); toast("Le joueur a quitté la table des négociations."); save(); return render(); }
-  negoModal(r.msg, r.tone);
+  // l'agent répond par sa propre offre : le contrat affiché devient sa contre-proposition
+  if (r.counter) { NEGO.draft = r.counter; NEGO.counter = r.counter; }
+  const c = r.counter, sum = c ? `<div class="counter-box"><b>Contre-proposition de l'agent :</b> ${money(c.salary)}/sem · ${c.years} an(s) · statut « ${c.status} » · prime ${money(c.bonus)} · commission ${money(c.agentFee)} · ${c.prizeShare} % des gains${c.clause ? " · clause " + money(c.clause) : ""}
+    <div style="margin-top:6px"><button class="small primary" data-act="nego-take">✅ Accepter sa contre-proposition</button> <span class="muted" style="font-size:12px">ou modifiez les champs et refaites une offre</span></div></div>` : "";
+  negoModal(r.msg + sum, r.tone);
+};
+ACTIONS["nego-take"] = () => {
+  const offer = NEGO.counter; if (!offer) return;
+  const r = proposeContract(NEGO, offer);
+  if (r.status === "accept") {
+    const e = acceptContract(NEGO, offer);
+    if (e) return negoModal(e, "bad");
+    const h = S.players[NEGO.pid].handle; NEGO = null; closeModal(); toast(`${h} signe ! ✍️ ${r.msg}`); save(); return render();
+  }
+  NEGO.draft = r.counter || offer; NEGO.counter = r.counter || null; negoModal(r.msg, r.tone);
 };
 ACTIONS["nego-quit"] = () => { NEGO = null; closeModal(); };
 
@@ -1112,9 +1188,36 @@ function brandModal(name) {
     ${deal ? `<p class="ok">🤝 Partenaire du club : ${money(deal.weekly)}/sem, encore ${deal.weeks} semaine(s).</p>` : ""}
     <p class="muted" style="font-size:11px">Chiffres indicatifs estimés par le jeu, pas des données officielles de la marque.</p>
     <div class="actions"><button data-act="close-modal">Fermer</button>
-      ${deal ? "" : interested ? `<button class="primary" data-act="sp-talk" data-v="${esc(name)}">🤝 Négocier (elle est intéressée)</button>` : cd ? `<button disabled>A refusé récemment</button>` : `<button class="primary" data-act="sp-contact" data-v="${esc(name)}">📞 Contacter (${ch} %)</button>`}</div>`);
+      ${deal ? "" : interested ? `<button class="danger" data-act="sp-decline" data-v="${esc(name)}">✕ Refuser</button><button class="primary" data-act="sp-talk" data-v="${esc(name)}">🤝 Négocier (elle est intéressée)</button>` : cd ? `<button disabled>A refusé récemment</button>` : `<button class="primary" data-act="sp-contact" data-v="${esc(name)}">📞 Contacter (${ch} %)</button>`}</div>`);
 }
 ACTIONS["brand-info"] = v => brandModal(v);
+// refuser une marque intéressée : elle sort de la liste et ne revient pas avant 8 semaines
+ACTIONS["sp-decline"] = v => { S.sponsorMarket.list = S.sponsorMarket.list.filter(x => x.brand !== v); S.brandCooldown = S.brandCooldown || {}; S.brandCooldown[v] = nowIndex() + 8; mail(`Offre déclinée : ${v}`, `Vous avez décliné l'intérêt de ${v}.`, "sponsor"); toast(`${v} : offre déclinée.`); closeModal(); scheduleSave(); render(); };
+// ---------- staff : un entraîneur par jeu ----------
+const attrBar = v => `<span class="attr" title="${v}/20"><i style="width:${v * 5}%;background:${v >= 15 ? "var(--ok)" : v >= 10 ? "var(--accent2)" : v >= 6 ? "var(--warn)" : "var(--bad)"}"></i></span> <b>${v}</b>`;
+function viewStaff() {
+  const u = user(), games = Object.keys(u.divisions);
+  if (!games.length) return `<h2>🧑‍🏫 Staff</h2><p class="muted">Ouvrez une division pour engager un entraîneur.</p>`;
+  if (!UI.staffGame || !games.includes(UI.staffGame)) UI.staffGame = games[0];
+  const g = UI.staffGame, cur = coachOf(g);
+  const tabs = games.map(k => `<button class="tab ${k === g ? "active" : ""}" data-act="staff-game" data-v="${k}">${GAMES[k].icon} ${GAMES[k].short}${coachOf(k) ? " ✓" : ""}</button>`).join("");
+  const card = cur ? `<div class="card"><div class="toolbar"><div style="flex:1"><h3 style="margin:0">Entraîneur ${GAMES[g].name} : ${flag(cur.nat)} ${esc(cur.name)}${cur.ex ? ` <span class="chip">ancien joueur pro</span>` : ""}</h3>
+      <div class="muted">${cur.age} ans · niveau ${coachLevel(cur).toFixed(1)}/20 · ${money(cur.wage)}/sem${cur.won.length ? " · palmarès de joueur : " + cur.won.map(esc).join(", ") : ""}</div></div>
+      <button class="small danger" data-act="coach-fire" data-v="${g}">Le licencier (${money(cur.wage * 8)})</button></div>
+      <div class="coach-attrs">${Object.entries(COACH_ATTRS).map(([k, l]) => `<div><span class="muted">${l}</span>${attrBar(cur.attrs[k])}</div>`).join("")}</div>
+      <p class="muted" style="font-size:13px;margin-bottom:0">Effets : tactique → niveau de l'équipe en match (+${(cur.attrs.tactique * 0.15).toFixed(1)}) · motivation → moral chaque semaine · formation des jeunes → progression des moins de 22 ans · gestion des egos → atténue les tensions entre joueurs.</p></div>`
+    : `<div class="card"><h3>Pas d'entraîneur en ${GAMES[g].name}</h3><p class="muted">Sans entraîneur, l'équipe ne profite que des infrastructures. Engagez-en un ci-dessous : il améliore le niveau en match, le moral, la progression des jeunes et l'entente du groupe.</p></div>`;
+  const list = Object.values(S.coaches || {}).filter(c => c.game === g && !c.club).sort((a, b) => coachLevel(b) - coachLevel(a));
+  const rows = list.map(c => `<tr><td>${flag(c.nat)} <b>${esc(c.name)}</b>${c.ex ? ` <span class="chip" title="${c.won.length ? esc(c.won.join(", ")) : "Ancien joueur pro"}">ex-joueur</span>` : ""}</td><td>${c.age}</td>
+    ${Object.keys(COACH_ATTRS).map(k => `<td>${attrBar(c.attrs[k])}</td>`).join("")}<td><b>${coachLevel(c).toFixed(1)}</b></td><td>${money(c.wage)}/sem</td><td>${money(c.wage * 6)}</td>
+    <td><button class="small primary" data-act="coach-hire" data-v="${c.id}" ${u.budget < c.wage * 6 ? "disabled" : ""}>Engager</button></td></tr>`).join("");
+  return `<h2>🧑‍🏫 Staff</h2><div class="tabs">${tabs}</div>${card}
+    <div class="card" style="margin-top:16px"><h3>Entraîneurs disponibles (${GAMES[g].short})</h3><p class="muted" style="margin-top:-6px;font-size:13px">Notes sur 20, comme dans FM. Les meilleurs joueurs qui prennent leur retraite deviennent parfois entraîneurs : leur tactique vient de leur niveau, leur motivation et leur gestion des egos de leur caractère.</p>
+    <div class="table-wrap"><table><tr><th>Entraîneur</th><th>Âge</th>${Object.values(COACH_ATTRS).map(l => `<th>${l}</th>`).join("")}<th>Niveau</th><th>Salaire</th><th>Prime d'arrivée</th><th></th></tr>${rows || "<tr><td colspan='10' class='muted'>Aucun entraîneur libre.</td></tr>"}</table></div></div>`;
+}
+ACTIONS["staff-game"] = v => { UI.staffGame = v; render(); };
+ACTIONS["coach-hire"] = v => { const e = hireCoach(v); toast(e || "🧑‍🏫 Entraîneur engagé !"); scheduleSave(); render(); };
+ACTIONS["coach-fire"] = v => { fireCoach(v); toast("Entraîneur licencié."); scheduleSave(); render(); };
 // ---------- sponsors (onglet) ----------
 function viewSponsors() {
   const u = user();
@@ -1133,7 +1236,7 @@ function viewSponsors() {
     const b = brandOf(x.brand), e = ETHIC[b.ethic];
     return `<div class="card sp-card"><div class="brand-head link-row" data-act="brand-info" data-v="${esc(b.brand)}">${brandLogo(b.brand)}<div style="min-width:0"><b class="link">${esc(b.brand)}</b><div class="muted" style="font-size:12px">${esc(b.sector)} · ${BRAND_SIZE[b.size]} · <span class="${e[2]}">${e[0]} ${e[1]}</span></div></div></div>
       <div style="margin:8px 0;font-size:13px">Intérêt ${bar(x.interest, "var(--ok)")} ${x.interest} %</div>
-      <button class="small primary" data-act="sp-talk" data-v="${esc(b.brand)}">🤝 Négocier</button> <button class="small" data-act="brand-info" data-v="${esc(b.brand)}">🔍 Détails</button></div>`;
+      <button class="small primary" data-act="sp-talk" data-v="${esc(b.brand)}">🤝 Négocier</button> <button class="small" data-act="brand-info" data-v="${esc(b.brand)}">🔍 Détails</button> <button class="small danger" data-act="sp-decline" data-v="${esc(b.brand)}">✕ Refuser</button></div>`;
   }).join("");
   const list = BRANDS.filter(b => !u.sponsorDeals.some(d => d.name === b[0]) && (F.ethic === "all" || b[2] === F.ethic) && (F.size === "all" || (F.size === "reach" ? b[3] <= reach + 1 : b[3] === +F.size)))
     .sort((a, b) => b[3] - a[3] || a[0].localeCompare(b[0]))
@@ -1175,11 +1278,48 @@ function moneyRecap(income, expenses) {
   const net = rows.reduce((s, [, v]) => s + v, 0);
   return `<div class="recap"><div class="recap-h"><span>💰 Finances</span><b class="${net >= 0 ? "ok" : "bad"}">${net >= 0 ? "+" : ""}${money(net)}</b></div>${rows.sort((a, b) => b[1] - a[1]).map(([k, v]) => `<div class="recap-r"><span>${BOOK_LABELS[k] || k}</span><span class="${v >= 0 ? "ok" : "bad"}">${v >= 0 ? "+" : ""}${money(v)}</span></div>`).join("")}</div>`;
 }
-const resultsHtml = r => r.tournaments.map(tourRow).join("") + r.matches.map(matchRow).join("") + r.lobbies.map(lobbyRow).join("");
+// résultats d'une semaine, une ligne par match, dans l'ordre des dates : date · jeu · victoire/défaite · score · adversaire
+function resultsHtml(r) {
+  const season = r.season || S.season, items = [];
+  for (const m of r.matches) {
+    const meA = isMine(m.a), me = meA ? m.a : m.b, opp = meA ? m.b : m.a, won = m.winner === me, my = meA ? m.sa : m.sb, their = meA ? m.sb : m.sa;
+    const [comp, stage] = (m.stage || "").split(" — ");
+    items.push({ k: (m.week || r.week || 0) * 10 + (m.dd ?? 5), html: `<div class="res-row ${won ? "w" : "l"}"><div class="res-date">${m.week ? dayLabel(season, m.week, m.dd ?? 5) : ""}</div>
+      <div class="res-main"><div class="res-title"><span class="res-badge">${won ? "V" : "D"}</span> <b>${my}-${their}</b> contre <b>${displayName(opp, m.game)}</b>${me !== S.userId ? ` <small class="muted">(${displayName(me, m.game)})</small>` : ""}</div>
+      <div class="muted res-sub">${GAMES[m.game].icon} ${esc(comp || "")}${stage ? " · " + esc(stage) : ""} · BO${m.bestOf}${m.maps && m.maps.length ? " · " + m.maps.join(", ") : ""}${m.mvp ? " · MVP " + esc(m.mvp) : ""}</div>
+      ${(meA ? m.notesA : m.notesB) ? `<details class="res-notes"><summary>Notes des joueurs</summary>${notesLine(meA ? m.notesA : m.notesB)}</details>` : ""}</div></div>` });
+  }
+  for (const l of r.lobbies) {
+    const good = l.rank <= 3;
+    items.push({ k: (l.week || r.week || 0) * 10 + (l.dd ?? 6), html: `<div class="res-row ${good ? "w" : l.rank <= Math.ceil(l.lobby / 2) ? "n" : "l"}"><div class="res-date">${l.week ? dayLabel(season, l.week, l.dd ?? 6) : ""}</div>
+      <div class="res-main"><div class="res-title"><span class="res-badge">${l.rank}e</span> <b>${l.mine.pts} pts</b> · ${l.mine.kills} élim. · places ${l.mine.places.map(p => p === 1 ? "👑" : p).join(", ")}${l.club !== S.userId ? ` <small class="muted">(${displayName(l.club, l.game)})</small>` : ""}</div>
+      <div class="muted res-sub">${GAMES[l.game].icon} ${esc(l.stage)} · lobby de ${l.lobby} ${GAMES[l.game].unit}s</div>
+      ${l.notes && l.notes[l.club] ? `<details class="res-notes"><summary>Notes des joueurs</summary>${notesLine(l.notes[l.club])}</details>` : ""}</div></div>` });
+  }
+  for (const t of r.tournaments) items.push({ k: (t.week || r.week || 0) * 10 + 7, html: `<div class="res-row ${t.place === 1 ? "w trophy" : "n"}"><div class="res-date">${t.week ? dayLabel(season, t.week, 6) : ""}</div>
+      <div class="res-main"><div class="res-title">${t.place === 1 ? "🏆 <b>VAINQUEUR</b>" : `<span class="res-badge">${t.place}e</span> sur ${t.n}`} · <b>${esc(t.name)}</b>${t.prize ? ` · <b class="ok">+${money(t.prize)}</b>` : ""}</div>
+      <div class="muted res-sub">${GAMES[t.game].icon} Bilan du tournoi${t.place > 1 ? ` · vainqueur : ${displayName(t.winner, t.game)}` : ""}</div></div></div>` });
+  return items.sort((a, b) => a.k - b.k).map(x => x.html).join("");
+}
+// victoire en tournoi ou titre : confettis et gains, comme un pari gagnant
+function celebrate(reps) {
+  const wins = reps.flatMap(r => r.tournaments.filter(t => t.place === 1)), titles = reps.flatMap(r => r.fans.filter(([l]) => l.startsWith("🏆 Titre")));
+  if (!wins.length && !titles.length) return;
+  const gain = wins.reduce((s, t) => s + t.prize, 0), name = wins[0] ? wins[0].name : titles[0][0].replace("🏆 Titre : ", "");
+  const box = document.createElement("div"); box.className = "celebrate";
+  const colors = ["#ffd166", "#06d6a0", "#ef476f", "#118ab2", "#7c5cff", "#00d4ff", "#ff9f1c"];
+  box.innerHTML = Array.from({ length: 140 }, () => `<i style="left:${Math.random() * 100}%;background:${pick(colors)};animation-delay:${(Math.random() * 0.8).toFixed(2)}s;animation-duration:${(2.2 + Math.random() * 1.6).toFixed(2)}s;transform:rotate(${randi(0, 360)}deg)"></i>`).join("")
+    + `<div class="celebrate-card"><div class="cel-cup">🏆</div><div class="cel-title">${esc(name)}</div>${gain ? `<div class="cel-amount" data-to="${Math.round(gain)}">+0 €</div>` : `<div class="cel-amount">CHAMPIONS !</div>`}<div class="muted">${wins.length + titles.length > 1 ? `${wins.length + titles.length} trophées cette semaine` : "Cliquez pour continuer"}</div></div>`;
+  document.body.appendChild(box);
+  const amt = box.querySelector(".cel-amount[data-to]");
+  if (amt) { const to = +amt.dataset.to, t0 = performance.now(); const step = t => { const k = Math.min(1, (t - t0) / 1400); amt.textContent = "+" + money(Math.round(to * (1 - Math.pow(1 - k, 3)))); if (k < 1) requestAnimationFrame(step); }; requestAnimationFrame(step); }
+  box.addEventListener("click", () => box.remove());
+  setTimeout(() => box.remove(), 4500);
+}
 // jour de match : les rencontres du club cette semaine, à lancer une par une
 function matchDayModal(last) {
   const evs = weekEvents(), left = evs.filter(e => !e.done);
-  const rows = evs.map(e => `<div class="md-ev ${e.done ? "done" : ""}"><div style="min-width:0">${gchip(e.game)} <b>${esc(e.title)}</b><div class="muted" style="font-size:13px">${esc(e.what)}</div></div>
+  const rows = evs.slice().sort((a, b) => (a.when || "").localeCompare(b.when || "")).map(e => `<div class="md-ev ${e.done ? "done" : ""}"><div class="md-when">${esc(e.when || "")}</div><div style="min-width:0;flex:1">${gchip(e.game)} <b>${esc(e.title)}</b><div class="muted" style="font-size:13px">${esc(e.what)}</div></div>
     ${e.done ? "<span class='ok'>✓ Joué</span>" : `<button class="primary small" data-act="md-play" data-v="${esc(e.id)}">▶ Lancer</button>`}</div>`).join("");
   modal(`<h2>🎮 Jour de match — ${weekLabel(S.season, S.week, true)}</h2>
     ${last || ""}
@@ -1268,6 +1408,7 @@ function showEventResult(r) {
   const res = resultsHtml(r) || "<p class='muted'>Votre équipe n'a pas joué.</p>";
   render();
   matchDayModal(`<div class="card md-result">${res}${fanRecap(r.fans, "📈 Fans après ce match")}${r.money ? `<p>Gains : <b class="${r.money >= 0 ? "ok" : "bad"}">${r.money >= 0 ? "+" : ""}${money(r.money)}</b></p>` : ""}</div>`);
+  celebrate([r]);
 };
 ACTIONS["md-finish"] = () => playWeek();
 // bouton principal : jour de match s'il reste des rencontres à lancer, sinon semaine suivante
@@ -1289,6 +1430,7 @@ function showSummary(reps) {
   pendingEvents = reps.flatMap(r => r.events);
   const merge = k => reps.reduce((o, r) => { for (const [c, v] of Object.entries(r[k])) o[c] = (o[c] || 0) + v; return o; }, {});
   const res = reps.map(resultsHtml).join("") || "<p class='muted'>Pas de match pour votre club.</p>";
+  setTimeout(() => celebrate(reps), 50);
   const se = last.seasonEnd;
   const title = se ? "🏁 Fin de la saison " + last.season : reps.length > 1 ? `${weekLabel(reps[0].season, reps[0].week)} → ${weekLabel(last.season, last.week, true)}` : `Semaine du ${weekLabel(last.season, last.week, true)}`;
   modal(`<h2>${title}</h2>${reps.length > 1 ? `<p class="muted" style="margin-top:-6px">${reps.length} semaines jouées.</p>` : ""}${res}
@@ -1317,8 +1459,11 @@ ACTIONS["next-event"] = () => {
   modal(`<h2>${ev.title}</h2><p>${ev.body}</p><div class="actions">${ev.choices.map((c, i) => `<button class="${i ? "" : "primary"}" data-act="ev-choice" data-v="${i}">${c.label}</button>`).join("")}</div>`);
 };
 ACTIONS["ev-choice"] = v => {
-  const ev = window._ev, txt = ev.choices[+v].fx();
+  const ev = window._ev, res = ev.choices[+v].fx();
+  // un choix peut ouvrir une suite (questions d'une conférence de presse)
+  const txt = res && typeof res === "object" ? res.text : res;
   mail(ev.title, ev.body + "<br><i>Décision : " + ev.choices[+v].label + " — " + txt + "</i>", "event");
+  if (res && res.next) pendingEvents.unshift(res.next);
   save(); toast(txt); render();
   ACTIONS["next-event"]();
 };
@@ -1340,14 +1485,43 @@ document.addEventListener("input", e => {
   box.innerHTML = html; box.classList.toggle("hidden", !html);
 });
 // fiche d'un joueur (recherche) : voir, recruter ou lui parler
+// petit graphique en ligne (SVG) : series = [{ pts: [valeurs], color, label }]
+function lineChart(series, labels, h = 150) {
+  const all = series.flatMap(x => x.pts).filter(v => v != null);
+  if (all.length < 2) return "<p class='muted'>Pas encore assez de données.</p>";
+  const W = 600, n = Math.max(...series.map(x => x.pts.length)), lo = Math.min(...all), hi = Math.max(...all), pad = (hi - lo) * 0.1 || 1;
+  const x = i => 10 + i * (W - 20) / Math.max(1, n - 1), y = v => h - 12 - (v - lo + pad) / (hi - lo + 2 * pad) * (h - 24);
+  const paths = series.map(sr => `<path d="${sr.pts.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join("")}" fill="none" stroke="${sr.color}" stroke-width="2.5" vector-effect="non-scaling-stroke"/>`).join("");
+  return `<svg class="chart" viewBox="0 0 ${W} ${h}" preserveAspectRatio="none" role="img" aria-label="Graphique">${paths}</svg>
+    <div class="muted" style="display:flex;justify-content:space-between;font-size:12px"><span>${labels[0] || ""}</span><span>${series.map(sr => `<span style="color:${sr.color}">■</span> ${sr.label}`).join(" · ")} · de ${Math.round(lo)} à ${Math.round(hi)}</span><span>${labels[1] || ""}</span></div>`;
+}
+// fiche d'un joueur : infos publiques pour tous ; caractère, entente et évolution détaillée seulement pour les joueurs du club
 function playerInfo(pid) {
   const p = S.players[pid]; if (!p) return;
   const c = S.clubs[p.club], mine = c && isMine(c.id), avg = avgNote(p);
   const act = mine ? `<button data-act="talk" data-v="${p.id}">💬 Lui parler</button><button data-act="contract" data-v="${p.id}">📄 Contrat</button>`
     : !c ? `<button class="primary" data-act="sign" data-v="${p.id}">Signer</button>` : `<button class="primary" data-act="offer" data-v="${p.id}">Faire une offre (~${money(askingPrice(p))})</button>`;
-  modal(`<h2>${flag(p.nat)} ${esc(p.handle)}</h2><p class="muted" style="margin-top:-6px">${GAMES[p.game].icon} ${GAMES[p.game].name} · ${p.role} · ${ageTxt(p)} ans · ${c ? (c.solo ? "pro indépendant" : `<span class="link" data-act="club-info" data-v="${c.parent || c.id}">${esc(c.name)}</span>`) : "agent libre"}</p>
-    <div class="offer"><div><span class="muted">Note</span><b>${R(p.rating)}</b></div><div><span class="muted">Potentiel</span><b>${potTxt(p)}</b></div><div><span class="muted">Moyenne en match</span><b>${avg ? avg.toFixed(2) : "—"}</b></div><div><span class="muted">Valeur</span><b>${money(playerValue(p))}</b></div></div>
-    <p>Région de jeu : ${REGIONS[playRegion(p)]} · ${personalityOf(p)} · contrat ${p.years} an(s) · ${money(p.salary)}/sem${p.clause ? ` · clause ${money(p.clause)}` : ""}</p>
+  const won = (p.won || []).slice().reverse();
+  const car = (p.car || []).slice().reverse().map(([sn, club, r, n]) => `<tr><td>${sn}</td><td>${esc(club)}</td><td>${R(r)}</td><td>${n ? noteChip(n) : "—"}</td></tr>`).join("");
+  let priv = `<div class="card" style="margin-top:12px"><p class="muted" style="margin:0">🔒 Personnalité, caractère, entente avec les coéquipiers et évolution détaillée : visibles une fois le joueur dans votre club.</p></div>`;
+  if (mine) {
+    const h = p.hist || [], mates = clubPlayers(p.club, p.game).filter(x => x.id !== p.id);
+    const pairs = mates.map(x => [x, pairScore(p, x)]).filter(([, sc]) => sc >= 1 || sc <= -1.5).sort((a, b) => b[1] - a[1]);
+    priv = `<div class="grid g2" style="margin-top:12px">
+      <div class="card"><h3>Caractère</h3><p style="margin:0"><b>${personalityOf(p)}</b> — ${PERSONALITIES[personalityOf(p)].desc}<br><b>${traitOf(p)}</b> — ${TRAITS[traitOf(p)]}</p>
+        <p style="margin:8px 0 0">Forme ${bar(p.form)} · Moral ${bar(p.morale)}</p>
+        ${pairs.length ? `<p style="margin:8px 0 0;font-size:13px">${pairs.map(([x, sc]) => `${sc > 0 ? "💚" : "⚡"} ${esc(x.handle)} <span class="${sc > 0 ? "ok" : "bad"}">${sc > 0 ? "bonne entente" : "tensions"}</span>`).join("<br>")}</p>` : ""}</div>
+      <div class="card"><h3>Notes des 10 derniers matchs</h3>${(p.notes || []).length ? `<div>${p.notes.map(noteChip).join(" ")}</div>${lineChart([{ pts: p.notes, color: "var(--accent2)", label: "note" }], ["", ""], 90)}` : "<p class='muted'>Aucun match joué pour le club.</p>"}</div>
+    </div>
+    <div class="card" style="margin-top:12px"><h3>Évolution au club${p.joinedAt ? ` (depuis ${weekLabel(Math.floor(p.joinedAt / 100), p.joinedAt % 100, true)})` : ""}</h3>
+      ${lineChart([{ pts: h.map(x => x[1]), color: "#ffd166", label: "note" }, { pts: h.map(x => 60 + (x[2] - 50) / 5), color: "var(--ok)", label: "forme (échelle réduite)" }], h.length ? [weekLabel(Math.floor(h[0][0] / 100), h[0][0] % 100), weekLabel(Math.floor(h[h.length - 1][0] / 100), h[h.length - 1][0] % 100)] : [])}</div>`;
+  }
+  modal(`<h2>${flag(p.nat)} ${esc(p.handle)}${p.late ? ` <span class="chip">révélation tardive</span>` : ""}</h2><p class="muted" style="margin-top:-6px">${GAMES[p.game].icon} ${GAMES[p.game].name} · ${p.role} · ${ageTxt(p)} ans · ${COUNTRIES[p.nat] || p.nat || "nationalité inconnue"} · ${c ? (c.solo ? "pro indépendant" : `<span class="link" data-act="club-info" data-v="${c.parent || c.id}">${esc(c.name)}</span>`) : "agent libre"}</p>
+    <div class="offer"><div><span class="muted">Note</span><b>${R(p.rating)}</b></div><div><span class="muted">Potentiel estimé</span><b>${potTxt(p)}</b></div><div><span class="muted">Moyenne en match (saison)</span><b>${avg ? avg.toFixed(2) : "—"}</b></div><div><span class="muted">Valeur</span><b>${money(playerValue(p))}</b></div></div>
+    <p>Région de jeu : ${REGIONS[playRegion(p)]}${c ? ` · contrat ${p.years} an(s)` : ""}${mine ? ` · ${money(p.salary)}/sem${p.clause ? ` · clause ${money(p.clause)}` : ""}` : ""}</p>
+    <div class="grid g2"><div><h3>Palmarès</h3>${won.length ? `<p style="margin:0">${won.map(t => `🏆 ${esc(t)}`).join("<br>")}</p>` : "<p class='muted'>Aucun titre pour l'instant.</p>"}</div>
+      <div><h3>Carrière</h3>${car ? `<table><tr><th>Saison</th><th>Club</th><th>Note</th><th>Moy.</th></tr>${car}</table>` : "<p class='muted'>Première saison suivie.</p>"}</div></div>
+    ${priv}
     <div class="actions"><button data-act="close-modal">Fermer</button>${act}</div>`);
 }
 ACTIONS["player-info"] = v => playerInfo(v);

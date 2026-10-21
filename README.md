@@ -129,6 +129,18 @@ Le **calendrier Rocket League** est la vraie saison RLCS 2026 (`tools/sources/ro
 - **Recherche** : le champ du menu trouve une équipe ou un joueur.
 - **Tableaux triables** : dans tous les tableaux (sponsors, effectifs, classements, grand livre, tournois…), un clic sur un en-tête trie la colonne et un second clic inverse l'ordre. Le tri reste en place quand on change d'onglet.
 
+## Staff, caractères, carrières (façon FM)
+
+- **Entraîneurs** (onglet 🧑‍🏫 Staff) : un par jeu, noté sur 20 en tactique (niveau en match), motivation (moral), formation des jeunes (progression des moins de 22 ans) et gestion des egos (atténue les tensions). Les meilleurs joueurs qui prennent leur retraite se reconvertissent parfois en entraîneurs (rain, Tokido, brTT…), avec des notes tirées de leur niveau et de leur caractère.
+- **Caractères et entente** : chaque joueur a un caractère (Leader, Boute-en-train, Discret, Mentor, Perfectionniste, Tête brûlée, Solitaire, Toxique). Deux leaders se marchent dessus, un toxique pourrit l'ambiance, un mentor fait grandir les jeunes, la même nationalité rapproche. L'entente des titulaires change le niveau de l'équipe de ±3 %.
+- **Fiche joueur** (clic sur un nom) : palmarès personnel, carrière saison par saison. Pour vos joueurs seulement : personnalité, caractère, entente avec chaque coéquipier, notes des 10 derniers matchs et graphique de l'évolution depuis l'arrivée au club.
+- **Retraites et nouveaux joueurs** : les joueurs partent à la retraite à partir de 31 ans. Chaque saison arrivent des jeunes au potentiel surtout modeste (quelques pépites seulement) et quelques révélations tardives de 22 à 27 ans.
+- **Polémiques et conférences de presse** : amende, suspension (le joueur ne joue pas), excuses publiques, silence, ou défense en conférence de presse avec trois questions dont les réponses plaisent ou non aux fans, au conseil et aux joueurs.
+- **Négociations** : quand l'agent refuse, il fait sa propre contre-proposition, qui remplit le contrat ; il suffit de l'accepter ou de la modifier.
+- **Faillite** : un découvert coûte des intérêts chaque semaine. Sous un seuil, un administrateur judiciaire vend le joueur le plus cher toutes les 4 semaines, puis le club fait faillite au bout de 16 semaines (fin de partie).
+- **Finances** : prévisionnel jusqu'à la fin de la saison, graphiques des recettes et dépenses par semaine, par catégorie et par section.
+- **Résultats** : chaque match a sa date (« sam. 17 janv. »), le récap de la semaine liste les matchs dans l'ordre avec V/D, et une victoire en tournoi déclenche confettis et compteur des gains.
+
 ## Classement mondial CS2 (façon HLTV)
 
 Chaque tournoi CS2 rapporte des points selon sa dotation et la place, chaque victoire en ligue un peu. Les points comptent pleinement 3 mois, à 75 % jusqu'à 6 mois et à 40 % jusqu'à un an. Les invitations aux grands tournois suivent ce classement, et en fin de saison les tiers sont refaits d'après lui (top 12 en tier 1).

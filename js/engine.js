@@ -39,6 +39,11 @@ function weekMonday(season, w) {
   const jan4 = new Date(Date.UTC(season, 0, 4)), dow = (jan4.getUTCDay() + 6) % 7;
   return new Date(Date.UTC(season, 0, 4 - dow + (w - 1) * 7));
 }
+// jour précis d'un match : d = 0 (lundi) à 6 (dimanche)
+const DAYS = ["lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim."];
+function dayLabel(season, w, d) { const t = new Date(weekMonday(season, w).getTime() + (d || 0) * 864e5); return `${DAYS[d || 0]} ${t.getUTCDate()} ${MONTHS[t.getUTCMonth()]}`; }
+// jour habituel des journées de ligue de chaque jeu (LoL le samedi, CS2 le mercredi…)
+const LEAGUE_WEEKDAY = { lol: 5, val: 4, valgc: 3, cs2: 2, dota: 3, rl: 6, ow: 5, r6: 3, cod: 4, mlbb: 4, hok: 5, cf: 3, fn: 6, apex: 5, pubg: 3, pubgm: 4, ff: 5, wz: 6, tft: 2, trackmania: 3, fc: 1, sf6: 2, tk8: 2, fatal: 3, chess: 1, sc2: 4 };
 // « 12-18 janv. » ou « 26 janv. - 1 févr. » (avec l'année si demandé)
 function weekLabel(season, w, year) {
   if (season === undefined) { season = S.season; w = S.week; }
@@ -442,6 +447,7 @@ function newWorld(opts) {
   }
   seedRealHistory();
   seedRanking();
+  seedCoaches();
   // club du joueur
   if (opts.mode === "create") {
     const c = baseClub("user", opts.name, opts.tag, opts.country, opts.color, 5, false);
@@ -677,7 +683,7 @@ const BOOK_LABELS = {
   clauses: "Clauses libératoires encaissées", investors: "Investisseurs", events: "Divers (recettes)",
   salaries: "Salaires", operations: "Frais de fonctionnement des équipes", academy: "Académies", facilities: "Entretien des infrastructures", bonuses: "Primes de victoire",
   transfers: "Indemnités de transfert", signing: "Primes à la signature", agents: "Commissions d'agents", travel: "Déplacements en LAN", release: "Indemnités de rupture",
-  upgrades: "Travaux d'infrastructures", entry: "Droits d'entrée en ligue", staff: "Bootcamps et créateurs",
+  upgrades: "Travaux d'infrastructures", entry: "Droits d'entrée en ligue", staff: "Bootcamps et créateurs", coaches: "Entraîneurs", interest: "Intérêts bancaires", fines: "Amendes infligées aux joueurs",
 };
 // toute entrée ou sortie d'argent du club du joueur passe par ici : budget, rapport de la semaine, grand livre et budget mercato du jeu
 function book(cat, amount, game, label) {
@@ -1230,7 +1236,11 @@ function proposeContract(N, offer) {
     p.morale = clamp(p.morale - (N.ctx === "renew" ? 15 : 0), 0, 100);
     return { status: "walk", msg: `${pick(REPLIES[tone === "close" ? "low" : tone])} ${p.handle} met fin aux négociations et ne veut plus en entendre parler pendant 4 semaines.` };
   }
-  return { status: "counter", tone, msg: pick(REPLIES[tone]) + (issues.length ? " Il " + issues.slice(0, 3).join(", ") + "." : "") };
+  // l'agent fait sa propre contre-proposition (le contrat se met à jour, il suffit de l'accepter)
+  const counter = { ...offer, region, status: d.status, years: clamp(offer.years, d.years[0], d.years[1]), salary: Math.max(offer.salary, round50(d.salary * movePremium)),
+    bonus: Math.max(offer.bonus, d.bonus), agentFee: Math.max(offer.agentFee, d.agentFee), prizeShare: Math.max(offer.prizeShare, d.prizeShare), winBonus: Math.max(offer.winBonus, d.winBonus),
+    clause: d.clauseMax ? (offer.clause && offer.clause <= d.clauseMax ? offer.clause : d.clauseMax) : offer.clause };
+  return { status: "counter", tone, counter, msg: pick(REPLIES[tone]) + (issues.length ? " Il " + issues.slice(0, 3).join(", ") + "." : "") };
 }
 // applique le contrat signé
 function acceptContract(N, offer) {
@@ -1319,16 +1329,96 @@ function rateLineup(lineup, oppStr, won, mvp, keep) {
     return [p.handle, addNote(p, n, keep && isMine(p.club)), p.id];
   });
 }
+// ---------- caractères et entente ----------
+const TRAITS = { "Leader": "Prend les choses en main ; deux leaders se marchent dessus.", "Boute-en-train": "Met une bonne ambiance dans le groupe.",
+  "Discret": "S'entend avec tout le monde sans faire de bruit.", "Mentor": "Fait progresser les jeunes et les encadre.", "Perfectionniste": "Exigeant, supporte mal les têtes brûlées.",
+  "Tête brûlée": "Imprévisible, agace les perfectionnistes.", "Solitaire": "Joue pour lui, crée peu de liens.", "Toxique": "Pourrit l'ambiance quand ça va mal." };
+function traitOf(p) {
+  if (!p.trait) { const h = hashOf(p.handle + "|trait") % 100; p.trait = h < 14 ? "Leader" : h < 30 ? "Boute-en-train" : h < 52 ? "Discret" : h < 60 ? "Mentor" : h < 72 ? "Perfectionniste" : h < 84 ? "Tête brûlée" : h < 94 ? "Solitaire" : "Toxique"; }
+  return p.trait;
+}
+// entente entre deux joueurs (-3 à +3)
+function pairScore(a, b) {
+  const ta = traitOf(a), tb = traitOf(b), has = t => ta === t || tb === t;
+  let s = a.nat && a.nat === b.nat ? 1 : 0;
+  if (ta === "Leader" && tb === "Leader") s -= 2;
+  if (has("Toxique")) s -= ta === tb ? 3 : 2;
+  if (has("Boute-en-train")) s += 1;
+  if (has("Perfectionniste") && has("Tête brûlée")) s -= 2;
+  if (has("Solitaire")) s -= 0.5;
+  if ((ta === "Mentor" && b.age <= 20) || (tb === "Mentor" && a.age <= 20)) s += 2;
+  return clamp(s, -3, 3);
+}
+// entente d'une équipe (-10 à +10) ; un entraîneur qui gère bien les egos atténue les conflits
+function chemistry(list, coach) {
+  if (!list || list.length < 2) return 0;
+  let sum = 0, n = 0;
+  for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) { sum += pairScore(list[i], list[j]); n++; }
+  let c = clamp(sum / n * 4, -10, 10);
+  if (c < 0 && coach) c *= 1 - coach.attrs.discipline / 30;
+  return Math.round(c * 10) / 10;
+}
+const conflicts = list => { const out = []; for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) { const sc = pairScore(list[i], list[j]); if (sc <= -2 || sc >= 2) out.push([list[i], list[j], sc]); } return out; };
+
+// ---------- entraîneurs (façon FM) ----------
+// notes sur 20 : tactique (niveau en match), motivation (moral), formation des jeunes (progression des moins de 22 ans), gestion des egos (entente)
+const COACH_ATTRS = { tactique: "Tactique", motivation: "Motivation", jeunes: "Formation des jeunes", discipline: "Gestion des egos" };
+const COACH_FIRST = ["Marc", "Julien", "Lucas", "Kim", "Lee", "Park", "Alex", "Sam", "Tomás", "Diego", "Jonas", "Erik", "Mehdi", "Yanis", "Hugo", "Léo", "Chen", "Wang", "Ivan", "Pavel", "Rafael", "Mateo", "Nico", "Oliver", "Max", "Ben", "Ryu", "Kenji", "Omar", "Ali"];
+const COACH_LAST = ["Durand", "Martin", "Moreau", "Schmidt", "Novak", "Silva", "Costa", "Rossi", "Jensen", "Kowalski", "Petrov", "Nguyen", "Tanaka", "Seo", "Choi", "Zhang", "Liu", "García", "López", "Müller", "Fischer", "Dubois", "Bernard", "Haddad", "Benali", "Andersson", "Lindqvist", "Ferreira", "Romero", "Kaya"];
+const coachLevel = c => Object.values(c.attrs).reduce((a, b) => a + b, 0) / 4;
+const coachOf = game => { const id = S.userId && S.clubs[S.userId] && S.clubs[S.userId].coaches && S.clubs[S.userId].coaches[game]; return id && S.coaches && S.coaches[id] ? S.coaches[id] : null; };
+function coachWage(c) { const l = coachLevel(c); return round50((250 + l * l * 9) * (0.5 + 0.5 * GAMES[c.game].mult)); }
+function makeCoach(game, o = {}) {
+  const lvl = o.lvl ?? randi(5, 15), a = () => clamp(Math.round(lvl + rand(-4, 4)), 1, 20);
+  const c = { id: uid("co"), name: o.name || `${pick(COACH_FIRST)} ${pick(COACH_LAST)}`, nat: o.nat || pick(Object.keys(COUNTRIES)), age: o.age || randi(28, 55), game,
+    attrs: { tactique: a(), motivation: a(), jeunes: a(), discipline: a(), ...(o.attrs || {}) }, club: null, ex: o.ex || null, won: o.won || [] };
+  c.wage = coachWage(c);
+  (S.coaches = S.coaches || {})[c.id] = c;
+  return c;
+}
+// un joueur qui prend sa retraite peut devenir entraîneur : sa tactique vient de son niveau, sa motivation et sa gestion des egos de sa personnalité
+function coachFromPlayer(p) {
+  const pers = personalityOf(p), base = clamp((p.rating - 55) / 2.2, 4, 18);
+  return makeCoach(p.game, { name: p.handle, nat: p.nat, age: p.age + 1, ex: p.handle, won: (p.won || []).slice(-6), lvl: base,
+    attrs: { tactique: clamp(Math.round(base + rand(-2, 3)), 1, 20), motivation: clamp(Math.round(base + ({ Loyal: 3, Calme: 2, Exigeant: -2, Mercenaire: -3 }[pers] || 0) + rand(-3, 3)), 1, 20),
+      jeunes: clamp(Math.round(base - 2 + (traitOf(p) === "Mentor" ? 6 : 0) + rand(-3, 3)), 1, 20), discipline: clamp(Math.round(base + (traitOf(p) === "Leader" ? 4 : traitOf(p) === "Toxique" ? -6 : 0) + rand(-3, 3)), 1, 20) } });
+}
+function seedCoaches() {
+  for (const game of Object.keys(GAMES)) for (let i = 0; i < 7; i++) makeCoach(game, { lvl: i === 0 ? randi(15, 18) : i < 3 ? randi(11, 15) : randi(5, 11) });
+}
+function hireCoach(id) {
+  const u = user(), c = S.coaches[id];
+  if (!c || c.club) return "Cet entraîneur n'est pas disponible.";
+  if (!u.divisions[c.game]) return `Ouvrez d'abord une division ${GAMES[c.game].name}.`;
+  const prime = c.wage * 6;
+  if (u.budget < prime) return `Budget insuffisant : il demande une prime de ${money(prime)}.`;
+  u.coaches = u.coaches || {};
+  if (u.coaches[c.game]) fireCoach(c.game, true);
+  book("coaches", -prime, c.game, `Prime d'arrivée : ${c.name}`);
+  c.club = u.id; u.coaches[c.game] = c.id;
+  mail(`🧑‍🏫 Nouvel entraîneur ${GAMES[c.game].short} : ${c.name}`, `${c.name}${c.ex ? " (ancien joueur pro)" : ""} prend en main l'équipe ${GAMES[c.game].name} pour ${money(c.wage)}/sem. Tactique ${c.attrs.tactique}, motivation ${c.attrs.motivation}, formation des jeunes ${c.attrs.jeunes}, gestion des egos ${c.attrs.discipline}.`, "transfer", c.game);
+  return null;
+}
+function fireCoach(game, silent) {
+  const u = user(), c = coachOf(game); if (!c) return;
+  book("coaches", -c.wage * 8, game, `Indemnité de départ : ${c.name}`);
+  c.club = null; delete u.coaches[game];
+  if (!silent) mail(`Départ de l'entraîneur : ${c.name}`, `${c.name} quitte le club (indemnité de ${money(c.wage * 8)}).`, "transfer", game);
+}
 function teamStrength(clubId, game) {
   const c = S.clubs[clubId], g = GAMES[game];
-  const ps = clubPlayers(clubId, game);
+  // un joueur suspendu ne joue pas
+  const ps = clubPlayers(clubId, game).filter(p => !(p.suspendedUntil && p.suspendedUntil >= nowIndex()));
   // un joueur seul dans son duo/trio joue avec un partenaire trouvé hors du club
   let st = ps.filter(p => p.starter).concat(unitMates(clubId, game));
   if (st.length < g.size) st = st.concat(ps.filter(p => !p.starter).sort((a, b) => b.rating - a.rating));
   st = st.slice(0, g.size);
   const sum = st.reduce((s, p) => s + effRating(p), 0) + (g.size - st.length) * 30;
-  const bonus = facOf(c).coaching * 0.6 + facOf(c).analytics * 0.4;
-  return { str: sum / g.size + bonus, lineup: st };
+  const co = isMine(clubId) ? coachOf(game) : null;
+  const bonus = facOf(c).coaching * 0.6 + facOf(c).analytics * 0.4 + (co ? co.attrs.tactique * 0.15 : 0);
+  // entente entre les joueurs : jusqu'à ±3 %
+  const chem = chemistry(st, co);
+  return { str: (sum / g.size + bonus) * (1 + chem * 0.003), lineup: st, chem };
 }
 function afterResult(lineup, won) {
   lineup.forEach(p => {
@@ -1455,14 +1545,14 @@ function playLeagueDay(L) {
       }
       lob.ranked.slice(0, 3).forEach((id, i) => payL(id, prize * [0.01, 0.005, 0.0025][i]));
       L.results.push({ week: w, day: md, top: lob.ranked.slice(0, 3), pts: lob.ranked.slice(0, 3).map(id => lob.res[id].pts), mvp: lob.mvp });
-      for (const id of L.teams.filter(isMine)) rep.lobbies.push({ game: L.game, tier: S.clubs[id].divisions[L.game].tier, ...lob, stage: `${name} — journée ${md}`, mine: lob.res[id], rank: lob.ranked.indexOf(id) + 1, club: id });
+      for (const id of L.teams.filter(isMine)) rep.lobbies.push({ game: L.game, tier: S.clubs[id].divisions[L.game].tier, ...lob, stage: `${name} — journée ${md}`, mine: lob.res[id], rank: lob.ranked.indexOf(id) + 1, club: id, week: w, dd: LEAGUE_WEEKDAY[L.game] ?? 6 });
     } else if (w === PO_SEMI || w === PO_FINAL) {
       // grande finale sur 2 semaines : les 8 meilleurs du classement
       if (w === PO_SEMI) L.playoffs = { finalists: standings(L.key).slice(0, 8).map(x => x.id), pts: {}, top1: {} };
       const P = L.playoffs; if (!P) return;
       const lob = playLobby(L, P.finalists.filter(id => S.clubs[id]), g.gamesPerWeek + 2, stake * 1.5, "grande finale");
       for (const [id, r] of Object.entries(lob.res)) { P.pts[id] = (P.pts[id] || 0) + r.pts; P.top1[id] = (P.top1[id] || 0) + r.top1; }
-      for (const id of P.finalists.filter(isMine)) rep.lobbies.push({ game: L.game, tier: S.clubs[id].divisions[L.game].tier, ...lob, stage: `${name} — grande finale, jour ${w - PO_SEMI + 1}`, mine: lob.res[id], rank: lob.ranked.indexOf(id) + 1, club: id });
+      for (const id of P.finalists.filter(isMine)) rep.lobbies.push({ game: L.game, tier: S.clubs[id].divisions[L.game].tier, ...lob, stage: `${name} — grande finale, jour ${w - PO_SEMI + 1}`, mine: lob.res[id], rank: lob.ranked.indexOf(id) + 1, club: id, week: w, dd: 6 });
       if (w === PO_FINAL) {
         const order = P.finalists.filter(id => S.clubs[id]).sort((a, b) => (P.pts[b] || 0) - (P.pts[a] || 0));
         P.order = order; L.champion = order[0];
@@ -1477,7 +1567,7 @@ function playLeagueDay(L) {
     for (const [a, b] of L.schedule[md - 1]) {
       if (!S.clubs[a] || !S.clubs[b]) continue;
       const r = playSeries(L.game, a, b, 3, stake, name);
-      r.week = w; r.day = md; r.stage = `${name} — journée ${md}`;
+      r.week = w; r.day = md; r.dd = LEAGUE_WEEKDAY[L.game] ?? 5; r.stage = `${name} — journée ${md}`;
       L.results.push(r);
       const ta = t(a), tb = t(b);
       ta.mw += r.sa; ta.ml += r.sb; tb.mw += r.sb; tb.ml += r.sa;
@@ -1489,22 +1579,26 @@ function playLeagueDay(L) {
     const st = standings(L.key).slice(0, 4).map(x => x.id);
     if (st.length < 4) return;
     L.playoffs = { semis: [playSeries(L.game, st[0], st[3], 3, stake * 2, "demi-finale"), playSeries(L.game, st[1], st[2], 3, stake * 2, "demi-finale")], final: null };
-    L.playoffs.semis.forEach(r => { r.stage = `${name} — demi-finale`; r.week = w; if (isMine(r.a) || isMine(r.b)) rep.matches.push({ ...r, game: L.game, tier: L.tier }); });
+    L.playoffs.semis.forEach(r => { r.stage = `${name} — demi-finale`; r.week = w; r.dd = 5; if (isMine(r.a) || isMine(r.b)) rep.matches.push({ ...r, game: L.game, tier: L.tier }); });
   } else if (w === PO_FINAL && L.playoffs) {
     const [s1, s2] = L.playoffs.semis;
     const f = playSeries(L.game, s1.winner, s2.winner, 5, stake * 3, "finale");
-    f.stage = `${name} — grande finale`; f.week = w;
+    f.stage = `${name} — grande finale`; f.week = w; f.dd = 6;
     L.playoffs.final = f; L.champion = f.winner;
     if (isMine(f.a) || isMine(f.b)) rep.matches.push({ ...f, game: L.game, tier: L.tier });
     payL(f.winner, prize * 0.4); payL(f.loser, prize * 0.2); payL(s1.loser, prize * 0.1); payL(s2.loser, prize * 0.1);
     crown(L, f.winner, f.loser, `${f.sa}-${f.sb} · MVP ${f.mvp}`);
   }
 }
+// palmarès personnel : chaque titulaire de l'équipe championne garde le titre dans sa carrière
+function awardPlayers(clubId, game, label) {
+  for (const p of clubPlayers(clubId, game).filter(x => x.starter)) { p.won = (p.won || []).concat(label).slice(-20); }
+}
 function crown(L, winner, runnerUp, detail) {
   const champ = S.clubs[winner], label = `${leagueName(L)} ${S.season}`;
   champ.fame = clamp(champ.fame + [5, 2.5, 1][L.tier - 1], 0, 100);
   fanChange(winner, 1, stakeOf(L.game, L.tier) * 15, isMine(winner) ? `🏆 Titre : ${label}` : null);
-  champ.titles.push(label);
+  champ.titles.push(label); awardPlayers(winner, L.game, label);
   S.titles.push({ season: S.season, game: L.game, tier: L.tier, zone: L.zone, name: leagueName(L), club: clubLabel(winner, L.game), clubId: champ.id });
   if (isMine(winner)) mail(`🏆 CHAMPIONS ! ${label}`, `${user().name} remporte le <b>${label}</b> (${tierLabel(L.game, L.tier)}) face à ${clubLabel(runnerUp, L.game)} — ${detail}.`, "trophy", L.game);
 }
@@ -1539,11 +1633,11 @@ function weekEvents() {
       if (m) what = `Journée ${md} : contre ${clubLabel(isMine(m[0]) ? m[1] : m[0], L.game)} (BO3)`;
     } else if (w === PO_SEMI) { if (standings(L.key).slice(0, 4).some(x => isMine(x.id))) what = "Demi-finale des playoffs (BO3)"; }
     else if (w === PO_FINAL && L.playoffs && L.playoffs.semis.some(x => isMine(x.winner))) what = "Grande finale des playoffs (BO5)";
-    if (what) out.push({ id: "L:" + L.key, kind: "league", game: L.game, title: leagueName(L), what, done: !!rep.done["L:" + L.key] });
+    if (what) out.push({ id: "L:" + L.key, kind: "league", game: L.game, title: leagueName(L), what, done: !!rep.done["L:" + L.key], when: dayLabel(S.season, w, md ? LEAGUE_WEEKDAY[L.game] ?? 5 : w === PO_FINAL ? 6 : 5) });
   }
   for (const [game, t] of weekTournaments()) {
     const field = weekField(game, t);
-    if (field.length >= 2 && field.some(isMine)) out.push({ id: tourKey(game, t[0]), kind: "tour", game, title: t[0], what: `${t[2] ? "Dotation " + money(t[2]) + " · " : ""}${field.length} ${GAMES[game].fmt === "br" ? GAMES[game].unit + "s" : "participants"}`, done: !!rep.done[tourKey(game, t[0])] });
+    if (field.length >= 2 && field.some(isMine)) out.push({ id: tourKey(game, t[0]), kind: "tour", game, title: t[0], what: `${t[2] ? "Dotation " + money(t[2]) + " · " : ""}${field.length} ${GAMES[game].fmt === "br" ? GAMES[game].unit + "s" : "participants"}`, done: !!rep.done[tourKey(game, t[0])], when: `${dayLabel(S.season, w, 3)} → ${dayLabel(S.season, w, 6)}` });
   }
   return out;
 }
@@ -1585,6 +1679,8 @@ function advanceWeek() {
   for (const game of Object.keys(u.divisions)) {
     book("salaries", -gamePlayers(game).reduce((s, p) => s + p.salary, 0), game, "Salaires");
     book("operations", -TIER_OP[u.divisions[game].tier - 1] * GAMES[game].size * GAMES[game].mult, game, "Frais de fonctionnement");
+    const co = coachOf(game);
+    if (co) book("coaches", -co.wage, game, "Entraîneur : " + co.name);
     const aca = academyOf(game);
     if (aca) book("academy", -TIER_OP[aca.divisions[game].tier - 1] * GAMES[game].size * GAMES[game].mult * 0.7, game, "Frais de l'académie");
   }
@@ -1609,23 +1705,39 @@ function advanceWeek() {
       const play = p.starter ? 1 : 0.4, avg = avgNote(p);
       const perf = avg ? clamp(1 + (avg - 6.4) * 0.6, 0.5, 1.8) : 1;
       // à l'académie, les jeunes qui jouent progressent plus vite
-      const train = 0.7 + f.coaching * 0.12 + (c.academyOf && p.starter ? 0.15 + f.academy * 0.05 : 0);
+      const co = isMine(p.club) ? coachOf(p.game) : null;
+      const train = 0.7 + f.coaching * 0.12 + (c.academyOf && p.starter ? 0.15 + f.academy * 0.05 : 0) + (co && p.age <= 21 ? (co.attrs.jeunes - 10) * 0.03 : 0);
       p.xp = (p.xp || 0) + ageF * play * perf * train * XP_RATE;
       if (p.xp >= 1) { p.xp -= 1; p.rating++; if (isMine(p.club)) report.progress.push([p.id, p.handle, p.game, p.rating]); }
     }
+    // évolution suivie semaine après semaine pour les joueurs du club
+    if (isMine(p.club)) { p.hist = (p.hist || []).concat([[S.season * 100 + S.week, p.rating, Math.round(p.form), Math.round(p.morale)]]).slice(-120); if (!p.joinedAt) p.joinedAt = nowIndex(); }
     // un jeune qui brille dépasse parfois ce qu'on attendait de lui
     if (p.age <= 21 && p.rating >= p.pot - 1 && p.stats.rn >= 6 && avgNote(p) >= 7.4 && Math.random() < 0.03 && p.pot < 97) p.pot++;
     p.form = clamp(p.form + (65 - p.form) * 0.08 + rand(-3, 3) + f.house * 0.3, 20, 100);
-    let dm = (70 - p.morale) * 0.05 + f.house * 0.3;
+    const cm = isMine(p.club) ? coachOf(p.game) : null;
+    let dm = (70 - p.morale) * 0.05 + f.house * 0.3 + (cm ? (cm.attrs.motivation - 10) * 0.08 : 0);
     if (!p.starter && p.rating >= 80 && !unitGame(p.game)) dm -= 1;
     p.morale = clamp(p.morale + dm + rand(-2, 2), 5, 100);
   }
   offersForListed(report);
 
+  // découvert : intérêts, puis administrateur judiciaire qui vend des joueurs, puis faillite
+  const limit = -Math.max(100000, u.fame * 8000);
   if (u.budget < 0) {
+    book("interest", u.budget * 0.004, "", "Intérêts du découvert bancaire");
     S.board.confidence = clamp(S.board.confidence - 2, 0, 100);
-    if (w % 4 === 0) mail("⚠️ Budget dans le rouge", `Le budget est négatif (${money(u.budget)}). Le conseil s'inquiète. Vendez des joueurs ou réduisez la masse salariale.`, "board");
+    if (w % 4 === 0) mail("⚠️ Budget dans le rouge", `Le budget est négatif (${money(u.budget)}). La banque prélève des intérêts chaque semaine et le conseil s'inquiète. Sous ${money(limit)}, un administrateur judiciaire prendra le contrôle des finances.`, "board");
   }
+  if (u.budget < limit) {
+    S.debtWeeks = (S.debtWeeks || 0) + 1;
+    if (S.debtWeeks === 1) mail("🏦 Procédure de redressement", `Le découvert dépasse ${money(limit)}. Un administrateur judiciaire est nommé : toutes les 4 semaines, il vendra le joueur le plus cher du club tant que les comptes resteront sous ce seuil. Au bout de 16 semaines, c'est la faillite et la fin de la partie.`, "board");
+    if (S.debtWeeks % 4 === 0) {
+      const star = allUserPlayers().sort((a, b) => playerValue(b) - playerValue(a))[0];
+      if (star) { const fee = sellPlayer(star.id); mail(`🏦 Vente forcée : ${star.handle}`, `L'administrateur judiciaire vend ${star.handle} pour ${money(fee)} afin de rembourser les dettes.`, "board"); }
+    }
+    if (S.debtWeeks >= 16 || u.budget < limit * 5) { S.over = true; S.bankrupt = true; mail("💥 Faillite", `${u.name} est placé en liquidation judiciaire : les dettes (${money(u.budget)}) ne peuvent plus être remboursées. ${S.ceo} perd le club.`, "board"); }
+  } else S.debtWeeks = 0;
   if (w === 45) {
     const exp = allUserPlayers().filter(p => p.years <= 1);
     if (exp.length) mail("⏳ Contrats en fin de saison", `Ces joueurs partiront à la fin de la saison (mi-décembre) si vous ne les prolongez pas : <b>${exp.map(p => p.handle).join(", ")}</b>.`, "transfer");
@@ -1648,7 +1760,7 @@ function advanceWeek() {
   if (w >= SEASON_LAST) out.seasonEnd = endSeason();
   else S.week++;
 
-  if (S.board.confidence <= 0 || u.budget < -Math.max(150000, u.fame * 20000)) {
+  if (!S.over && S.board.confidence <= 0) {
     S.over = true;
     mail("❌ Licencié", `Le conseil d'administration a perdu confiance. ${S.ceo} est démis de ses fonctions de CEO de ${u.name}.`, "board");
   }
@@ -1761,19 +1873,20 @@ function playTournament(game, t) {
   if (g.fmt === "br") {
     const lob = playLobby({ game, tier: Math.max(...[...tiers].filter(x => x >= "1" && x <= "3").map(Number)) }, field, 6, stake, name);
     order = lob.ranked;
-    for (const id of field.filter(isMine)) rep.lobbies.push({ game, tier: S.clubs[id].divisions[game].tier, ...lob, stage: name, mine: lob.res[id], rank: lob.ranked.indexOf(id) + 1, club: id });
+    for (const id of field.filter(isMine)) rep.lobbies.push({ game, tier: S.clubs[id].divisions[game].tier, ...lob, stage: name, mine: lob.res[id], rank: lob.ranked.indexOf(id) + 1, club: id, week: w, dd: 5 });
   } else {
     // élimination directe : 1er contre dernier, BO3 puis finale en BO5
-    let round = field.slice();
+    let round = field.slice(), rd = 0;
     const out = [];
     while (round.length > 1) {
+      rd++;
       const next = [], losers = [];
       for (let i = 0; i < round.length / 2; i++) {
         const a = round[i], b = round[round.length - 1 - i];
         const stage = ROUND_NAME[round.length] || "Tour";
         const r = playSeries(game, a, b, round.length === 2 ? 5 : 3, stake * (round.length <= 4 ? 1.5 : 1), `${name}, ${stage.toLowerCase()}`);
         next.push(r.winner); losers.push(r.loser);
-        if (isMine(a) || isMine(b)) rep.matches.push({ ...r, game, tier: S.clubs[isMine(a) ? a : b].divisions[game].tier, stage: `${name} — ${stage}` });
+        if (isMine(a) || isMine(b)) rep.matches.push({ ...r, game, tier: S.clubs[isMine(a) ? a : b].divisions[game].tier, stage: `${name} — ${stage}`, week: w, dd: Math.min(6, 2 + rd) });
       }
       out.unshift(losers);
       round = next;
@@ -1788,7 +1901,7 @@ function playTournament(game, t) {
   const champ = S.clubs[order[0]];
   champ.fame = clamp(champ.fame + (prize >= 1e6 ? 4 : prize >= 1e5 ? 2 : 0.5), 0, 100);
   fanChange(order[0], 1, stake * 4, isMine(order[0]) ? `🏆 ${name} remporté` : null);
-  champ.titles.push(`${name} ${S.season}`);
+  champ.titles.push(`${name} ${S.season}`); awardPlayers(order[0], game, `${name} ${S.season}`);
   S.titles.push({ season: S.season, game, tier: 0, name, club: clubLabel(order[0], game), clubId: champ.id });
   if (RANKED_GAMES.includes(game)) rankTournament(game, order, prize);
   if (name.startsWith("EWC")) ewcPoints(order.map(id => S.clubs[id] && S.clubs[id].parent === S.userId && !S.clubs[id].academyOf ? S.userId : id), game);
@@ -1796,7 +1909,7 @@ function playTournament(game, t) {
   (S.tourResults || (S.tourResults = [])).push({ season: S.season, week: w, game, name, prize, n: field.length, top: order.slice(0, 4), mine: mine || null });
   if (mine) {
     const won = Math.round(prize * (PLACE_SHARE[mine - 1] || 0) * clubKeep(game));
-    rep.tournaments.push({ game, name, place: mine, n: field.length, prize: won, winner: order[0] });
+    rep.tournaments.push({ game, name, place: mine, n: field.length, prize: won, winner: order[0], week: w, dd: 6 });
     if (mine === 1) mail(`🏆 ${name} remporté !`, `${user().name} remporte le <b>${name} ${S.season}</b> (${GAMES[game].name}) et empoche ${money(won)}.`, "trophy", game);
   }
 }
@@ -1938,9 +2051,18 @@ function endSeason() {
      Confiance du conseil : <b>${Math.round(S.board.confidence)}%</b>`, "board");
 
   // contrats, âge, retraites
-  const leaving = [];
+  const leaving = [], retired = [];
   for (const p of Object.values(S.players)) {
+    // carrière : club et note de la saison écoulée
+    if (p.club && S.clubs[p.club]) p.car = (p.car || []).concat([[S.season, clubLabel(p.club, p.game), p.rating, Math.round((avgNote(p) || 0) * 10) / 10]]).slice(-10);
     p.age++;
+    // retraite : de plus en plus probable après 30 ans ; les meilleurs deviennent parfois entraîneurs
+    if (p.age >= 31 && Math.random() < (p.age - 30) * (p.club ? 0.05 : 0.15)) {
+      if (isMine(p.club)) retired.push(p.handle);
+      if (Math.random() < (p.rating >= 75 ? 0.4 : 0.12)) coachFromPlayer(p);
+      if (p.club) removeFromClub(p);
+      delete S.players[p.id]; continue;
+    }
     if (p.age >= 28 && Math.random() < 0.5) p.rating = Math.max(45, p.rating - randi(0, p.age >= 31 ? 3 : 1));
     if (p.age <= 23 && p.pot > p.rating && Math.random() < 0.4) p.rating++;
     p.stats = { w: 0, l: 0, mvp: 0 };
@@ -1955,14 +2077,25 @@ function endSeason() {
     if (!p.club && p.age >= 32 && Math.random() < 0.35) delete S.players[p.id];
     else if (!p.club && p.age >= 24 && p.rating < 62 && Math.random() < 0.5) delete S.players[p.id];
   }
+  if (retired.length) mail("👋 Retraites", `Ont pris leur retraite : <b>${retired.join(", ")}</b>. Certains anciens joueurs se reconvertissent en entraîneurs (onglet Staff).`, "transfer");
+  for (const c of Object.values(S.coaches || {})) { c.age++; if (!c.club && c.age > 64) delete S.coaches[c.id]; }
+  for (const game of Object.keys(GAMES)) if (Math.random() < 0.6) makeCoach(game);
   if (leaving.length) mail("Fins de contrat", `Ont quitté le club (contrat expiré) : <b>${leaving.join(", ")}</b>.`, "transfer");
 
   // agents libres trop âgés ou trop faibles pour être recrutés un jour : retirés (la sauvegarde reste légère)
   for (const p of Object.values(S.players)) if (!p.club && (p.age >= 33 || (p.age >= 27 && p.rating < 58) || p.rating < 50)) delete S.players[p.id];
   // nouveaux talents
+  // la plupart des jeunes ont un potentiel modeste, quelques-uns sont des pépites ; quelques joueurs plus âgés se révèlent sur le tard
+  const gems = [];
   for (const gm of Object.keys(GAMES)) {
-    for (let i = 0; i < GAMES[gm].size * 3; i++) { const p = genPlayer(gm, 52, 72, 16, 19); p.years = 0; p.pot = clamp(p.rating + randi(5, 18), 0, 96); addPlayer(p); }
+    for (let i = 0; i < GAMES[gm].size * 3; i++) {
+      const p = genPlayer(gm, 50, 70, 16, 19), roll = Math.random(); p.years = 0;
+      p.pot = clamp(p.rating + (roll < 0.6 ? randi(2, 7) : roll < 0.9 ? randi(7, 13) : randi(13, 22)), 0, 96); addPlayer(p);
+      if (p.pot >= 88) gems.push(p);
+    }
+    for (let i = 0; i < randi(0, 2); i++) { const p = genPlayer(gm, 66, 77, 22, 27); p.years = 0; p.pot = clamp(p.rating + randi(0, 3), 0, 92); p.late = true; addPlayer(p); }
   }
+  if (gems.length) news(`Nouveaux espoirs : ${gems.slice(0, 6).map(p => `${flag(p.nat)} ${p.handle} (${GAMES[p.game].short}, ${p.age} ans)`).join(", ")} font parler d'eux.`);
   // complète les académies avec de nouveaux jeunes
   for (const aca of userAcademies()) while (clubPlayers(aca.id, aca.academyOf).length < GAMES[aca.academyOf].size + 1) academyProspect(aca.academyOf, aca);
   if (u.facilities.academy > 0 && Object.keys(u.divisions).length) {
@@ -2008,6 +2141,7 @@ function aiMarket() {
 
 // ---------- événements ----------
 const EVENTS = [
+  () => mainGame() ? { title: "🎤 Conférence de presse", body: "Les journalistes vous attendent pour faire le point sur la saison.", choices: [{ label: "Y aller", fx: () => ({ text: "Vous entrez en salle de presse.", next: pressConference("season") }) }, { label: "Envoyer le porte-parole", fx: () => { fanBump(-0.002); return "Les journalistes regrettent votre absence."; } }] } : null,
   () => ({ title: "Offre de sponsoring", sponsor: sponsorOffer() }),
   () => {
     const u = user(); const b = pick(["CryptoMoon", "BetZilla", "QuickCasino", "NFT Arena"]);
@@ -2025,9 +2159,13 @@ const EVENTS = [
   },
   () => {
     const p = randomUserPlayer(); if (!p) return null; const u = user();
-    return { title: `Polémique : ${p.handle}`, body: `Un clip de <b>${p.handle}</b> tenant des propos déplacés en stream circule sur les réseaux.`,
-      choices: [{ label: "Suspendre 2 sem.", fx: () => { p.morale = clamp(p.morale - 20, 0, 100); p.form = clamp(p.form - 20, 0, 100); u.fame = Math.min(100, u.fame + 1); return "Sanction saluée par la communauté."; } },
-                { label: "Le défendre", fx: () => { u.fans = Math.round(u.fans * 0.95); u.fame = Math.max(1, u.fame - 3); p.morale = clamp(p.morale + 10, 0, 100); return "La polémique enfle (-3 notoriété)."; } }] };
+    const fine = round50(p.salary * 2), mood = d => p.morale = clamp(p.morale + d, 0, 100), img = d => u.imageBonus = (u.imageBonus || 0) + d;
+    return { title: `Polémique : ${p.handle}`, body: `Un clip de <b>${p.handle}</b> (${GAMES[p.game].short}) tenant des propos déplacés en stream circule sur les réseaux. Les fans attendent une réaction du club.`,
+      choices: [{ label: `💸 Amende (${money(fine)})`, fx: () => { book("fines", fine, p.game, "Amende : " + p.handle); mood(-10); img(1); return `${p.handle} paie une amende de deux semaines de salaire. Il grogne, mais la communauté approuve.`; } },
+                { label: "⛔ Suspension 2 semaines", fx: () => { p.suspendedUntil = nowIndex() + 2; mood(-18); img(2); return `${p.handle} est suspendu deux semaines : il ne jouera pas. Sanction saluée par la communauté, mais il est furieux.`; } },
+                { label: "🙏 Excuses publiques", fx: () => { mood(-5); img(1); fanBump(0.003); return `${p.handle} publie des excuses. L'affaire retombe vite.`; } },
+                { label: "🎤 Le défendre en conférence de presse", fx: () => ({ text: "Vous convoquez la presse.", next: pressConference("polemic", p) }) },
+                { label: "🤐 Ne rien dire", fx: () => { img(-3); fanBump(-0.01); return "Le silence du club est mal perçu : des fans se désabonnent."; } }] };
   },
   () => {
     const u = user(); if (!Object.keys(u.divisions).length) return null;
@@ -2057,6 +2195,25 @@ const EVENTS = [
                 { label: "Refuser", fx: () => { S.board.confidence = clamp(S.board.confidence + 3, 0, 100); return "Le conseil apprécie votre indépendance."; } }] };
   },
 ];
+// conférence de presse façon FM : trois questions, chaque réponse plaît ou non aux fans, au conseil et aux joueurs
+function fanBump(pct) { const u = user(), d = Math.round(u.fans * pct); u.fans = Math.max(100, u.fans + d); weekReport().fans.push([pct >= 0 ? "Communication du club" : "Communication du club (mal reçue)", d]); return d; }
+function pressConference(topic, p) {
+  const u = user(), game = p ? p.game : mainGame(), { n, wins } = game ? teamResults(game) : { n: 0, wins: 0 }, team = game ? gamePlayers(game) : [];
+  const fx = (o, txt) => () => { if (o.img) u.imageBonus = (u.imageBonus || 0) + o.img; if (o.fans) fanBump(o.fans); if (o.board) S.board.confidence = clamp(S.board.confidence + o.board, 0, 100);
+    if (o.me && p) p.morale = clamp(p.morale + o.me, 0, 100); if (o.team) team.forEach(x => x.morale = clamp(x.morale + o.team, 0, 100)); return txt; };
+  const Q = topic === "polemic" ? [
+    [`« Les propos de ${p.handle} sont-ils acceptables ? »`, [["Il a fait une erreur et va s'excuser.", { img: 2, me: -3 }, "Réponse jugée responsable."], ["Ses propos ont été sortis de leur contexte.", { img: -2, me: 6, fans: -0.004 }, `${p.handle} apprécie votre soutien, une partie du public beaucoup moins.`], ["Pas de commentaire.", { img: -1 }, "Les journalistes restent sur leur faim."]]],
+    [`« Allez-vous le sanctionner ? »`, [["Une sanction interne a été prise.", { img: 2, me: -5, board: 2 }, "Le conseil apprécie la fermeté."], ["Non, il reste titulaire.", { me: 6, img: -2, fans: -0.005 }, "Le vestiaire est soudé, les fans moins."], ["On en parlera en privé.", {}, "Réponse neutre."]]],
+    [`« Un message pour les fans ? »`, [["Nous partageons leur colère et allons faire mieux.", { fans: 0.004, img: 1 }, "Les fans saluent le message."], ["Concentrons-nous sur le jeu.", { board: 2, team: 1 }, "Message recentré sur le sportif."], ["Les critiques ne nous atteignent pas.", { fans: -0.007, team: 3 }, "Les joueurs aiment, les fans détestent."]]],
+  ] : [
+    [`« ${n ? `${wins} victoire(s) sur les ${n} derniers matchs : ` : ""}êtes-vous satisfait du début de saison ? »`, [["Très satisfait, l'équipe progresse.", { team: 4, board: n && wins / n < 0.4 ? -3 : 2 }, "Les joueurs se sentent soutenus."], ["On peut faire beaucoup mieux.", { team: -3, board: 2 }, "Message reçu par le vestiaire."], ["Je ne commente pas les résultats.", { fans: -0.003 }, "Réponse jugée froide."]]],
+    [`« Quel est l'objectif de la saison ? »`, [["Le titre, rien d'autre.", { fans: 0.006, board: -2, team: 2 }, "Les fans rêvent, le conseil vous attend au tournant."], ["Progresser match après match.", { board: 2 }, "Réponse prudente."], ["Celui du conseil : " + objectiveText() + ".", { board: 3 }, "Le conseil apprécie."]]],
+    [`« Un mot sur vos sponsors et vos fans ? »`, [["Merci à eux, on joue pour eux.", { fans: 0.005, img: 1 }, "Les fans adorent."], ["On se concentre sur le jeu.", { team: 1 }, "Réponse neutre."], ["Le club a besoin de plus de moyens.", { board: -3, img: -1 }, "Le conseil n'apprécie pas d'être mis en cause publiquement."]]],
+  ];
+  const build = i => ({ title: `🎤 Conférence de presse (${i + 1}/${Q.length})`, body: Q[i][0],
+    choices: Q[i][1].map(([label, o, txt]) => ({ label, fx: () => { const t = fx(o, txt)(); return i + 1 < Q.length ? { text: t, next: build(i + 1) } : t + " Fin de la conférence de presse."; } })) });
+  return build(0);
+}
 function randomUserPlayer() { const ps = allUserPlayers(); return ps.length ? pick(ps) : null; }
 function randomEvent() {
   const ev = pick(EVENTS)();
