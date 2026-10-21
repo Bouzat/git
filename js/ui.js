@@ -1747,26 +1747,44 @@ function liveSteps(r) {
     });
     steps.push({ t: 1100, m, a: m.sa, b: m.sb, end: true, log: `🏁 <b>${clubLabel(m.winner, m.game)}</b> gagne ${Math.max(m.sa, m.sb)}-${Math.min(m.sa, m.sb)}${m.mvp ? " · MVP " + esc(m.mvp) : ""}` });
   }
+  // lobbies (battle royale, TFT…) : toutes les équipes du club dans un même lobby jouent en même temps, partie par partie
+  const groups = [];
   for (const l of r.lobbies) {
+    let g = groups.find(x => x.game === l.game && x.stage === l.stage);
+    if (!g) groups.push(g = { game: l.game, stage: l.stage, lobby: l.lobby, tour: r.tournaments.some(t => t.game === l.game && t.name === l.stage), teams: [] });
     // les joueurs de l'équipe (un partenaire extérieur au club est marqué d'un *) et leurs éliminations, partie par partie
     const names = ((l.notes && l.notes[l.club]) || []).map(x => x[0]), mates = new Set(unitMates(l.club, l.game).map(p => p.handle));
-    const label = h => esc(h) + (mates.has(h) ? "*" : ""), kills = Object.fromEntries(names.map(h => [h, 0]));
-    const team = `${clubLabel(l.club, l.game).split(" (")[0]}${names.length ? " · " + names.map(label).join(" & ") : ""}`;
-    steps.push({ t: 1000, l, k: -1, kills: { ...kills }, team, log: `${GAMES[l.game].icon} ${l.stage} — lobby de ${l.lobby} ${GAMES[l.game].unit}s · <b>${team}</b>` });
-    l.mine.places.forEach((pl, k) => {
-      const n = (l.mine.kpg && l.mine.kpg[k]) ?? Math.round(l.mine.kills / l.mine.places.length), got = {}, before = { ...kills };
-      for (let i = 0; i < n && names.length; i++) { const h = pick(names); got[h] = (got[h] || 0) + 1; kills[h]++; }
-      const hot = Object.entries(got).sort((a, b) => b[1] - a[1])[0];
-      if (names.length) steps.push({ t: 700, l, k: k - 1, live: true, kills: before, team, log: hot ? `${label(hot[0])} ${hot[1] >= 3 ? `enchaîne ${hot[1]} éliminations !` : "prend un combat et élimine un adversaire"}` : `${label(pick(names))} joue la zone et évite les combats` });
-      steps.push({ t: 1300, l, k, kills: { ...kills }, team, log: `Partie ${k + 1} : <b>${pl === 1 ? "👑 TOP 1 !" : pl + "e"}</b> · ${n} élimination(s)${Object.keys(got).length ? " (" + Object.entries(got).map(([h, c]) => `${label(h)} ${c}`).join(", ") + ")" : ""}` });
-    });
-    steps.push({ t: 1100, l, k: l.mine.places.length, end: true, kills: { ...kills }, team, log: `🏁 ${l.mine.pts} points · <b>${l.rank}e</b> de la journée${l.mvp ? " · meilleur joueur du lobby : " + esc(l.mvp) : ""}` });
+    const label = h => esc(h) + (mates.has(h) ? "*" : "");
+    const games = l.mine.places.length, cum = [], kills = Object.fromEntries(names.map(h => [h, 0])), got = [];
+    for (let k = 0; k < games; k++) {
+      const n = (l.mine.kpg && l.mine.kpg[k]) ?? Math.round(l.mine.kills / games), gk = {};
+      for (let i = 0; i < n && names.length; i++) { const h = pick(names); gk[h] = (gk[h] || 0) + 1; kills[h]++; }
+      got.push({ n, gk }); cum.push({ ...kills });
+    }
+    g.teams.push({ l, label, names, cum, got, start: Object.fromEntries(names.map(h => [h, 0])),
+      name: names.length ? names.map(label).join(" & ") : clubLabel(l.club, l.game).split(" (")[0] });
+  }
+  for (const grp of groups) {
+    const G = GAMES[grp.game], games = Math.max(...grp.teams.map(t => t.l.mine.places.length));
+    const club = clubLabel(grp.teams[0].l.club, grp.game).split(" (")[0];
+    steps.push({ t: 1000, grp, k: -1, log: `${G.icon} ${esc(grp.stage)} — lobby de ${grp.lobby} ${G.unit}s · ${grp.teams.length > 1 ? `vos ${grp.teams.length} équipes` : `<b>${esc(club)}</b>`}` });
+    for (let k = 0; k < games; k++) {
+      // un fait de jeu d'une de vos équipes pendant la partie, puis les places de toutes vos équipes
+      const hot = grp.teams.map(t => [t, Object.entries((t.got[k] || {}).gk || {}).sort((a, b) => b[1] - a[1])[0]]).filter(x => x[1]).sort((a, b) => b[1][1] - a[1][1])[0];
+      steps.push({ t: 700, grp, k: k - 1, live: true, log: hot ? `${hot[0].label(hot[1][0])} ${hot[1][1] >= 3 ? `enchaîne ${hot[1][1]} éliminations !` : "prend un combat et élimine un adversaire"}` : "Les équipes jouent la zone…" });
+      const line = grp.teams.filter(t => t.l.mine.places[k]).map(t => { const pl = t.l.mine.places[k]; return `${grp.teams.length > 1 ? t.name + " " : ""}<b>${pl === 1 ? "👑 TOP 1" : pl + "e"}</b> (${t.got[k].n} élim.)`; }).join(" · ");
+      steps.push({ t: 1300, grp, k, log: `Partie ${k + 1} : ${line}` });
+    }
+    const fin = grp.teams.slice().sort((a, b) => a.l.rank - b.l.rank).map(t => `${grp.teams.length > 1 ? t.name + " : " : ""}<b>${t.l.rank === 1 ? "🏆 1er" : t.l.rank + "e"}</b> (${t.l.mine.pts} pts)`).join(" · ");
+    const mvp = grp.teams[0].l.mvp;
+    steps.push({ t: 1100, grp, k: games, end: true, log: `🏁 ${fin} ${grp.tour ? "du tournoi" : "de la journée"}${mvp ? ` · meilleur joueur du lobby : ${esc(mvp)}` : ""}` });
   }
   for (const t of r.tournaments) steps.push({ t: 1200, tour: t, log: `🏆 ${esc(t.name)} : ${t.place === 1 ? "<b class='win'>VAINQUEUR !</b>" : `<b>${t.place}e</b> sur ${t.n}`}` });
   return steps;
 }
 function liveRender() {
-  const st = LIVE.steps[LIVE.i], log = LIVE.steps.slice(0, LIVE.i + 1).map(x => x.log).reverse().slice(0, 7);
+  const st = LIVE.steps[LIVE.i], same = x => (st.grp ? x.grp === st.grp : st.m ? x.m === st.m : true);
+  const log = LIVE.steps.slice(0, LIVE.i + 1).filter(same).map(x => x.log).reverse().slice(0, 8);
   let board = "";
   if (st.m) {
     const m = st.m, A = clubLabel(m.a, m.game), B = clubLabel(m.b, m.game);
@@ -1775,10 +1793,18 @@ function liveRender() {
       <div class="live-score"><span class="${st.flash === "a" ? "flash" : ""}">${st.a}</span> - <span class="${st.flash === "b" ? "flash" : ""}">${st.b}</span></div>
       <div class="live-team ${st.end && m.winner === m.b ? "win" : ""}">${esc(B)}${lineup(m.notesB)}</div></div>
       <div class="live-bar ${st.live ? "playing" : ""}"><i></i></div>`;
-  } else if (st.l) {
-    const l = st.l, pl = l.mine.places.slice(0, Math.max(0, st.k + 1));
-    const kl = st.kills ? Object.entries(st.kills).map(([h, c]) => `<span class="live-pl">${esc(h)} <b>${c}</b> élim.</span>`).join("") : "";
-    board = `<div class="live-teamname">${st.team || ""}</div><div class="live-board"><div class="live-places">${l.mine.places.map((p, k) => `<span class="${k <= st.k ? (p === 1 ? "top1" : p <= 10 ? "good" : "") : "hidden-pl"}">${k <= st.k ? (p === 1 ? "👑" : p) : "?"}</span>`).join("")}</div></div>${kl ? `<div class="live-players">${kl}</div>` : ""}<div class="live-bar ${st.end ? "" : "playing"}"><i></i></div>`;
+  } else if (st.grp) {
+    const grp = st.grp, games = Math.max(...grp.teams.map(t => t.l.mine.places.length));
+    const rows = grp.teams.map(t => {
+      const places = Array.from({ length: games }, (_, k) => { const p = t.l.mine.places[k]; return k <= st.k && p ? `<span class="${p === 1 ? "top1" : p <= 10 ? "good" : ""}${k === st.k && !st.live ? " new" : ""}">${p === 1 ? "👑" : p}</span>` : `<span class="hidden-pl">${k === st.k + 1 && st.live ? "⏳" : "?"}</span>`; }).join("");
+      const kills = st.k >= 0 ? t.cum[Math.min(st.k, t.cum.length - 1)] : t.start;
+      const tot = Object.values(kills || {}).reduce((a, b) => a + b, 0);
+      return `<tr><td><b>${t.name}</b>${kills && t.names.length > 1 ? `<div class="muted" style="font-size:12px">${t.names.map(h => `${t.label(h)} ${kills[h] || 0}`).join(" · ")}</div>` : ""}</td>
+        <td><div class="live-places">${places}</div></td><td style="text-align:right">${tot} élim.</td><td style="text-align:right">${st.end ? `<b>${t.l.rank}e</b> · ${t.l.mine.pts} pts` : ""}</td></tr>`;
+    }).join("");
+    board = `<div class="live-teamname">${GAMES[grp.game].icon} ${esc(grp.stage)} · lobby de ${grp.lobby} ${GAMES[grp.game].unit}s</div>
+      <div class="table-wrap"><table class="live-lobby"><tr><th>Équipe</th><th>Parties</th><th style="text-align:right">Élim.</th><th style="text-align:right">Classement</th></tr>${rows}</table></div>
+      <div class="live-bar ${st.live ? "playing" : ""}"><i></i></div>`;
   } else board = `<div class="live-board"><div class="live-team win">${st.log}</div></div>`;
   modal(`<h2><span class="live-dot"></span> EN DIRECT</h2>${board}<div class="live-log">${log.map((x, i) => `<div class="${i ? "muted" : ""}">${x}</div>`).join("")}</div>
     <div class="actions"><button data-act="live-fast">${LIVE.speed > 1 ? "⏩ Vitesse ×4" : "⏩ Accélérer"}</button><button class="primary" data-act="live-skip">⏭ Voir le résultat</button></div>`);

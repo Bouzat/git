@@ -200,7 +200,11 @@ tr.mate td { color: var(--muted); font-style: italic; }
 .live-log div:first-child { font-size: 15px; animation: fadein .4s; }
 @keyframes fadein { from { opacity: 0; transform: translateY(-4px); } }
 .live-places { grid-column: 1 / -1; display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
-.live-places span { width: 46px; height: 46px; display: grid; place-items: center; border-radius: 10px; background: var(--panel2); font-weight: 800; font-size: 18px; animation: pop .4s; }
+.live-places span { width: 46px; height: 46px; display: grid; place-items: center; border-radius: 10px; background: var(--panel2); font-weight: 800; font-size: 18px; }
+.live-places span.new { animation: pop .4s; }
+.live-lobby td { vertical-align: middle; }
+.live-lobby .live-places { justify-content: flex-start; gap: 4px; flex-wrap: nowrap; }
+.live-lobby .live-places span { width: 34px; height: 34px; font-size: 14px; border-radius: 8px; flex: none; }
 .live-places span.good { background: color-mix(in srgb, var(--ok) 30%, var(--panel2)); } .live-places span.top1 { background: #b8860b; }
 .live-places span.hidden-pl { color: var(--muted); animation: none; }
 @media (max-width: 600px) { .live-score { font-size: 28px; padding: 4px 10px; } .live-team { font-size: 14px; } }
