@@ -307,6 +307,38 @@ function lobbyRow(l) {
     <div><b>${m.pts} pts</b> · ${m.kills} éliminations · <b>${l.rank}e</b> du circuit cette semaine${l.mvp ? " · meilleur joueur : " + esc(l.mvp) : ""}</div>${notesLine(l.notes && l.notes[l.club])}</div>`;
 }
 
+// évolution d'un joueur du club : note à son arrivée (ou au début du suivi), gain, rythme actuel en points par saison
+function evolutionOf(p) {
+  const h = p.hist || [], first = h.length ? h[0][1] : p.rating, seasonStart = (h.find(x => Math.floor(x[0] / 100) === S.season) || [0, first])[1];
+  const g = growthOf(p), perSeason = g.rate * SEASON_WEEKS;
+  return { first, since: p.rating - first, season: p.rating - seasonStart, perSeason, g, room: Math.max(0, p.pot - p.rating), xp: p.xp || 0 };
+}
+function evoCell(p) {
+  const e = evolutionOf(p), pace = Math.min(e.perSeason, e.room);
+  const tip = `Arrivé à ${e.first}, aujourd'hui ${p.rating}. Rythme actuel : environ +${pace.toFixed(1)} par saison${e.room ? "" : " (plafond atteint)"}.`;
+  return `<span title="${tip}">${e.since > 0 ? `<b class="ok">+${e.since}</b>` : e.since < 0 ? `<b class="bad">${e.since}</b>` : "<span class='muted'>=</span>"} <small class="${!e.room ? "muted" : pace >= 3 ? "ok" : pace >= 1 ? "" : "muted"}">${!e.room ? "max" : pace >= 3 ? "▲▲" : pace >= 1 ? "▲" : pace >= 0.3 ? "↗" : "→"}</small></span>`;
+}
+// fiche joueur : progression détaillée et ce qui la fait varier
+function evoCard(p) {
+  const e = evolutionOf(p), g = e.g, pace = Math.min(e.perSeason, e.room), weeks = g.rate > 0 ? Math.ceil((1 - (e.xp % 1)) / g.rate) : 0;
+  const f = (ok, txt) => `<li class="${ok > 0 ? "ok" : ok < 0 ? "bad" : ""}">${ok > 0 ? "▲" : ok < 0 ? "▼" : "•"} ${txt}</li>`;
+  const factors = !e.room ? [f(0, `A atteint son potentiel (${potTxt(p)}) : il ne progresse plus, il faut maintenir sa forme.`)] : [
+    f(g.ageF >= 0.8 ? 1 : g.ageF >= 0.3 ? 0 : -1, `Âge : ${p.age} ans — ${g.ageF >= 1 ? "l'âge où l'on progresse le plus vite" : g.ageF >= 0.8 ? "progresse encore vite" : g.ageF >= 0.55 ? "progresse, mais moins vite" : g.ageF >= 0.3 ? "la progression ralentit" : "presque à maturité, progresse très peu"}`),
+    f(p.starter ? 1 : -1, p.starter ? "Titulaire : il joue, il progresse à plein régime" : "Remplaçant : sans temps de jeu, il progresse 2,5 fois moins vite"),
+    f(g.perf > 1.05 ? 1 : g.perf < 0.95 ? -1 : 0, g.avg ? `Notes en match : ${g.avg.toFixed(1)}/10 de moyenne (${g.perf > 1.05 ? "bonus" : g.perf < 0.95 ? "malus" : "neutre"} ×${g.perf.toFixed(2)})` : "Notes en match : pas encore de match cette saison"),
+    f(g.coaching >= 3 ? 1 : g.coaching <= 1 ? -1 : 0, `Infrastructure « Entraînement » niveau ${g.coaching}${g.coaching < 5 ? " (à améliorer dans Infrastructures)" : ""}`),
+    ...(p.age <= 21 ? [f(g.co ? (g.coach > 0 ? 1 : g.coach < 0 ? -1 : 0) : -1, g.co ? `Entraîneur ${esc(g.co.name)} : travail avec les jeunes ${g.co.attrs.jeunes}/20` : "Pas d'entraîneur : les jeunes progressent moins (onglet Staff)")] : []),
+    ...(g.aca ? [f(1, "Titulaire à l'académie : bonus de progression")] : []),
+  ];
+  return `<div class="card" style="margin-top:12px"><h3>📈 Progression</h3>
+    <div class="offer"><div><span class="muted">À son arrivée</span><b>${R(e.first)}</b></div><div><span class="muted">Aujourd'hui</span><b>${R(p.rating)}</b></div>
+      <div><span class="muted">Gagné au club</span><b class="${e.since > 0 ? "ok" : e.since < 0 ? "bad" : ""}">${e.since > 0 ? "+" : ""}${e.since}</b></div><div><span class="muted">Potentiel estimé</span><b>${potTxt(p)}</b></div></div>
+    ${e.room ? `<p style="margin:8px 0 4px">Prochain point : ${bar((e.xp % 1) * 100)} ${weeks ? `dans environ <b>${weeks} semaine${weeks > 1 ? "s" : ""}</b>` : "<span class='muted'>à l'arrêt</span>"}</p>
+    <p style="margin:0">Rythme actuel : environ <b class="${pace >= 3 ? "ok" : pace < 1 ? "warn" : ""}">+${pace.toFixed(1)} point${pace >= 2 ? "s" : ""} par saison</b>${e.season ? ` · <b>${e.season > 0 ? "+" : ""}${e.season}</b> cette saison` : ""}. ${pace > 0 && e.room > pace ? `À ce rythme, il lui faudrait environ ${Math.ceil(e.room / Math.max(0.1, e.perSeason))} saison(s) pour atteindre son potentiel ; mais la progression ralentit avec l'âge.` : ""}</p>` : ""}
+    <ul class="explain" style="margin-top:8px">${factors.join("")}</ul>
+    <p class="muted" style="font-size:12px;margin:0">Comme en vrai, un joueur progresse surtout avant 23 ans, s'il joue et s'il brille en match. Le potentiel est une estimation : un jeune très performant peut le dépasser un peu, un joueur qui ne joue pas peut ne jamais l'atteindre.</p></div>`;
+}
+
 // ---------- effectifs ----------
 // choix de la ligue nationale (LFL, Prime League…) quand le tier 2 de la zone en compte plusieurs
 function subPicker(game, d) {
@@ -334,7 +366,7 @@ function viewRoster() {
   const rows = ps.map(p => `<tr>
     <td>${p.starter ? "⭐" : "<span class='muted'>banc</span>"}</td>
     <td>${flag(p.nat)} <b class="link" data-act="player-info" data-v="${p.id}">${esc(p.handle)}</b> <small class="muted" title="Région de jeu">${playRegion(p)}</small>${adaptFactor(p) < 1 ? ` <small class="warn" title="Adaptation à sa nouvelle région">✈️</small>` : ""}${playerBadges(p)}</td><td>${p.role}</td><td>${ageTxt(p)}</td><td>${R(p.rating)}</td>
-    <td>${potTxt(p)}</td>
+    <td>${potTxt(p)}</td><td>${evoCell(p)}</td>
     <td>${noteChip(avgNote(p))}</td><td>${formSpark(p)}</td>
     <td>${bar(p.form)}</td><td>${bar(p.morale)}</td>
     <td>${money(p.salary)}/sem</td><td class="${p.years <= 1 ? "warn" : ""}">${p.years} an(s)</td><td>${p.clause ? money(p.clause) : "<span class='muted'>—</span>"}</td><td>${money(playerValue(p))}</td>
@@ -355,7 +387,7 @@ function viewRoster() {
       <button class="small" data-act="goto-market" data-v="${UI.rosterGame}">🔎 Recruter</button>
       <button class="small danger" data-act="close-div">Fermer la division</button></div>
     ${chemLine(u.id, UI.rosterGame)}
-    <div class="table-wrap"><table><tr><th></th><th>Joueur</th><th>Rôle</th><th>Âge</th><th>Note</th><th>Potentiel</th><th title="Note moyenne en match cette saison (sur 10)">Moy.</th><th title="5 derniers matchs">Derniers matchs</th><th>Forme</th><th>Moral</th><th>Salaire</th><th>Contrat</th><th>Clause</th><th>Valeur</th><th></th></tr>${rows || `<tr><td colspan="15" class="muted">Aucun joueur. Rendez-vous au mercato !</td></tr>`}</table></div></div>
+    <div class="table-wrap"><table><tr><th></th><th>Joueur</th><th>Rôle</th><th>Âge</th><th>Note</th><th>Potentiel</th><th title="Points gagnés depuis son arrivée et rythme de progression (▲▲ rapide, ▲ normal, ↗ lent, → à l'arrêt)">Évol.</th><th title="Note moyenne en match cette saison (sur 10)">Moy.</th><th title="5 derniers matchs">Derniers matchs</th><th>Forme</th><th>Moral</th><th>Salaire</th><th>Contrat</th><th>Clause</th><th>Valeur</th><th></th></tr>${rows || `<tr><td colspan="15" class="muted">Aucun joueur. Rendez-vous au mercato !</td></tr>`}</table></div></div>
     ${academyCard(UI.rosterGame)}
     ${open}`;
 }
@@ -1971,6 +2003,7 @@ function playerInfo(pid) {
         ${pairs.length ? `<p style="margin:8px 0 0;font-size:13px">${pairs.map(([x, sc]) => `${sc > 0 ? "💚" : "⚡"} ${esc(x.handle)} <span class="${sc > 0 ? "ok" : "bad"}">${sc > 0 ? "bonne entente" : "tensions"}</span>`).join("<br>")}</p>` : ""}</div>
       <div class="card"><h3>Notes des 10 derniers matchs</h3>${(p.notes || []).length ? `<div>${p.notes.map(noteChip).join(" ")}</div>${lineChart([{ pts: p.notes, color: "var(--accent2)", label: "note" }], ["", ""], 90)}` : "<p class='muted'>Aucun match joué pour le club.</p>"}</div>
     </div>
+    ${evoCard(p)}
     <div class="card" style="margin-top:12px"><h3>Évolution au club${p.joinedAt ? ` (depuis ${weekLabel(Math.floor(p.joinedAt / 100), p.joinedAt % 100, true)})` : ""}</h3>
       ${lineChart([{ pts: h.map(x => x[1]), color: "#ffd166", label: "note" }, { pts: h.map(x => 60 + (x[2] - 50) / 5), color: "var(--ok)", label: "forme (échelle réduite)" }], h.length ? [weekLabel(Math.floor(h[0][0] / 100), h[0][0] % 100), weekLabel(Math.floor(h[h.length - 1][0] / 100), h[h.length - 1][0] % 100)] : [])}</div>`;
   }

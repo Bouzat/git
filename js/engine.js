@@ -67,7 +67,7 @@ const leagueOf = (clubId, game) => { const d = divOf(clubId, game); return d ? S
 const leaguesOf = game => Object.values(S.leagues).filter(L => L.game === game);
 const MIN_LEAGUE = 8;
 // progression : points d'expérience par semaine (≈ +4 de note par saison pour un titulaire de 18 ans qui joue bien)
-const XP_RATE = 0.09;            // taille minimale d'une ligue régionale (complétée par des clubs fictifs)
+const XP_RATE = 0.14;            // expérience gagnée par semaine par un jeune titulaire (un point de note quand elle atteint 1)
 const tierLabel = (game, t) => (GAMES[game] && GAMES[game].statuses ? GAMES[game].statuses : TIER_LABEL)[t - 1];
 
 function flag(cc) {
@@ -1909,6 +1909,18 @@ function playEvent(id) {
 function imageTarget(u) {
   return clamp(60 + u.sponsorDeals.reduce((s, d) => s + (d.ethic === "ethique" ? 8 : d.ethic === "controverse" ? -16 : 0), 0) + (u.imageBonus || 0), 5, 98);
 }
+// progression façon FM : expérience gagnée par semaine (un point de note à chaque fois qu'elle atteint 1)
+function growthOf(p, c = p.club && S.clubs[p.club], f = c ? facOf(c) : null) {
+  if (!c || p.rating >= p.pot) return { rate: 0, ageF: 0, play: 0, perf: 1, train: 1, avg: avgNote(p), co: null };
+  const ageF = p.age <= 18 ? 1 : p.age <= 20 ? 0.8 : p.age <= 22 ? 0.55 : p.age <= 24 ? 0.3 : 0.08;
+  const play = p.starter ? 1 : 0.4, avg = avgNote(p);
+  const perf = avg ? clamp(1 + (avg - 6.4) * 0.6, 0.5, 1.8) : 1;
+  // à l'académie, les jeunes qui jouent progressent plus vite
+  const co = isMine(p.club) ? coachOf(p.game) : null;
+  const aca = c.academyOf && p.starter ? 0.15 + f.academy * 0.05 : 0, coach = co && p.age <= 21 ? (co.attrs.jeunes - 10) * 0.03 : 0;
+  const train = 0.7 + f.coaching * 0.12 + aca + coach;
+  return { rate: ageF * play * perf * train * XP_RATE, ageF, play, perf, train, avg, co, aca, coach, coaching: f.coaching };
+}
 function advanceWeek() {
   if (S.over) return;
   const u = user(), w = S.week, report = weekReport();
@@ -1956,13 +1968,7 @@ function advanceWeek() {
     if (!c) continue;
     const f = facOf(c);
     if (p.rating < p.pot) {
-      const ageF = p.age <= 18 ? 1 : p.age <= 20 ? 0.8 : p.age <= 22 ? 0.55 : p.age <= 24 ? 0.3 : 0.08;
-      const play = p.starter ? 1 : 0.4, avg = avgNote(p);
-      const perf = avg ? clamp(1 + (avg - 6.4) * 0.6, 0.5, 1.8) : 1;
-      // à l'académie, les jeunes qui jouent progressent plus vite
-      const co = isMine(p.club) ? coachOf(p.game) : null;
-      const train = 0.7 + f.coaching * 0.12 + (c.academyOf && p.starter ? 0.15 + f.academy * 0.05 : 0) + (co && p.age <= 21 ? (co.attrs.jeunes - 10) * 0.03 : 0);
-      p.xp = (p.xp || 0) + ageF * play * perf * train * XP_RATE;
+      p.xp = (p.xp || 0) + growthOf(p, c, f).rate;
       if (p.xp >= 1) { p.xp -= 1; p.rating++; if (isMine(p.club)) report.progress.push([p.id, p.handle, p.game, p.rating]); }
     }
     // évolution suivie semaine après semaine pour les joueurs du club
