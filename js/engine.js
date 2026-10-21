@@ -753,11 +753,12 @@ function signFreeAgent(pid, salary, years) {
   return null;
 }
 // une star ne rejoint pas un club trop modeste
-function interestCheck(p) {
-  const d = user().divisions[p.game];
-  const bonus = d ? [20, 8, 0][d.tier - 1] : 0;
-  return p.rating - 45 <= user().fame + 25 + bonus;
+// note maximale des joueurs prêts à discuter avec le club dans un jeu (notoriété + tier de l'équipe dans ce jeu)
+function interestMax(game) {
+  const d = user().divisions[game];
+  return Math.min(99, Math.floor(user().fame + 70 + (d ? [20, 8, 0][d.tier - 1] : 0)));
 }
+function interestCheck(p) { return p.rating <= interestMax(p.game); }
 function makeOffer(pid, fee) {
   const p = S.players[pid], u = user();
   if (!p.club || p.club === u.id) return "Offre impossible.";

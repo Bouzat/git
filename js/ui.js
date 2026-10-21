@@ -154,7 +154,7 @@ function renderHome() {
     const list = takeoverList().map(c => `
       <div class="club-pick ${UI.pickClub === c.id ? "sel" : ""}" style="--c:${c.color}" data-act="pick-club" data-v="${c.id}">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:6px"><b>${esc(c.name)}</b><span>${flag(c.cc)}</span></div>
-        <div class="muted" style="font-size:12px;margin:4px 0">Notoriété ${c.fame} · Budget ${money(c.fame * 45000)}</div>
+        <div class="muted" style="font-size:12px;margin:4px 0">Notoriété ${c.fame}/100 · Budget ${money(c.fame * 45000)}</div>
         <div style="display:flex;flex-wrap:wrap;gap:4px">${c.divs.map(([g, t, gen]) => `<span class="chip" style="border-color:${GAMES[g].color}${gen ? ";border-style:dashed" : ""}" title="${gen ? "Division réelle, joueurs inventés" : "Effectif réel"}">${GAMES[g].icon} ${GAMES[g].short}${gen ? "*" : ""} <small class="muted">${gen ? "" : tshort(g, t)}</small></span>`).join("")}</div>
       </div>`).join("");
     body = `<div class="card" style="width:100%;max-width:1000px">
@@ -196,8 +196,8 @@ function render() {
     <main class="main">
       <div class="topbar">
         <div class="stat"><b>${weekLabel(S.season, S.week, true)}</b><span>${seasonPhase()}</span></div>
-        <div class="stat"><b class="${u.budget < 0 ? "bad" : ""}">${money(u.budget)}</b><span>Budget</span></div>
-        <div class="stat"><b>${u.fame.toFixed(1)}</b><span>Notoriété</span></div>
+        <div class="stat link-row" data-act="explain-budget" title="Comprendre le budget"><b class="${u.budget < 0 ? "bad" : ""}">${money(u.budget)}</b><span>Budget ⓘ</span></div>
+        <div class="stat link-row" data-act="explain-fame" title="À quoi sert la notoriété ?"><b>${Math.round(u.fame)}<small class="muted">/100</small></b><span>Notoriété ⓘ</span></div>
         <div class="stat"><b>${u.fans.toLocaleString("fr-FR")}</b><span>Fans</span></div>
         <div class="stat"><b class="${S.board.confidence < 30 ? "bad" : S.board.confidence < 55 ? "warn" : "ok"}">${Math.round(S.board.confidence)}%</b><span>Confiance du conseil</span></div>
         <div class="spacer"></div>
@@ -307,7 +307,7 @@ function viewRoster() {
   const tabs = divs.map(g => `<button class="tab ${UI.rosterGame === g ? "active" : ""}" data-act="roster-game" data-v="${g}">${GAMES[g].icon} ${GAMES[g].short} · ${tshort(g, u.divisions[g].tier)}</button>`).join("");
   const others = Object.keys(GAMES).filter(g => !u.divisions[g]);
   const open = `<div class="card" style="margin-top:20px"><h3>➕ Ouvrir une nouvelle division</h3>
-    <p class="muted" style="margin-top:-6px">Le tier 3 est ouvert à tous. Acheter une place plus haut demande de la notoriété : ${TIER_FAME_REQ[1]} pour le tier 2, ${TIER_FAME_REQ[0]} pour le tier 1 (vous êtes à ${u.fame.toFixed(0)}).</p>
+    <p class="muted" style="margin-top:-6px">Le tier 3 est ouvert à tous. Acheter une place plus haut demande de la notoriété : ${TIER_FAME_REQ[1]} pour le tier 2, ${TIER_FAME_REQ[0]} pour le tier 1 (vous êtes à ${u.fame.toFixed(0)}/100).</p>
     <div class="grid g3">${others.map(g => `
     <div class="open-div"><div><b>${GAMES[g].icon} ${GAMES[g].name}</b><div class="muted" style="font-size:12px">${FMT_LABEL[GAMES[g].fmt]} · ${GAMES[g].size} joueur(s)${GAMES[g].fmt === "br" ? " · lobbies de " + lobbyText(g) : ""}</div></div>
       <div style="display:flex;gap:4px;flex-wrap:wrap">${(GAMES[g].open ? [3] : [3, 2, 1]).map(t => `<button class="small" data-act="open-div" data-v="${g}|${t}" ${canJoin(g, t) ? "disabled" : ""} title="${esc(canJoin(g, t) || tierName(g, GAMES[g].open ? 1 : t, zoneFrom(g, REGION_OF[u.country] || "EU", u.country)))}">${GAMES[g].open ? "Circuit ouvert" : "T" + t} · ${money(tierEntry(g, t))}</button>`).join("")}${franchiseZones(g).length ? `<button class="small" data-act="franchise" data-v="${g}" title="Ligue fermée : racheter la place d'un club">🔒 Franchise</button>` : ""}</div></div>`).join("")}</div></div>`;
@@ -501,7 +501,7 @@ function viewMarket() {
     const where = !c ? "<span class='ok'>Agent libre</span>" : c.solo ? `<span class="warn">Indépendant</span> <small class="muted">${tshort(p.game, d.tier)}</small>` : `${esc(c.name)} <small class="muted">${tshort(p.game, d.tier)}</small>`;
     const keen = interestCheck(p);
     const btn = !c ? `<button class="small primary" data-act="sign" data-v="${p.id}">Signer</button>`
-      : `<button class="small" data-act="offer" data-v="${p.id}" ${keen ? "" : "disabled title='Votre club n&#39;est pas assez connu pour ce joueur'"}>${keen ? (c.solo ? "Recruter" : "Offre") + " (~" + money(askingPrice(p)) + ")" : "🔒 Hors de portée"}</button>`;
+      : `<button class="small" data-act="offer" data-v="${p.id}" ${keen ? "" : "disabled title='Votre club n&#39;est pas assez connu : en ${GAMES[p.game].short}, seuls les joueurs notés jusqu&#39;à ${interestMax(p.game)} acceptent de discuter (notoriété ${Math.round(u.fame)}/100)'"}>${keen ? (c.solo ? "Recruter" : "Offre") + " (~" + money(askingPrice(p)) + ")" : "🔒 Hors de portée"}</button>`;
     return `<tr><td>${flag(p.nat)} <b class="link" data-act="player-info" data-v="${p.id}">${esc(p.handle)}</b></td><td>${gchip(p.game)}</td><td>${p.role}</td><td>${ageTxt(p)}</td><td>${R(p.rating)}</td><td>${potTxt(p)}</td>
       <td>${where}</td><td>${money(playerValue(p))}</td><td>${money(salaryDemand(p, u))}/sem</td><td class="${cost(p) > u.budget ? "bad" : ""}">${money(cost(p))}</td><td>${btn}</td></tr>`;
   }).join("");
@@ -535,6 +535,7 @@ function viewMarket() {
       <span class="muted">${total} joueur(s)${total ? ` · ${first + 1}–${Math.min(total, first + per)} · page ${m.page + 1}/${pages}` : ""}</span>
     </div>
     ${pager}
+    <p class="interest-hint">⭐ Notoriété ${Math.round(u.fame)}/100 : ${m.game !== "all" ? `en ${GAMES[m.game].short}, les joueurs notés jusqu'à <b>${interestMax(m.game)}</b> acceptent de discuter avec vous` : `les joueurs notés jusqu'à <b>${Math.min(99, Math.floor(u.fame + 70))}</b> acceptent de discuter avec vous (plus haut dans les jeux où votre équipe est en tier 1 ou 2)`}. Au-delà, ils sont « 🔒 hors de portée ». <span class="link" data-act="explain-fame">En savoir plus</span></p>
     <p class="muted" style="font-size:12px;margin-top:-4px">Agent libre : sans contrat, signature directe. Indépendant : pro sans organisation, il demande une prime. Sous contrat : il faut payer une indemnité de transfert à son club.</p>
     <div class="card table-wrap"><table><tr>${head}</tr>${rows || `<tr><td colspan="11" class="muted">Aucun joueur ne correspond à ces filtres.</td></tr>`}</table></div>${pager}`;
 }
@@ -611,7 +612,7 @@ function franchiseModal(game, zone) {
   const L = S.leagues[lkey(game, 1, zone)], inIt = L.teams.some(isMine);
   const slots = franchiseSlots(game, zone);
   const rows = slots.map(x => { const c = S.clubs[x.id];
-    return `<tr><td><span style="color:${c.color}">■</span> <b>${displayName(x.id, game)}</b>${c.filler ? " <small class='muted'>(club modeste)</small>" : ""}</td><td>${c.fame.toFixed(0)}</td><td style="text-align:right"><b class="${u.budget >= x.price ? "" : "bad"}">${money(x.price)}</b></td>
+    return `<tr><td><span style="color:${c.color}">■</span> <b>${displayName(x.id, game)}</b>${c.filler ? " <small class='muted'>(club modeste)</small>" : ""}</td><td>${c.fame.toFixed(0)}/100</td><td style="text-align:right"><b class="${u.budget >= x.price ? "" : "bad"}">${money(x.price)}</b></td>
       <td><button class="small primary" data-act="franchise-buy" data-v="${game}|${zone}|${x.id}" ${inIt || u.budget < x.price || S.franchiseDeal ? "disabled" : ""}>Racheter</button></td></tr>`; }).join("");
   modal(`<h2>🔒 Franchises ${GAMES[game].icon} ${GAMES[game].name}</h2>
     <p class="muted" style="margin-top:-6px">Les ligues fermées n'ont ni montée ni relégation : pour y entrer, il faut racheter la place d'un club. Les grandes organisations ne vendent pas ; le prix dépend de la ligue et du prestige du vendeur. ${leagueSeasonOn() ? "<b>La saison de ligue est en cours : vous jouerez dans la ligue dès la saison prochaine.</b>" : "Le rachat prend effet tout de suite."} Si vous avez déjà une équipe dans ce jeu, elle monte avec ses joueurs et le vendeur prend sa place.</p>
@@ -949,7 +950,7 @@ function viewWorld() {
   const clubs = Object.values(S.clubs).filter(c => ((!c.filler && !c.solo) || c.titles.length || c.id === S.userId) && !c.sister).sort((a, b) => b.fame - a.fame).slice(0, 100);
   const divs = c => Object.entries(c.divisions).map(([g, d]) => `<span class="chip" style="border-color:${GAMES[g].color}">${GAMES[g].icon} ${GAMES[g].short} <small class="muted">${tshort(g, d.tier)}</small></span>`).join(" ");
   const rows = clubs.map((c, i) => `<tr class="${c.id === S.userId ? "me" : ""}"><td>${i + 1}</td><td><span style="color:${c.color}">■</span> <b data-act="club-info" data-v="${c.id}" style="cursor:pointer">${esc(c.name)}</b></td><td>${flag(c.country)}</td>
-    <td>${c.fame.toFixed(1)}</td><td>${c.fans.toLocaleString("fr-FR")}</td><td>${divs(c)}</td><td>${c.titles.length ? "🏆 × " + c.titles.length : ""}</td></tr>`).join("");
+    <td>${Math.round(c.fame)}<small class="muted">/100</small></td><td>${c.fans.toLocaleString("fr-FR")}</td><td>${divs(c)}</td><td>${c.titles.length ? "🏆 × " + c.titles.length : ""}</td></tr>`).join("");
   const hist = S.titles.slice().reverse().slice(0, 80).map(t => `<tr><td>${t.season}</td><td>${GAMES[t.game] ? gchip(t.game) : "<span class='chip'>🌍 EWC</span>"}</td><td>${t.tier ? (GAMES[t.game] && GAMES[t.game].open ? "<span class='chip'>Circuit</span>" : tchip(t.tier)) + (t.name ? " " + esc(t.name) : " Ligue") : `<span class="chip">🏆 ${esc(t.name)}</span>`}</td><td class="${t.clubId === S.userId ? "ok" : ""}"><b>${esc(t.club)}</b></td></tr>`).join("");
   return `<h2>Clubs & palmarès</h2><div class="grid g2">
     <div class="card table-wrap"><h3>Classement mondial des clubs (notoriété)</h3><table><tr><th>#</th><th>Club</th><th></th><th>Notoriété</th><th>Fans</th><th>Divisions</th><th>Titres</th></tr>${rows}</table></div>
@@ -959,7 +960,7 @@ function clubInfo(id) {
   const c = S.clubs[id];
   const divs = Object.entries(c.divisions).map(([g, d]) => `<h3 style="margin-top:12px">${GAMES[g].icon} ${GAMES[g].name}${d.label ? ` — ${esc(d.label)}` : ""} · ${esc(divName(id, g))} · ${GAMES[g].open ? "statut " : ""}${tierLabel(g, d.tier)} ${d.generated ? "<span class='warn' title='Le club a bien une équipe dans ce jeu, mais son effectif réel est introuvable'>* joueurs inventés</span>" : d.verified ? "<span class='ok' title='Effectif recoupé dans des sources 2026'>✓ 2026</span>" : c.filler ? "" : "<span class='muted' title='Effectif établi de mémoire, peut être dépassé'>≈ non vérifié</span>"}</h3><div class="table-wrap"><table>${clubPlayers(id, g).sort((a, b) => b.starter - a.starter || b.rating - a.rating).map(p => `<tr><td>${p.starter ? "⭐" : ""}</td><td>${flag(p.nat)} ${esc(p.handle)}</td><td class="muted">${p.role}</td><td>${ageTxt(p)} ans</td><td>${R(p.rating)}</td><td>${potTxt(p)}</td></tr>`).join("")}</table></div>`).join("");
   const coachLine = Object.keys(c.divisions).map(g => [g, id === S.userId ? coachOf(g) : aiCoachOf(id, g)]).filter(([, co]) => co).map(([g, co]) => `${GAMES[g].icon} ${esc(co.name)} (${coachLevel(co).toFixed(1)})`).join(" · ");
-  modal(`<div style="display:flex;gap:12px;align-items:center">${badge(c)}<div><h2 style="margin:0">${esc(c.name)} ${flag(c.country)}</h2>${coachLine ? `<div class="muted" style="font-size:12px">🧑‍🏫 Entraîneurs : ${coachLine}</div>` : ""}<span class="muted">${c.solo ? "Pro indépendant · " : ""}Notoriété ${c.fame.toFixed(1)} · ${c.fans.toLocaleString("fr-FR")} fans${c.titles.length ? " · 🏆 " + c.titles.map(esc).join(", ") : ""}</span></div></div>${divs}<div class="actions"><button data-act="close-modal">Fermer</button></div>`);
+  modal(`<div style="display:flex;gap:12px;align-items:center">${badge(c)}<div><h2 style="margin:0">${esc(c.name)} ${flag(c.country)}</h2>${coachLine ? `<div class="muted" style="font-size:12px">🧑‍🏫 Entraîneurs : ${coachLine}</div>` : ""}<span class="muted">${c.solo ? "Pro indépendant · " : ""}Notoriété ${Math.round(c.fame)}/100 · ${c.fans.toLocaleString("fr-FR")} fans${c.titles.length ? " · 🏆 " + c.titles.map(esc).join(", ") : ""}</span></div></div>${divs}<div class="actions"><button data-act="close-modal">Fermer</button></div>`);
 }
 
 // =====================================================================
@@ -1200,7 +1201,7 @@ function brandModal(name) {
         Déjà partenaire de : ${b.partners.length ? b.partners.map(c => `<span class="link" data-act="club-info" data-v="${c.id}">${esc(c.name)}</span>`).join(", ") : "aucun club pour l'instant"}.</p>
         <p class="${e[2]}" style="font-size:13px">${b.ethic === "controverse" ? "Paie très bien, mais associer le club à cette marque dégrade son image : moins de fans gagnés après les victoires, plus de fans perdus après les défaites." : b.ethic === "ethique" ? "Paie un peu moins, mais améliore l'image du club : vos victoires attirent plus de fans." : "Sans effet sur l'image du club."}</p></div>
       <div><h3>Pour votre club</h3>
-        ${req(u.fame >= b.minFame, `Notoriété ${b.minFame ? "≥ " + b.minFame : "sans minimum"} (vous : ${u.fame.toFixed(0)})`)}
+        ${req(u.fame >= b.minFame, `Notoriété ${b.minFame ? "≥ " + b.minFame : "sans minimum"} (vous : ${u.fame.toFixed(0)}/100)`)}
         ${b.minImage ? req((u.image ?? 60) >= b.minImage, `Image du club ≥ ${b.minImage} (vous : ${Math.round(u.image ?? 60)})`) : ""}
         ${req(b.games.some(g => u.divisions[g]), `Présent dans un des jeux visés`)}
         <p style="margin:8px 0 0">Offre estimée : <b>${money(b.offer[0])} à ${money(b.offer[1])}/sem</b><br>Chances qu'elle accepte un rendez-vous : <b class="${ch >= 50 ? "ok" : ch >= 20 ? "warn" : "bad"}">${ch} %</b></p></div>
@@ -1213,6 +1214,39 @@ function brandModal(name) {
 ACTIONS["brand-info"] = v => brandModal(v);
 // refuser une marque intéressée : elle sort de la liste et ne revient pas avant 8 semaines
 ACTIONS["sp-decline"] = v => { S.sponsorMarket.list = S.sponsorMarket.list.filter(x => x.brand !== v); S.brandCooldown = S.brandCooldown || {}; S.brandCooldown[v] = nowIndex() + 8; mail(`Offre déclinée : ${v}`, `Vous avez décliné l'intérêt de ${v}.`, "sponsor"); toast(`${v} : offre déclinée.`); closeModal(); scheduleSave(); render(); };
+// ---------- explications simples : notoriété et budget ----------
+const fameLevel = f => f >= 80 ? "Club de référence mondiale" : f >= 55 ? "Club reconnu à l'international" : f >= 25 ? "Club connu dans son pays" : "Club local, encore peu connu";
+function fameModal() {
+  const u = user(), f = u.fame, games = Object.keys(u.divisions);
+  modal(`<h2>⭐ Notoriété : ${Math.round(f)}/100</h2><p class="muted" style="margin-top:-6px">${fameLevel(f)}. La notoriété va de 0 (club inconnu) à 100 (les plus grands clubs du monde, comme T1 ou Vitality).</p>
+    ${bar(f)}
+    <h3 style="margin-top:14px">À quoi elle sert</h3>
+    <ul class="explain">
+      <li><b>Mercato</b> : un joueur trop fort pour votre club refuse de discuter. Dans chaque jeu, les joueurs notés jusqu'à : ${games.length ? games.map(g => `${GAMES[g].icon} ${GAMES[g].short} <b>${interestMax(g)}</b>`).join(" · ") : `<b>${Math.min(99, Math.floor(f + 70))}</b>`}. Jouer en tier 1 (+20) ou en tier 2 (+8) dans un jeu y ouvre des joueurs plus forts.</li>
+      <li><b>Sponsors</b> : ${f >= 55 ? "les marques internationales (Red Bull, Logitech…) s'intéressent à vous" : f >= 25 ? "les marques nationales s'intéressent à vous ; les internationales à partir de 55/100" : "seuls les commerces locaux s'intéressent à vous ; les marques nationales à partir de 25/100"}. Une notoriété élevée fait aussi monter les montants proposés.</li>
+      <li><b>Divisions</b> : acheter une place en tier 2 demande ${TIER_FAME_REQ[1]}/100, en tier 1 ${TIER_FAME_REQ[0]}/100.</li>
+      <li><b>Salaires</b> : une star demande plus cher à un club peu connu.</li>
+    </ul>
+    <h3>Comment la faire monter</h3>
+    <ul class="explain"><li>Gagner des matchs (un peu à chaque victoire), des tournois et surtout des titres.</li><li>Recruter des stars (notées 80 et plus).</li><li>En fin de saison, elle se rapproche du niveau de votre meilleure division (tier 1 ≈ 75, tier 2 ≈ 40, tier 3 ≈ 15).</li><li>Les défaites et les polémiques la font baisser.</li></ul>
+    <div class="actions"><button class="primary" data-act="close-modal">Compris</button></div>`);
+}
+function budgetModal() {
+  const u = user(), fc = forecast(), games = Object.keys(u.divisions), limit = -Math.max(100000, u.fame * 8000);
+  const wages = allUserPlayers().reduce((s, p) => s + p.salary, 0);
+  modal(`<h2>💰 Comprendre le budget</h2>
+    <div class="offer"><div><span class="muted">Argent disponible</span><b class="${u.budget < 0 ? "bad" : ""}">${money(u.budget)}</b></div><div><span class="muted">Solde par semaine (hors matchs)</span><b class="${fc.weekly < 0 ? "bad" : "ok"}">${fc.weekly >= 0 ? "+" : ""}${money(fc.weekly)}</b></div><div><span class="muted">Prévu à la mi-décembre</span><b class="${fc.end < 0 ? "bad" : ""}">${money(fc.end)}</b></div></div>
+    <ul class="explain">
+      <li><b>Le budget</b>, c'est l'argent du club aujourd'hui. Chaque semaine, il monte avec les sponsors, le merch et les cashprizes, et il baisse avec les salaires (${money(wages)}/sem), les frais des équipes, les entraîneurs et l'entretien des infrastructures.</li>
+      <li><b>Solde par semaine</b> : ${fc.weekly >= 0 ? `sans compter les matchs, le club gagne environ ${money(fc.weekly)} par semaine.` : `sans compter les cashprizes, le club perd environ ${money(-fc.weekly)} par semaine : il faut gagner des tournois, trouver des sponsors ou réduire les salaires.`}</li>
+      <li><b>Enveloppes mercato</b> : en début de saison, vous réservez une partie du budget aux transferts de chaque jeu. Il reste : ${games.map(g => `${GAMES[g].icon} ${GAMES[g].short} <b>${money(Math.max(0, transferRoom(g)))}</b>`).join(" · ") || "—"}. Une signature qui dépasse l'enveloppe du jeu est refusée.</li>
+      <li><b>Dans le rouge</b> : un budget négatif coûte des intérêts chaque semaine. Sous ${money(limit)}, un administrateur judiciaire vend vos meilleurs joueurs, et au bout de 16 semaines le club fait faillite.</li>
+    </ul>
+    <div class="actions"><button data-act="close-modal">Fermer</button><button data-act="alloc">⚖️ Répartir le budget mercato</button><button class="primary" data-act="explain-go-fin">Voir les finances</button></div>`);
+}
+ACTIONS["explain-fame"] = () => fameModal();
+ACTIONS["explain-budget"] = () => budgetModal();
+ACTIONS["explain-go-fin"] = () => { closeModal(); UI.view = "finance"; render(); };
 // ---------- staff : un entraîneur par jeu ----------
 const attrBar = v => `<span class="attr" title="${v}/20"><i style="width:${v * 5}%;background:${v >= 15 ? "var(--ok)" : v >= 10 ? "var(--accent2)" : v >= 6 ? "var(--warn)" : "var(--bad)"}"></i></span> <b>${v}</b>`;
 function viewStaff() {
@@ -1301,7 +1335,7 @@ function viewSponsors() {
     <div class="grid g3">
       <div class="card"><h3>Revenus sponsors</h3><div class="kpi">${money(u.sponsorDeals.reduce((s, d) => s + d.weekly, 0))}<span class="muted" style="font-size:14px">/sem</span></div><div class="muted">${u.sponsorDeals.length} partenaire(s) · hors partenaires historiques et droits</div></div>
       <div class="card"><h3>Image du club</h3><div class="kpi">${imageTxt(u.image ?? 60)} <span class="muted" style="font-size:14px">${Math.round(u.image ?? 60)}/100</span></div>${bar(u.image ?? 60)}</div>
-      <div class="card"><h3>Attractivité</h3><div class="kpi">${BRAND_SIZE[reach]}</div><div class="muted">Notoriété ${u.fame.toFixed(0)} : les marques ${BRAND_SIZE[reach].toLowerCase()}es s'intéressent à vous${reach < 3 ? ` (marques ${BRAND_SIZE[reach + 1].toLowerCase()}es à partir de ${reach === 1 ? 25 : 55} de notoriété)` : ""}.</div></div>
+      <div class="card"><h3>Attractivité</h3><div class="kpi">${BRAND_SIZE[reach]}</div><div class="muted">Notoriété ${u.fame.toFixed(0)}/100 : les marques ${BRAND_SIZE[reach].toLowerCase()}es s'intéressent à vous${reach < 3 ? ` (marques ${BRAND_SIZE[reach + 1].toLowerCase()}es à partir de ${reach === 1 ? 25 : 55} de notoriété)` : ""}.</div></div>
     </div>
     <h3 style="margin-top:20px">Vos partenaires</h3><div class="sp-grid">${deals || "<p class='muted'>Aucun partenaire pour l'instant.</p>"}</div>
     <h3 style="margin-top:20px">Marques intéressées par le club</h3><p class="muted" style="margin-top:-6px;font-size:13px">Elles vous ont contacté : la discussion est assurée. La liste change toutes les 4 semaines.</p><div class="sp-grid">${market || "<p class='muted'>Aucune marque pour le moment.</p>"}</div>

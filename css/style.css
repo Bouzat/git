@@ -260,3 +260,5 @@ th.sorted-asc::after { content: " ▲"; color: var(--accent2); } th.sorted-desc:
 .hb-t { height: 10px; background: var(--panel2); border-radius: 5px; overflow: hidden; } .hb-t i { display: block; height: 100%; border-radius: 5px; }
 .hb-t i.pos { background: var(--ok); } .hb-t i.neg { background: var(--bad); }
 .hb-v { white-space: nowrap; font-weight: 700; text-align: right; min-width: 80px; }
+.explain { margin: 6px 0 12px; padding-left: 20px; line-height: 1.6; } .explain li { margin-bottom: 6px; }
+.interest-hint { font-size: 13px; margin: 0 0 8px; padding: 8px 12px; border-radius: 8px; background: var(--panel2); border-left: 3px solid #ffd166; }
