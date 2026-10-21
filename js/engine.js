@@ -1389,7 +1389,7 @@ function playLobby(L, entrants, nGames, stake = 0.6, stage = "") {
   const [lo, hi] = TIER_RATING[L.tier - 1];
   const S0 = entrants.map(id => ({ id, ...teamStrength(id, L.game) }));
   const nOpen = Math.max(0, g.lobby - S0.length);
-  const res = {}; entrants.forEach(id => res[id] = { places: [], kills: 0, pts: 0, top1: 0 });
+  const res = {}; entrants.forEach(id => res[id] = { places: [], kills: 0, pts: 0, top1: 0, kpg: [] });
   const gumbel = () => -6 * Math.log(-Math.log(Math.random()));
   for (let k = 0; k < nGames; k++) {
     const field = S0.map(e => ({ id: e.id, perf: e.str + gumbel() }))
@@ -1402,7 +1402,7 @@ function playLobby(L, entrants, nGames, stake = 0.6, stage = "") {
       const kills = Math.max(0, Math.round(rand(0, g.size * 1.6) + (f.perf - avg) / 4));
       const pts = (place === 1 ? 25 : Math.round(18 * Math.pow(1 - (place - 1) / (N - 1), 2))) + kills;
       const r = res[f.id];
-      r.places.push(place); r.kills += kills; r.pts += pts; if (place === 1) r.top1++;
+      r.places.push(place); r.kpg.push(kills); r.kills += kills; r.pts += pts; if (place === 1) r.top1++;
     });
   }
   const ranked = entrants.slice().sort((x, y) => res[y].pts - res[x].pts);

@@ -228,3 +228,7 @@ tr.mate td { color: var(--muted); font-style: italic; }
 th.sortable { cursor: pointer; user-select: none; }
 th.sortable:hover { color: var(--text); }
 th.sorted-asc::after { content: " ▲"; color: var(--accent2); } th.sorted-desc::after { content: " ▼"; color: var(--accent2); }
+.live-teamname { text-align: center; font-weight: 700; font-size: 16px; margin-top: 4px; }
+.live-players { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin: -4px 0 12px; }
+.live-pl { background: var(--panel2); border-radius: 8px; padding: 4px 10px; font-size: 13px; } .live-pl b { color: var(--accent2); }
+.live-lineup { display: block; font-size: 11px; font-weight: 400; color: var(--muted); margin-top: 4px; }
