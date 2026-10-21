@@ -61,7 +61,7 @@ const GAMES = {
           tiers: ["PMGC · PMWC", "PUBG Mobile Super League", "Open Cups"] },
   ff:   { name: "Free Fire",         short: "FF",   icon: "🔥", fmt: "br", size: 4, lobby: 12, gamesPerWeek: 4, roles: ["IGL", "Rusher", "Sniper", "Support"], prize: 1000000, mult: 0.4, color: "#ff7a00", unit: "squad",
           tiers: ["Free Fire World Series", "FFWS régionales", "Open Cups"] },
-  tft:  { name: "Teamfight Tactics", short: "TFT",  icon: "♟️", fmt: "br", size: 1, lobby: 8, gamesPerWeek: 4, roles: ["Solo"], prize: 500000, mult: 0.3, color: "#5ab0ff", unit: "joueur",
+  tft:  { name: "Teamfight Tactics", short: "TFT",  icon: "♟️", fmt: "br", size: 1, tierSizes: [16, 32], lobby: 8, gamesPerWeek: 4, roles: ["Solo"], prize: 500000, mult: 0.3, color: "#5ab0ff", unit: "joueur",
           tiers: ["TFT Open · Worlds", "Tactician's Cup", "Ranked Cups"] },
   trackmania: { name: "Trackmania",  short: "TM",   icon: "🏎️", fmt: "br", size: 1, lobby: 16, gamesPerWeek: 4, roles: ["Pilote"], prize: 500000, mult: 0.25, color: "#00c896", unit: "pilote",
           tiers: ["Trackmania World Cup", "Trackmania Grand League", "Cup of the Day"] },
