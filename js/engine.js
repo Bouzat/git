@@ -2663,21 +2663,54 @@ function checkClause(d, c, final) {
   if (met) { book("sponsors", c.bonus, c.game || "", `${d.name} : prime d'objectif`); mail(`✅ Objectif atteint : ${d.name}`, `${c.label} : prime de <b>${money(c.bonus)}</b> versée.`, "sponsor"); }
   else mail(`❌ Objectif manqué : ${d.name}`, `${c.label} : objectif manqué, pas de prime.${c.main ? " La marque ne renouvellera sans doute pas le contrat." : ""}`, "sponsor");
 }
+// clause en danger : le club n'est pas en voie de la respecter (texte de l'alerte), sinon null
+function clauseRisk(d, c) {
+  if (c.status !== "pending") return null;
+  const u = user(), done = d.total ? (d.total - d.weeks) / d.total : 0;
+  if (c.kind === "rank") { const pos = leagueRank(c.game); return pos > c.target ? `vous êtes ${pos}e, il faut finir ${c.target === 1 ? "1er" : "dans le top " + c.target}` : null; }
+  if (c.kind === "fans") { const pct = (u.fans / d.fans0 - 1) * 100; return done >= 0.3 && pct < c.pct * done * 0.8 ? `+${Math.max(0, Math.round(pct * 10) / 10)} % de fans pour l'instant, objectif +${c.pct} %` : null; }
+  if (c.kind === "title") return done >= 0.6 && u.titles.length <= d.titles0 ? "aucun titre pour l'instant" : null;
+  return null;
+}
+// clauses non respectées (alertes) : liste [contrat, clause, texte]
+const sponsorAlerts = () => user().sponsorDeals.flatMap(d => (d.clauses || []).map(c => [d, c, clauseRisk(d, c)]).filter(x => x[2]));
+// joueurs du club dont le contrat se termine à la fin de la saison
+const expiringPlayers = () => allUserPlayers().filter(p => p.years <= 1);
 // chaque semaine : paiements, clauses, fins de contrat et propositions de renouvellement, marques intéressées
 function sponsorWeek(report) {
   const u = user();
   for (const d of u.sponsorDeals) book("sponsors", d.weekly, "", d.name);
   for (const d of u.sponsorDeals) for (const c of d.clauses || []) checkClause(d, c, c.kind === "rank" && S.week === PO_FINAL);
+  // alertes : une clause qui n'est plus respectée (rappel toutes les 6 semaines), puis qui l'est de nouveau
+  for (const d of u.sponsorDeals) for (const c of d.clauses || []) {
+    const risk = clauseRisk(d, c);
+    if (risk && (!c.warnedAt || nowIndex() - c.warnedAt >= 6)) { c.warnedAt = nowIndex(); mail(`⚠️ Clause en danger : ${d.name}`, `<b>${esc0(c.label)}</b> : ${risk}. Si l'objectif n'est pas atteint, pas de prime de ${money(c.bonus)}${c.main ? " et la marque ne renouvellera sans doute pas" : ""}.`, "sponsor"); }
+    else if (!risk && c.warnedAt && c.status === "pending") { delete c.warnedAt; mail(`✅ Clause de nouveau respectée : ${d.name}`, `<b>${esc0(c.label)}</b> : vous êtes de nouveau dans les clous. Il faut tenir jusqu'au bout.`, "sponsor"); }
+  }
   for (const d of u.sponsorDeals) {
-    if (--d.weeks > 0) continue;
+    --d.weeks;
+    if (d.weeks === 4) mail(`⏳ Fin de contrat dans 4 semaines : ${d.name}`, `Le contrat avec <b>${d.name}</b> (${money(d.weekly)}/sem) se termine dans 4 semaines. Dans 2 semaines, vous pourrez décider de le renouveler ou non.`, "sponsor");
+    // deux semaines avant la fin : le CEO décide s'il veut renouveler, puis la marque répond
+    if (d.weeks === 2 && !d.renew) {
+      const main = (d.clauses || []).find(c => c.main), good = !main || main.status === "met" || (main.status === "pending" && !clauseRisk(d, main));
+      report.events.push({ title: `🤝 Renouveler le contrat avec ${d.name} ?`, body: `Le contrat avec <b>${esc0(d.name)}</b> (${money(d.weekly)}/sem) se termine dans 2 semaines. ${good ? "Les objectifs sont en bonne voie : la marque est plutôt ouverte à une prolongation." : "Les objectifs ne sont pas atteints : la marque hésite à continuer."}`,
+        choices: [{ label: "Proposer de renouveler", fx: () => { const yes = Math.random() < (good ? 0.88 : 0.3); d.renew = yes ? "yes" : "refused";
+            return yes ? `${d.name} accepte de discuter d'une prolongation : vous négocierez les termes à la fin du contrat.` : `${d.name} décline : la marque ne souhaite pas prolonger.`; } },
+          { label: "Laisser le contrat se terminer", fx: () => { d.renew = "no"; return `Le contrat avec ${d.name} prendra fin dans 2 semaines.`; } }] });
+    }
+    if (d.weeks > 0) continue;
     for (const c of d.clauses || []) checkClause(d, c, true);
     const main = (d.clauses || []).find(c => c.main), ok = !main || main.status === "met";
-    if (ok && Math.random() < 0.9) {
+    if (d.renew === "no" || d.renew === "refused") { mail(`Fin de contrat : ${d.name}`, `Le contrat avec <b>${d.name}</b> est terminé${d.renew === "no" ? " : vous avez choisi de ne pas le renouveler" : " : la marque n'a pas souhaité prolonger"}.`, "sponsor"); continue; }
+    if (d.renew === "yes" || (ok && Math.random() < 0.9)) {
       const o = sponsorOffer(d.name);
       o.weekly = round50(d.weekly * rand(1.08, 1.25)); o.max = Math.max(o.max, o.weekly * 1.2); o.weeks = d.total; o.renewals = (d.renewals || 0) + 1; o.clauses = sponsorClauses(o);
       report.events.push({ title: `Renouvellement : ${d.name}`, sponsor: o, intro: `<b>${esc0(d.name)}</b> est satisfait du partenariat et propose de le renouveler, avec une hausse : <b>${money(o.weekly)}/sem</b>.` });
     } else mail(`Fin de contrat : ${d.name}`, `Le contrat avec <b>${d.name}</b> est terminé. ${ok ? "La marque change de stratégie et ne renouvelle pas." : "Objectifs manqués : la marque ne renouvelle pas."}`, "sponsor");
   }
+  // joueurs en fin de contrat : rappels en cours de saison
+  const exp = expiringPlayers();
+  if (exp.length && [30, 38, 44, SEASON_LAST - 2].includes(S.week)) mail(`⏳ ${exp.length} joueur(s) en fin de contrat`, `Ces contrats se terminent à la fin de la saison : ${exp.map(p => `${GAMES[p.game].icon} <b>${esc0(p.handle)}</b> (${p.rating})`).join(", ")}. Sans prolongation, ils quitteront le club et vos équipes risquent de se retrouver incomplètes. Prolongez-les depuis l'onglet Effectifs (💬 → Renégocier son contrat).`, "transfer");
   u.sponsorDeals = u.sponsorDeals.filter(d => d.weeks > 0);
   // marché des sponsors : de nouvelles marques s'intéressent au club toutes les 4 semaines
   const M = S.sponsorMarket;

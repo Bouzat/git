@@ -248,6 +248,16 @@ function nextMatch(L) {
   }
   return "Saison de ligue terminée — place aux tournois";
 }
+// tableau de bord : tout ce qui demande une action (effectifs, contrats, sponsors)
+function alertsCard() {
+  const u = user(), items = [];
+  for (const g of incompleteGames()) items.push(`<div class="bad">⚠️ ${GAMES[g].icon} Effectif incomplet en ${GAMES[g].name} (${gamePlayers(g).length}/${GAMES[g].size}) : vos équipes jouent en sous-nombre. <span class="link" data-act="goto-market" data-v="${g}">Recruter</span></div>`);
+  const exp = expiringPlayers();
+  if (exp.length && S.week >= 26) items.push(`<div class="warn">⏳ ${exp.length} joueur(s) en fin de contrat à la fin de la saison : ${exp.slice(0, 6).map(p => `${GAMES[p.game].icon} ${esc(p.handle)}`).join(", ")}${exp.length > 6 ? "…" : ""}. <span class="link" data-act="contracts">Prolonger</span></div>`);
+  for (const [d, c, risk] of sponsorAlerts()) items.push(`<div class="warn">📉 ${esc(d.name)} — clause en danger : ${esc(c.label)} (${risk}). Prime : ${money(c.bonus)}.</div>`);
+  for (const d of u.sponsorDeals.filter(d => d.weeks <= 4)) items.push(`<div class="warn">🤝 Contrat ${esc(d.name)} : fin dans ${d.weeks} semaine(s)${d.renew === "yes" ? " (prolongation acceptée, à négocier à la fin)" : d.renew === "no" ? " (vous ne renouvelez pas)" : d.renew === "refused" ? " (la marque ne prolonge pas)" : d.weeks <= 2 ? "" : " — décision de renouvellement dans " + (d.weeks - 2) + " semaine(s)"}.</div>`);
+  return items.length ? `<div class="card alerts-card" style="margin-bottom:16px;border-color:var(--warn)"><h3>⚠️ À traiter</h3><div style="display:grid;gap:6px">${items.join("")}</div></div>` : "";
+}
 function viewDash() {
   const u = user(), Ls = userLeagues();
   const divCards = Ls.length ? Ls.map(L => {
@@ -265,7 +275,7 @@ function viewDash() {
   const lastHtml = last && (last.matches.length || last.lobbies.length) ? last.matches.map(matchRow).join("") + last.lobbies.map(lobbyRow).join("") : `<p class="muted">Aucun match joué la semaine dernière.</p>`;
   const mails = S.inbox.slice(0, 5).map(m => `<div class="mail ${m.read ? "" : "unread"}" data-act="open-mail" data-v="${m.id}"><div class="t">${m.title}</div><div class="muted" style="font-size:12px">${weekLabel(m.season, m.week, true)}</div></div>`).join("");
   const obj = objectiveText();
-  return `<div class="grid g2">
+  return `${alertsCard()}<div class="grid g2">
     <div class="card"><h3>🎯 Objectif du conseil</h3><p style="font-size:16px"><b>${obj[0].toUpperCase() + obj.slice(1)}</b></p>
       <div>Confiance ${bar(S.board.confidence)} ${Math.round(S.board.confidence)}% <span class="link" data-act="explain-board" title="Comment marche la confiance du conseil ?">ⓘ comment ça marche</span></div>
       <p class="muted" style="font-size:12px">À la fin de chaque saison, les 2 premiers d'un tier montent et les 2 derniers descendent. Si la confiance tombe à 0 % ou si les dettes deviennent trop lourdes, vous êtes licencié.</p></div>
@@ -1602,9 +1612,9 @@ function viewSponsors() {
   const deals = u.sponsorDeals.map(d => {
     const e = ETHIC[d.ethic || "neutre"], done = d.total ? 1 - d.weeks / d.total : 0;
     const cl = (d.clauses || []).map(c => { const prog = c.kind === "rank" ? (leagueRank(c.game) ? ` · actuellement ${leagueRank(c.game)}e` : "") : c.kind === "fans" && c.pos !== undefined ? ` · ${c.pos >= 0 ? "+" : ""}${c.pos} % pour l'instant` : "";
-      return `<div class="clause ${c.status}">${clauseIcon(c)} ${esc(c.label)} · prime ${money(c.bonus)}<span class="muted">${c.status === "pending" ? prog : ""}</span></div>`; }).join("");
+      return `<div class="clause ${c.status}">${clauseIcon(c)} ${esc(c.label)} · prime ${money(c.bonus)}<span class="muted">${c.status === "pending" ? prog : ""}</span>${clauseRisk(d, c) ? ` <b class="bad" title="${esc(clauseRisk(d, c))}">⚠️ non respectée</b>` : c.status === "pending" ? ` <span class="ok">✓ en bonne voie</span>` : ""}</div>`; }).join("");
     return `<div class="card sp-card"><div class="brand-head link-row" data-act="brand-info" data-v="${esc(d.name)}">${brandLogo(d.name)}<div style="min-width:0"><b class="link">${esc(d.name)}</b><div class="muted" style="font-size:12px">${esc(d.sector || "")} · <span class="${e[2]}">${e[0]} ${e[1]}</span>${d.renewals ? ` · renouvelé ${d.renewals}×` : ""}</div></div><div class="sp-amt">${money(d.weekly)}<small>/sem</small></div></div>
-      <div style="margin:8px 0 4px;font-size:12px" class="muted">${d.weeks} semaine(s) restante(s) sur ${d.total || d.weeks} · ${money(d.weekly * d.weeks)} à venir</div>${bar(Math.round(done * 100), "var(--accent2)")}
+      <div style="margin:8px 0 4px;font-size:12px" class="${d.weeks <= 4 ? "warn" : "muted"}">${d.weeks} semaine(s) restante(s) sur ${d.total || d.weeks} · ${money(d.weekly * d.weeks)} à venir${d.renew === "yes" ? " · prolongation acceptée" : d.renew === "no" ? " · ne sera pas renouvelé" : d.renew === "refused" ? " · la marque ne prolonge pas" : d.weeks <= 4 ? " · décision de renouvellement 2 semaines avant la fin" : ""}</div>${bar(Math.round(done * 100), "var(--accent2)")}
       ${cl ? `<div style="margin-top:8px">${cl}</div>` : "<p class='muted' style='font-size:12px'>Aucune clause d'objectif.</p>"}</div>`;
   }).join("");
   const market = S.sponsorMarket.list.filter(x => !u.sponsorDeals.some(d => d.name === x.brand)).map(x => {
@@ -1893,19 +1903,50 @@ function offersModal() {
 }
 ACTIONS["offers-back"] = () => offersModal();
 ACTIONS["offers-later"] = () => { UI.offerFlow = false; closeModal(); UI.view = "market"; UI.market.tab = "list"; render(); };
-ACTIONS["md-finish"] = () => { if (pendingOffers().length) return offersModal(); if (!mercatoCloseWarning()) playWeek(); };
+// sections dont l'effectif est incomplet (elles jouent en sous-nombre)
+const incompleteGames = () => Object.keys(user().divisions).filter(g => unitGame(g) ? gamePlayers(g).length === 0 : gamePlayers(g).length < GAMES[g].size);
+// avant de jouer une semaine : effectif incomplet, puis joueurs en fin de contrat avant la fin de saison, puis fermeture du mercato
+function preWeekChecks(act) {
+  UI.afterCheck = act;
+  const key = S.season + "-" + S.week, inc = incompleteGames();
+  if (inc.length && UI.incWarned !== key) {
+    UI.incWarned = key;
+    modal(`<h2>⚠️ Effectif incomplet</h2><p>Il manque des joueurs en ${inc.map(g => `${GAMES[g].icon} <b>${GAMES[g].name}</b> (${gamePlayers(g).length}/${GAMES[g].size})`).join(", ")}.
+      Si vous continuez, ces équipes jouent leurs matchs en sous-nombre : défaites quasi assurées, fans et confiance du conseil en baisse.</p>
+      <div class="actions"><button data-act="close-modal">Rester sur cette semaine</button><button data-act="goto-market" data-v="${inc.length === 1 ? inc[0] : "all"}">🔎 Recruter</button><button class="primary" data-act="check-continue">Jouer quand même ▶</button></div>`);
+    return true;
+  }
+  const exp = expiringPlayers();
+  if (S.week === SEASON_LAST && exp.length && UI.ctWarned !== key) { UI.ctWarned = key; contractsModal(); return true; }
+  return mercatoCloseWarning();
+}
+// fin de saison : les joueurs dont le contrat se termine partiront s'ils ne sont pas prolongés
+function contractsModal() {
+  const exp = expiringPlayers().sort((a, b) => b.rating - a.rating);
+  modal(`<h2>⏳ Fin de saison : ${exp.length} contrat(s) se terminent</h2>
+    <p class="muted" style="margin-top:-6px">Ces joueurs quitteront le club à la fin de la saison s'ils ne sont pas prolongés. Vérifiez qu'il vous restera assez de joueurs dans chaque jeu.</p>
+    <div class="table-wrap"><table><tr><th>Joueur</th><th>Jeu</th><th>Âge</th><th>Note</th><th>Salaire</th><th>Statut</th><th></th></tr>
+    ${exp.map(p => `<tr><td>${flag(p.nat)} <b class="link" data-act="player-info" data-v="${p.id}">${esc(p.handle)}</b></td><td>${gchip(p.game)}</td><td>${ageTxt(p)}</td><td>${R(p.rating)}</td><td>${money(p.salary)}/sem</td><td>${p.starter ? "⭐ Titulaire" : "Remplaçant"}</td>
+      <td><button class="small primary" data-act="renew" data-v="${p.id}">✍️ Prolonger</button></td></tr>`).join("")}</table></div>
+    <div class="actions"><button data-act="close-modal">Rester sur cette semaine</button><button class="primary" data-act="check-continue">Les laisser partir et continuer ▶</button></div>`);
+}
+ACTIONS["contracts"] = () => contractsModal();
+ACTIONS["check-continue"] = () => { closeModal(); const a = UI.afterCheck || "next"; UI.afterCheck = null; ACTIONS[a](); };
+ACTIONS["md-finish"] = () => { if (pendingOffers().length) return offersModal(); if (!preWeekChecks("md-finish")) playWeek(); };
 // bouton principal : jour de match s'il reste des rencontres à lancer, sinon semaine suivante
-ACTIONS["next"] = () => { if (pendingOffers().length) return offersModal(); if (weekEvents().some(e => !e.done)) matchDayModal(); else if (!mercatoCloseWarning()) playWeek(); };
+ACTIONS["next"] = () => { if (pendingOffers().length) return offersModal(); if (incompleteGames().length && UI.incWarned !== S.season + "-" + S.week) return preWeekChecks("next"); if (weekEvents().some(e => !e.done)) matchDayModal(); else if (!preWeekChecks("next")) playWeek(); };
 // avance jusqu'à la prochaine semaine où le club joue (les semaines vides passent d'un coup)
 ACTIONS["skip"] = () => {
   if (pendingOffers().length) return offersModal();
-  if (mercatoCloseWarning()) return;
+  if (preWeekChecks("skip")) return;
   // « Prochain match » ne saute jamais une ouverture ni la dernière semaine d'un mercato de vos sections
   const mwState = () => Object.keys(user().divisions).map(g => mercatoOpen(g) + ":" + (windowAt(g) && windowEnd(g).weeks === 1)).join();
   const reps = [];
   for (let i = 0; i < 20; i++) {
     const before = mwState(), rep = advanceWeek(); reps.push(rep);
     if (rep.events.length || rep.seasonEnd || S.over || weekEvents().length || pendingOffers().length || mwState() !== before) break;
+    // la dernière semaine de la saison : on s'arrête pour pouvoir prolonger les joueurs en fin de contrat
+    if (S.week === SEASON_LAST && expiringPlayers().length) break;
   }
   showSummary(reps);
 };
