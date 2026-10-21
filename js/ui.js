@@ -1033,6 +1033,38 @@ ACTIONS["sp-counter"] = () => {
   if (r.status === "walk") { mail(`Négociation rompue : ${SP.brand}`, `${SP.brand} a mis fin aux discussions.`, "sponsor"); toast(`${SP.brand} quitte la table des négociations.`); SP = null; save(); render(); return ACTIONS["next-event"](); }
   sponsorModal(SP, `<b>${esc(SP.brand)}</b> fait une contre-proposition.${r.last ? " <b class='warn'>La marque prévient que c'est sa dernière offre.</b>" : ""}`);
 };
+// fiche détaillée d'une marque
+const bigNum = n => n >= 1e9 ? (n / 1e9).toFixed(1).replace(".", ",") + " Md€" : money(n);
+const fmtFollowers = n => n >= 1e6 ? (n / 1e6).toFixed(1).replace(".", ",") + " M" : n >= 1e3 ? Math.round(n / 1e3) + " k" : String(n);
+function brandModal(name) {
+  const b = brandStats(name), u = user(), e = ETHIC[b.ethic], deal = u.sponsorDeals.find(d => d.name === name);
+  const interested = S.sponsorMarket && S.sponsorMarket.list.find(x => x.brand === name);
+  const cd = S.brandCooldown && S.brandCooldown[name] > nowIndex(), ch = Math.round(contactChance(name) * 100);
+  const req = (ok, txt) => `<div class="${ok ? "ok" : "bad"}">${ok ? "✅" : "❌"} ${txt}</div>`;
+  const kpi = (label, val, sub) => `<div class="card brand-kpi"><span class="muted">${label}</span><b>${val}</b>${sub ? `<small class="muted">${sub}</small>` : ""}</div>`;
+  modal(`<div class="brand-head">${brandLogo(b.brand, true)}<div><h2 style="margin:0">${esc(b.brand)}</h2><div class="muted">${esc(b.sector)} · marque ${BRAND_SIZE[b.size].toLowerCase()}e · <span class="${e[2]}">${e[0]} ${e[1]}</span></div></div></div>
+    <div class="brand-kpis">
+      ${kpi("Chiffre d'affaires", bigNum(b.revenue), `croissance ${b.growth >= 0 ? "+" : ""}${b.growth} %/an`)}
+      ${kpi("Bénéfice net", bigNum(b.profit), `marge ${Math.round(b.margin * 100)} %`)}
+      ${kpi("Abonnés (réseaux sociaux)", fmtFollowers(b.followers), "toutes plateformes")}
+      ${kpi("Budget esport annuel", bigNum(b.esport), "tous clubs confondus")}
+    </div>
+    <div class="grid g2" style="margin-top:12px">
+      <div><h3>Profil</h3><p style="margin:0">Cible : ${esc(b.audience)}.<br>Jeux qui l'intéressent : ${b.games.map(g => GAMES[g] ? gchip(g) : "").join(" ")}<br>
+        Déjà partenaire de : ${b.partners.length ? b.partners.map(c => `<span class="link" data-act="club-info" data-v="${c.id}">${esc(c.name)}</span>`).join(", ") : "aucun club pour l'instant"}.</p>
+        <p class="${e[2]}" style="font-size:13px">${b.ethic === "controverse" ? "Paie très bien, mais associer le club à cette marque dégrade son image : moins de fans gagnés après les victoires, plus de fans perdus après les défaites." : b.ethic === "ethique" ? "Paie un peu moins, mais améliore l'image du club : vos victoires attirent plus de fans." : "Sans effet sur l'image du club."}</p></div>
+      <div><h3>Pour votre club</h3>
+        ${req(u.fame >= b.minFame, `Notoriété ${b.minFame ? "≥ " + b.minFame : "sans minimum"} (vous : ${u.fame.toFixed(0)})`)}
+        ${b.minImage ? req((u.image ?? 60) >= b.minImage, `Image du club ≥ ${b.minImage} (vous : ${Math.round(u.image ?? 60)})`) : ""}
+        ${req(b.games.some(g => u.divisions[g]), `Présent dans un des jeux visés`)}
+        <p style="margin:8px 0 0">Offre estimée : <b>${money(b.offer[0])} à ${money(b.offer[1])}/sem</b><br>Chances qu'elle accepte un rendez-vous : <b class="${ch >= 50 ? "ok" : ch >= 20 ? "warn" : "bad"}">${ch} %</b></p></div>
+    </div>
+    ${deal ? `<p class="ok">🤝 Partenaire du club : ${money(deal.weekly)}/sem, encore ${deal.weeks} semaine(s).</p>` : ""}
+    <p class="muted" style="font-size:11px">Chiffres indicatifs estimés par le jeu, pas des données officielles de la marque.</p>
+    <div class="actions"><button data-act="close-modal">Fermer</button>
+      ${deal ? "" : interested ? `<button class="primary" data-act="sp-talk" data-v="${esc(name)}">🤝 Négocier (elle est intéressée)</button>` : cd ? `<button disabled>A refusé récemment</button>` : `<button class="primary" data-act="sp-contact" data-v="${esc(name)}">📞 Contacter (${ch} %)</button>`}</div>`);
+}
+ACTIONS["brand-info"] = v => brandModal(v);
 // ---------- sponsors (onglet) ----------
 function viewSponsors() {
   const u = user();
@@ -1043,20 +1075,20 @@ function viewSponsors() {
     const e = ETHIC[d.ethic || "neutre"], done = d.total ? 1 - d.weeks / d.total : 0;
     const cl = (d.clauses || []).map(c => { const prog = c.kind === "rank" ? (leagueRank(c.game) ? ` · actuellement ${leagueRank(c.game)}e` : "") : c.kind === "fans" && c.pos !== undefined ? ` · ${c.pos >= 0 ? "+" : ""}${c.pos} % pour l'instant` : "";
       return `<div class="clause ${c.status}">${clauseIcon(c)} ${esc(c.label)} · prime ${money(c.bonus)}<span class="muted">${c.status === "pending" ? prog : ""}</span></div>`; }).join("");
-    return `<div class="card sp-card"><div class="brand-head">${brandLogo(d.name)}<div style="min-width:0"><b>${esc(d.name)}</b><div class="muted" style="font-size:12px">${esc(d.sector || "")} · <span class="${e[2]}">${e[0]} ${e[1]}</span>${d.renewals ? ` · renouvelé ${d.renewals}×` : ""}</div></div><div class="sp-amt">${money(d.weekly)}<small>/sem</small></div></div>
+    return `<div class="card sp-card"><div class="brand-head link-row" data-act="brand-info" data-v="${esc(d.name)}">${brandLogo(d.name)}<div style="min-width:0"><b class="link">${esc(d.name)}</b><div class="muted" style="font-size:12px">${esc(d.sector || "")} · <span class="${e[2]}">${e[0]} ${e[1]}</span>${d.renewals ? ` · renouvelé ${d.renewals}×` : ""}</div></div><div class="sp-amt">${money(d.weekly)}<small>/sem</small></div></div>
       <div style="margin:8px 0 4px;font-size:12px" class="muted">${d.weeks} semaine(s) restante(s) sur ${d.total || d.weeks} · ${money(d.weekly * d.weeks)} à venir</div>${bar(Math.round(done * 100), "var(--accent2)")}
       ${cl ? `<div style="margin-top:8px">${cl}</div>` : "<p class='muted' style='font-size:12px'>Aucune clause d'objectif.</p>"}</div>`;
   }).join("");
   const market = S.sponsorMarket.list.filter(x => !u.sponsorDeals.some(d => d.name === x.brand)).map(x => {
     const b = brandOf(x.brand), e = ETHIC[b.ethic];
-    return `<div class="card sp-card"><div class="brand-head">${brandLogo(b.brand)}<div style="min-width:0"><b>${esc(b.brand)}</b><div class="muted" style="font-size:12px">${esc(b.sector)} · ${BRAND_SIZE[b.size]} · <span class="${e[2]}">${e[0]} ${e[1]}</span></div></div></div>
+    return `<div class="card sp-card"><div class="brand-head link-row" data-act="brand-info" data-v="${esc(b.brand)}">${brandLogo(b.brand)}<div style="min-width:0"><b class="link">${esc(b.brand)}</b><div class="muted" style="font-size:12px">${esc(b.sector)} · ${BRAND_SIZE[b.size]} · <span class="${e[2]}">${e[0]} ${e[1]}</span></div></div></div>
       <div style="margin:8px 0;font-size:13px">Intérêt ${bar(x.interest, "var(--ok)")} ${x.interest} %</div>
-      <button class="small primary" data-act="sp-talk" data-v="${esc(b.brand)}">🤝 Négocier</button></div>`;
+      <button class="small primary" data-act="sp-talk" data-v="${esc(b.brand)}">🤝 Négocier</button> <button class="small" data-act="brand-info" data-v="${esc(b.brand)}">🔍 Détails</button></div>`;
   }).join("");
   const list = BRANDS.filter(b => !u.sponsorDeals.some(d => d.name === b[0]) && (F.ethic === "all" || b[2] === F.ethic) && (F.size === "all" || (F.size === "reach" ? b[3] <= reach + 1 : b[3] === +F.size)))
     .sort((a, b) => b[3] - a[3] || a[0].localeCompare(b[0]))
     .map(b => { const ch = Math.round(contactChance(b[0]) * 100), e = ETHIC[b[2]], cd = S.brandCooldown && S.brandCooldown[b[0]] > nowIndex();
-      return `<tr><td>${brandLogo(b[0])} <b>${esc(b[0])}</b></td><td class="muted">${esc(b[1])}</td><td>${BRAND_SIZE[b[3]]}</td><td class="${e[2]}">${e[0]} ${e[1]}</td><td><span class="${ch >= 50 ? "ok" : ch >= 20 ? "warn" : "bad"}">${ch} %</span></td>
+      return `<tr><td class="link-row" data-act="brand-info" data-v="${esc(b[0])}">${brandLogo(b[0])} <b class="link">${esc(b[0])}</b></td><td class="muted">${esc(b[1])}</td><td>${BRAND_SIZE[b[3]]}</td><td class="${e[2]}">${e[0]} ${e[1]}</td><td><span class="${ch >= 50 ? "ok" : ch >= 20 ? "warn" : "bad"}">${ch} %</span></td>
         <td>${cd ? "<span class='muted'>a refusé récemment</span>" : `<button class="small" data-act="sp-contact" data-v="${esc(b[0])}">📞 Contacter</button>`}</td></tr>`; }).join("");
   const opt = (k, cur, list) => list.map(([v, l]) => `<option value="${v}" ${cur === v ? "selected" : ""}>${l}</option>`).join("");
   return `<h2>🤝 Sponsors</h2>

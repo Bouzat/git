@@ -2200,6 +2200,33 @@ function refreshSponsorMarket() {
   const pool = shuffle(BRANDS.filter(b => !taken.has(b[0]) && b[3] <= reach && b[3] >= reach - 1 && !(b[2] === "ethique" && (u.image ?? 60) < 40)));
   S.sponsorMarket = { at: nowIndex(), season: S.season, list: pool.slice(0, randi(3, 5)).map(b => ({ brand: b[0], interest: randi(45, 95) })) };
 }
+// fiche d'une marque : chiffres indicatifs générés par le jeu (stables d'une partie à l'autre), jeux visés, exigences, offre estimée
+const SECTOR_GAMES = { "Périphériques": ["cs2", "val", "lol"], "Matériel PC": ["cs2", "lol", "dota"], "Informatique": ["lol", "cs2", "val"], "Processeurs": ["cs2", "lol", "dota"],
+  "Chaises gaming": ["lol", "val", "fn"], "Boisson énergisante": ["fn", "rl", "cs2"], "Boissons": ["fc", "lol", "fn"], "Automobile": ["rl", "lol", "fc"], "Équipementier": ["fc", "lol", "val"],
+  "Sport": ["fc", "rl", "lol"], "Paris sportifs": ["cs2", "lol", "fc"], "Casino en ligne": ["cs2", "val", "dota"], "Cryptomonnaies": ["cs2", "dota", "val"], "NFT": ["fn", "val", "cs2"],
+  "Télécoms": ["lol", "fn", "fc"], "Électronique": ["lol", "pubgm", "mlbb"], "Livraison": ["lol", "fn", "val"], "Distribution": ["lol", "fc", "fn"], "Mode": ["lol", "val", "fn"] };
+const SECTOR_AUDIENCE = { "Paris sportifs": "18-35 ans, fans de sport et de compétition", "Casino en ligne": "adultes 18-40 ans", "Cryptomonnaies": "18-30 ans, technophiles",
+  "Boisson énergisante": "15-30 ans, gamers et sportifs", "Périphériques": "joueurs PC 14-30 ans", "Matériel PC": "joueurs PC passionnés", "Automobile": "25-45 ans, fans de vitesse",
+  "Mode": "15-30 ans, culture urbaine", "Équipementier": "15-35 ans, sportifs" };
+function brandStats(name) {
+  const b = brandOf(name), h = hashOf(name), r = k => ((h >>> (k * 3)) % 1000) / 1000;
+  const rev = [0, 0.2e6 + r(1) * 2.8e6, 50e6 + r(1) * 1.95e9, 5e9 + r(1) * 75e9][b.size];
+  const margin = (b.ethic === "controverse" ? 0.14 : b.ethic === "ethique" ? 0.05 : 0.08) + r(2) * 0.1;
+  const followers = Math.round([0, 500 + r(3) * 19500, 50e3 + r(3) * 2.95e6, 2e6 + r(3) * 58e6][b.size]);
+  const esport = Math.round([0, 5e3 + r(4) * 25e3, 0.3e6 + r(4) * 2.7e6, 4e6 + r(4) * 36e6][b.size] / 1000) * 1000;
+  const growth = Math.round((r(5) * 30 - 8) * 10) / 10;
+  const games = SECTOR_GAMES[b.sector] || ["lol", "fn", "fc"];
+  // clubs déjà partenaires (les mieux classés pour une grande marque, des clubs modestes pour un commerce local)
+  const pool = Object.values(S.clubs).filter(c => !c.filler && !c.solo && !c.parent && c.id !== S.userId && Object.keys(c.divisions).length)
+    .filter(c => b.size === 3 ? c.fame >= 65 : b.size === 2 ? c.fame >= 30 && c.fame < 75 : c.fame < 35).sort((x, y) => x.id < y.id ? -1 : 1);
+  const partners = pool.length ? [0, 1, 2].slice(0, 1 + h % 3).map(k => pool[(h + k * 7919) % pool.length]).filter((c, i, a) => a.indexOf(c) === i) : [];
+  // offre estimée pour le club du joueur (sans la part de hasard de la négociation)
+  const u = user(), tierBonus = Object.values(u.divisions).reduce((s, d) => s + [3000, 600, 80][d.tier - 1], 0);
+  const mult = (b.ethic === "controverse" ? 1.9 : b.ethic === "ethique" ? 0.87 * (0.7 + (u.image ?? 60) / 200) : 1) * [0, 0.6, 0.9, 1.2][b.size];
+  const mid = (200 + u.fame * u.fame * 2.25 + tierBonus * 0.75) * mult;
+  return { ...b, revenue: rev, profit: rev * margin, margin, followers, esport, growth, games, partners, offer: [round50(mid * 0.75), round50(mid * 1.35)],
+    minFame: [0, 0, 25, 55][b.size], minImage: b.ethic === "ethique" ? 50 : 0, audience: SECTOR_AUDIENCE[b.sector] || "grand public, 15-45 ans" };
+}
 // démarchage : chance qu'une marque accepte de discuter (taille de la marque, notoriété, image du club)
 function contactChance(name) {
   const u = user(), b = brandOf(name), reach = brandReach();

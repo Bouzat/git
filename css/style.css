@@ -222,3 +222,6 @@ tr.mate td { color: var(--muted); font-style: italic; }
 .sr { padding: 7px 10px; cursor: pointer; font-size: 13px; border-bottom: 1px solid #1c2338; } .sr:hover { background: var(--panel2); }
 .sr-h { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); padding: 6px 10px 2px; }
 @media (max-width: 700px) { .search-res { right: 0; } }
+.brand-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 14px; }
+.brand-kpi { display: flex; flex-direction: column; gap: 2px; padding: 12px; } .brand-kpi b { font-size: 20px; } .brand-kpi span { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+.link-row { cursor: pointer; }
