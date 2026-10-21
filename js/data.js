@@ -552,9 +552,46 @@ const SMALL_EVENTS = {
 };
 
 // Club Championship de l'EWC : dotation des 24 meilleurs clubs (≈ 30 M$ au total)
-const EWC_CLUB_PRIZES = [7000000, 5000000, 4000000, 3000000, 2000000, 1500000, 1200000, 1000000,
-  700000, 600000, 500000, 450000, 400000, 350000, 300000, 300000, 250000, 250000, 200000, 200000, 200000, 150000, 150000, 150000];
+// les 10 premières dotations sont celles de l'EWC 2026 (Paris), les suivantes une estimation
+const EWC_CLUB_PRIZES = [7000000, 5000000, 4000000, 3000000, 2000000, 1400000, 1150000, 950000, 800000, 650000, 500000, 450000, 400000, 350000, 300000, 300000, 250000, 250000, 200000, 200000, 200000, 150000, 150000, 150000];
 const EWC_POINTS = [1000, 750, 500, 500, 250, 250, 250, 250];
+// Esports World Cup 2026 (Paris, 6 juillet - 23 août), d'après les résultats officiels : dotation de chaque tournoi,
+// participants et podium avec les gains. Chaque édition du jeu reprend ces dotations et cette répartition.
+// [dotation, participants, [[1er, gain], [2e, gain], [3e, gain]]]
+const EWC_REAL = {
+  season: 2026,
+  games: {
+    apex: [2000000, 40, [["UNLIMIT", 600000], ["Team Vision", 300000], ["Sentinels", 200000]]],
+    fatal: [1000000, 32, [["Natus Vincere (DarkAngel)", 250000], ["Virtus.pro (mi2ha4)", 130000], ["Saishunkan Sol Kumamoto (Nemo)", 70000]]],
+    val: [2000000, 16, [["100 Thieves", 600000], ["NRG", 340000], ["Nongshim RedForce", 220000]]],
+    ff: [1000000, 24, [["LYON", 300000], ["AG.AL", 180000], ["LOUD Snickers", 120000]]],
+    dota: [2000000, 24, [["PVISION", 750000], ["BB Team", 340000], ["Team Yandex", 200000]]],
+    lol: [2000000, 16, [["Dplus Kia", 600000], ["Karmine Corp", 340000], ["Gen.G Esports", 220000]]],
+    tft: [500000, 16, [["Team Vision", 150000], ["Aurora Gaming", 90000], ["AG.AL", 50000]]],
+    pubg: [2000000, 24, [["Virtus.pro", 650000], ["The Vicious Esports", 300000], ["Natus Vincere", 200000]]],
+    fc: [1500000, 36, [["HyperSpirit (RvPLegend10)", 250000], ["RBLZ Gaming (Levyfinn)", 150000], ["Manchester City (Bonanno)", 75000]]],
+    mlbb: [3000000, 16, [["Team Spirit", 1000000], ["YANGON GALACTICOS", 500000], ["ONIC", 250000]]],
+    sf6: [1000000, 32, [["Team Falcons (Craime)", 250000], ["SBI e-Sports (Hibiki)", 130000], ["REJECT (Hinao)", 70000]]],
+    ow: [1000000, 16, [["ZETA DIVISION", 400000], ["Twisted Minds", 180000], ["T1", 100000]]],
+    wz: [1000000, 32, [["G2 Esports", 250000], ["T1", 145000], ["JD Gaming", 100000]]],
+    hok: [3000000, 20, [["Kuaishou Gaming", 600000], ["AG.AL", 360000], ["Geekay Esports", 280000]]],
+    tk8: [1000000, 32, [["AG.AL (M. Zubair)", 250000], ["KIWOOM DRX (LowHigh)", 130000], ["Yagami (Yagami)", 70000]]],
+    cod: [1800000, 16, [["OpTic Gaming", 600000], ["Team Heretics", 320000], ["100 Thieves", 210000]]],
+    r6: [2000000, 22, [["FaZe Clan", 750000], ["FURIA", 350000], ["DarkZero", 200000]]],
+    chess: [1500000, 22, [["Magnus Carlsen", 250000], ["Denis Lazavik", 190000], ["Hikaru Nakamura", 145000]]],
+    pubgm: [3000000, 32, [["S2G Esports", 555000], ["Nongshim RedForce", 293000], ["Aurora Gaming", 210000]]],
+    rl: [1000000, 16, [["Team Falcons", 400000], ["Spacestation Gaming", 180000], ["Ninjas in Pyjamas eStar", 100000]]],
+    cf: [2000000, 16, [["BaiSha Gaming", 750000], ["Team Liquid", 350000], ["KINGZERO-eSports", 210000]]],
+    trackmania: [500000, 32, [["AG.AL (Gwen)", 130000], ["Team Liquid (Epos)", 70000], ["Team Vitality (Pac)", 35000]]],
+    fn: [1000000, 40, [["BIG", 260000], ["RVNS SkyJump + LYOST Momsy", 150000], ["Aurora Gaming", 90000]]],
+    cs2: [2000000, 32, [["Team Spirit", 600000], ["FUT Esports", 340000], ["Legacy", 190000]]],
+  },
+  // MLBB Women's International (Team Vitality, devant Natus Vincere et Geltek Cyber Team) n'a pas de section dans le jeu
+  // Club Championship : [club, points, titres, 2es places, 3es places, dotation]
+  clubs: [["AG.AL", 5300, 2, 3, 1, 7000000], ["Team Falcons", 4600, 2, 0, 1, 5000000], ["Team Vitality", 3300, 1, 0, 1, 4000000],
+    ["Natus Vincere", 2950, 1, 1, 1, 3000000], ["Team Liquid", 2700, 1, 2, 0, 2000000], ["Team Spirit", 2200, 2, 0, 0, 1400000],
+    ["Virtus.pro", 2200, 1, 1, 0, 1150000], ["Aurora Gaming", 2150, 0, 1, 2, 950000], ["Twisted Minds", 1900, 0, 1, 0, 800000], ["T1", 1800, 0, 1, 1, 650000]],
+};
 
 // ---------- périodes de mercato (semaines ISO, calées sur le vrai calendrier de chaque scène) ----------
 // [début, fin, explication]. Hors période, on ne peut pas racheter un joueur sous contrat à un club :

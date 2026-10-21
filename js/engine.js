@@ -2062,6 +2062,26 @@ const FNCS_QUOTA = { EU: 12, NA: 9, SA: 4, MENA: 3, ASIA: 2, OCE: 2 };
 // nombre de qualifiés : une part du plateau de l'étape précédente (au plus un lobby complet)
 const qualTop = (spec, n, game) => Math.min(GAMES[game].lobby * 2, Math.max(2, spec.top <= 1 ? Math.ceil(n * spec.top) : spec.top));
 // EWC : chaque tournoi a des qualifications ouvertes trois semaines avant ; environ 75 % des places sont des invitations
+// EWC : dotations et nombre de participants de la dernière édition réelle (EWC_REAL), pour chaque saison
+(function ewcRealPools() {
+  if (typeof EWC_REAL === "undefined") return;
+  for (const [game, [pool, n]] of Object.entries(EWC_REAL.games)) {
+    const t = (TOURNAMENTS[game] || []).find(x => /^EWC — /.test(x[0]) && !/Qualifications/.test(x[0]));
+    if (!t) continue;
+    t[2] = pool;
+    if (GAMES[game].fmt !== "br") t[4] = n;   // les battle royale gardent la taille de leurs lobbies
+  }
+})();
+// répartition des gains d'un tournoi EWC : podium réel, puis le reste dégressif (4e, 5-8e, 9-16e…)
+function ewcShare(game, n) {
+  const R = typeof EWC_REAL !== "undefined" && EWC_REAL.games[game];
+  if (!R) return PLACE_SHARE;
+  const [pool, , pod] = R, top = pod.map(x => x[1] / pool), left = Math.max(0, 1 - top.reduce((a, b) => a + b, 0));
+  const w = i => i === 3 ? 3 : i < 8 ? 2 : i < 16 ? 1 : 0.4;
+  const rest = Array.from({ length: Math.max(0, Math.min(n || 16, 32) - 3) }, (_, k) => w(k + 3)), tot = rest.reduce((a, b) => a + b, 0) || 1;
+  return top.concat(rest.map(x => left * x / tot));
+}
+const shareFor = (game, name, n) => /^EWC — /.test(name) && !/Qualifications/.test(name) ? ewcShare(game, n) : PLACE_SHARE;
 (function ewcQualifiers() {
   for (const [game, T] of Object.entries(TOURNAMENTS)) {
     if (T.some(t => t[6] && t[6].ewcQual)) continue;
@@ -2308,7 +2328,7 @@ function ewcPoints(order, game) {
   order.slice(0, 8).forEach((id, i) => {
     const c = S.clubs[id]; if (!c || c.solo) return;
     const e = S.ewc[id] || (S.ewc[id] = { pts: 0, top8: 0, wins: 0, games: [] });
-    e.pts += EWC_POINTS[i]; e.top8++; if (i === 0) e.wins++; e.games.push(game);
+    e.pts += EWC_POINTS[i]; e.top8++; if (i === 0) e.wins++; if (i === 1) e.second = (e.second || 0) + 1; if (i === 2) e.third = (e.third || 0) + 1; e.games.push(game);
   });
 }
 function ewcStandings() {
@@ -2332,6 +2352,8 @@ function awardEwcClubChampionship(report) {
     S.titles.push({ season: S.season, game: "ewc", tier: 0, name: "EWC Club Championship", club: champ.name, clubId: champ.id });
   }
   S.ewcResult = { season: S.season, ranking };
+  // historique des éditions jouées (classement des structures)
+  (S.ewcHistory = S.ewcHistory || []).push({ season: S.season, top: ranking.slice(0, 10).map(x => [x.id, S.clubs[x.id].name, x.pts, x.wins, x.second || 0, x.third || 0, x.prize || 0]) });
   const me = ranking.findIndex(x => x.id === u.id) + 1;
   mail(`🌍 EWC Club Championship ${S.season}`, `Vainqueur : <b>${ranking[0] ? S.clubs[ranking[0].id].name : "?"}</b>.<br>` +
     (me ? `${u.name} termine <b>${me}e</b> et touche ${money(EWC_CLUB_PRIZES[me - 1])}.` : `${u.name} n'est pas classé (il faut un top 8 dans au moins 2 tournois EWC).`), me === 1 ? "trophy" : "info");
@@ -2480,19 +2502,20 @@ function playTournament(game, t) {
   const mineIn = field.filter(isMine);
   if (prize >= 100000 && mineIn.length) book("travel", -mineIn.length * g.size * (t[5] ? 900 : 2200), game, name);
   // les clubs IA gardent la moitié des gains ; le vôtre garde ce que prévoient les contrats
-  order.forEach((id, i) => { const amt = prize * (PLACE_SHARE[i] || 0); payPrize(id, isMine(id) ? amt : amt * CLUB_SHARE, game, name); });
+  const share = shareFor(game, name, order.length);
+  order.forEach((id, i) => { const amt = prize * (share[i] || 0); payPrize(id, isMine(id) ? amt : amt * CLUB_SHARE, game, name); });
   const champ = S.clubs[order[0]];
   champ.fame = clamp(champ.fame + (prize >= 1e6 ? 4 : prize >= 1e5 ? 2 : 0.5), 0, 100);
   fanChange(order[0], 1, stake * 4, isMine(order[0]) ? `🏆 ${name} remporté` : null);
   champ.titles.push(`${name} ${S.season}`); awardPlayers(order[0], game, `${name} ${S.season}`);
   S.titles.push({ season: S.season, game, tier: 0, name, club: clubLabel(order[0], game), clubId: champ.id, tt: tourTier(t), world: isWorldTitle(game, t), prize });
   if (RANKED_GAMES.includes(game)) rankTournament(game, order, prize, name);
-  if (name.startsWith("EWC")) ewcPoints(order.map(id => S.clubs[id] && S.clubs[id].parent === S.userId && !S.clubs[id].academyOf ? S.userId : id), game);
+  if (name.startsWith("EWC — ") && !/Qualifications/.test(name)) ewcPoints(order.map(id => S.clubs[id] && S.clubs[id].parent === S.userId && !S.clubs[id].academyOf ? S.userId : id), game);
   const mine = order.findIndex(isMine) + 1;
   (S.tourResults || (S.tourResults = [])).push({ season: S.season, week: w, game, name, prize, n: field.length, top: order.slice(0, 4), mine: mine || null, tt: tourTier(t),
-    won: mine ? Math.round(prize * (PLACE_SHARE[mine - 1] || 0) * clubKeep(game)) : 0, mineId: mine ? order[mine - 1] : null, qual: mine ? quals[order[mine - 1]] || null : null });
+    won: mine ? Math.round(prize * (share[mine - 1] || 0) * clubKeep(game)) : 0, mineId: mine ? order[mine - 1] : null, qual: mine ? quals[order[mine - 1]] || null : null });
   if (mine) {
-    const won = Math.round(prize * (PLACE_SHARE[mine - 1] || 0) * clubKeep(game));
+    const won = Math.round(prize * (share[mine - 1] || 0) * clubKeep(game));
     rep.tournaments.push({ game, name, place: mine, n: field.length, prize: won, winner: order[0], week: w, dd: 6, world: mine === 1 && isWorldTitle(game, t), qual: quals[order[mine - 1]] || null, quals: order.filter(id => isMine(id) && quals[id]).map(id => ({ id, place: order.indexOf(id) + 1, ...quals[id] })) });
     if (mine === 1) mail(`🏆 ${name} remporté !`, `${user().name} remporte le <b>${name} ${S.season}</b> (${GAMES[game].name}) et empoche ${money(won)}.`, "trophy", game);
   }

@@ -973,11 +973,21 @@ function upcomingTours(limit) {
 function ewcCard() {
   const u = user(), done = S.ewcResult && S.ewcResult.season === S.season;
   const list = done ? S.ewcResult.ranking : ewcStandings();
-  const rows = list.slice(0, 12).map((x, i) => `<tr class="${x.id === u.id ? "me" : ""}"><td>${i + 1}</td><td>${displayName(x.id)}</td><td>${x.pts}</td><td>${x.top8}</td><td>${x.wins}</td><td>${done ? money(x.prize || 0) : x.ok ? "<span class='ok'>Éligible</span>" : "<span class='muted'>1 top 8</span>"}</td></tr>`).join("");
+  const total = EWC_CLUB_PRIZES.reduce((a, b) => a + b, 0);
+  const rows = list.slice(0, 12).map((x, i) => `<tr class="${x.id === u.id ? "me" : ""}"><td>${i + 1}</td><td>${displayName(x.id)}</td><td><b>${x.pts.toLocaleString("fr-FR")}</b></td><td>${x.wins ? "🥇 " + x.wins : "—"}</td><td>${x.second ? "🥈 " + x.second : "—"}</td><td>${x.third ? "🥉 " + x.third : "—"}</td><td>${x.top8}</td><td>${done ? money(x.prize || 0) : x.ok ? `<span class='ok'>Éligible</span>${EWC_CLUB_PRIZES[i] ? ` <small class="muted">(${money(EWC_CLUB_PRIZES[i])})</small>` : ""}` : "<span class='muted'>1 top 8</span>"}</td></tr>`).join("");
   const me = list.findIndex(x => x.id === u.id);
+  const head = `<tr><th>#</th><th>Club</th><th>Pts</th><th>Titres</th><th>2e</th><th>3e</th><th>Top 8</th><th>${done ? "Dotation" : "Statut"}</th></tr>`;
+  const past = (S.ewcHistory || []).filter(h => h.season !== S.season || !done).slice().reverse();
+  const pastHtml = past.map(h => `<details class="fold"><summary>🏟️ EWC ${h.season} — champion : <b>${esc(h.top[0] ? h.top[0][1] : "?")}</b></summary><div class="table-wrap"><table><tr><th>#</th><th>Club</th><th>Pts</th><th>Titres</th><th>2e</th><th>3e</th><th>Dotation</th></tr>
+    ${h.top.map((x, i) => `<tr class="${x[0] === u.id ? "me" : ""}"><td>${i + 1}</td><td>${esc(x[1])}</td><td>${x[2].toLocaleString("fr-FR")}</td><td>${x[3]}</td><td>${x[4]}</td><td>${x[5]}</td><td>${money(x[6])}</td></tr>`).join("")}</table></div></details>`).join("");
+  const R = typeof EWC_REAL !== "undefined" ? EWC_REAL : null;
+  const realHtml = R ? `<details class="fold"><summary>📜 Référence : l'EWC ${R.season} réel (Paris) — classement des structures et podiums</summary>
+    <div class="table-wrap"><table><tr><th>#</th><th>Club</th><th>Pts</th><th>Titres</th><th>2e</th><th>3e</th><th>Dotation</th></tr>${R.clubs.map((x, i) => `<tr><td>${i + 1}</td><td><b>${esc(x[0])}</b></td><td>${x[1].toLocaleString("fr-FR")}</td><td>${x[2]}</td><td>${x[3]}</td><td>${x[4]}</td><td>${money(x[5])}</td></tr>`).join("")}</table></div>
+    <div class="table-wrap"><table><tr><th>Jeu</th><th>Dotation</th><th>🥇</th><th>🥈</th><th>🥉</th></tr>${Object.entries(R.games).sort((a, b) => b[1][0] - a[1][0]).map(([g, [pool, n, pod]]) => `<tr><td>${gchip(g)} <small class="muted">${n} ${GAMES[g].fmt === "duel" ? "joueurs" : "clubs"}</small></td><td>${money(pool)}</td>${pod.map(([t, p]) => `<td>${esc(t)} <small class="muted">${money(p)}</small></td>`).join("")}</tr>`).join("")}</table></div></details>` : "";
   return `<div class="card" style="margin-bottom:16px"><h3>🌍 EWC Club Championship ${S.season} ${done ? "— terminé" : `— du ${weekLabel(S.season, EWC_FIRST)} au ${weekLabel(S.season, EWC_LAST_WEEK)}`}</h3>
-    <p class="muted" style="margin-top:-6px;font-size:13px">L'Esports World Cup regroupe un tournoi par jeu. Chaque top 8 rapporte des points au club (1 000 pour un titre). Pour être classé, il faut un top 8 dans au moins 2 jeux ; 24 clubs se partagent 30 M€ (7 M€ pour le champion).</p>
-    ${rows ? `<div class="table-wrap"><table><tr><th>#</th><th>Club</th><th>Pts</th><th>Top 8</th><th>Titres</th><th>${done ? "Dotation" : "Statut"}</th></tr>${rows}</table></div>${me >= 12 ? `<p>Vous : ${me + 1}e (${list[me].pts} pts)</p>` : ""}` : "<p class='muted'>Aucun point attribué pour l'instant.</p>"}</div>`;
+    <p class="muted" style="margin-top:-6px;font-size:13px">L'Esports World Cup regroupe un tournoi par jeu, avec les dotations de l'édition réelle (2 M€ en LoL, 3 M€ en MLBB, HoK et PUBG Mobile…). Chaque top 8 rapporte des points au club : 1 000 pour un titre, 750 pour une finale, 500 pour un podium. Pour être classé, il faut un top 8 dans au moins 2 jeux ; ${EWC_CLUB_PRIZES.length} clubs se partagent ${money(total)} (7 M€ pour le champion, 5 M€ pour le 2e, 4 M€ pour le 3e).</p>
+    ${rows ? `<div class="table-wrap"><table>${head}${rows}</table></div>${me >= 12 ? `<p>Vous : ${me + 1}e (${list[me].pts} pts)</p>` : ""}` : "<p class='muted'>Aucun point attribué pour l'instant.</p>"}
+    ${pastHtml}${realHtml}</div>`;
 }
 // qualifié ou éliminé pour l'étape suivante (qualifs FNCS, course aux Worlds, qualifs EWC)
 function qualBadge(q, short) {

@@ -227,3 +227,10 @@ js/ui.js        interface
 Les trophées peuvent être filtrés par jeu.
 
 **Fluidité** : la sauvegarde se compresse dans un Web Worker, en arrière-plan, quelques instants après le dernier clic, au lieu de geler l'écran environ 1 s à chaque action. Pendant l'affichage d'un écran, les calculs répétés sont mis en cache : masse salariale, plateaux des tournois, forces des équipes, classements. Résultat : le mercato passe de 0,6 s à 0,03 s, le calendrier de 0,5 s à 0,05 s et le tableau de bord de 0,36 s à 0,05 s.
+
+**EWC réelle** : chaque édition de l'Esports World Cup reprend les données de l'EWC 2026 (Paris, fichiers fournis par l'utilisateur) :
+- les dotations et le nombre de participants de chaque jeu, par exemple 3 M$ en MLBB, HoK et PUBG Mobile, 2 M$ en LoL, CS2 et Valorant ;
+- la répartition réelle du podium (par exemple 600 k$, 340 k$ et 220 k$ en LoL), le reste étant dégressif ;
+- les dotations du Club Championship (7 M$, 5 M$, 4 M$… 650 k$ pour le 10e).
+
+Le classement des structures affiche les points, les titres, les 2es et 3es places, les top 8 et la dotation. Les éditions jouées sont gardées dans un historique, et l'EWC 2026 réelle (classement des clubs et podiums par jeu) sert de référence. Les qualifications EWC ne rapportent plus de points au Club Championship.
