@@ -1807,6 +1807,8 @@ function resultsHtml(r) {
 function celebrate(reps) {
   const wins = reps.flatMap(r => r.tournaments.filter(t => t.place === 1)), titles = reps.flatMap(r => r.fans.filter(([l]) => l.startsWith("🏆 Titre")));
   if (!wins.length && !titles.length) return;
+  const world = wins.find(t => t.world);
+  if (world) return worldCelebrate(world, wins.length + titles.length);
   const gain = wins.reduce((s, t) => s + t.prize, 0), name = wins[0] ? wins[0].name : titles[0][0].replace("🏆 Titre : ", "");
   const box = document.createElement("div"); box.className = "celebrate";
   const colors = ["#ffd166", "#06d6a0", "#ef476f", "#118ab2", "#7c5cff", "#00d4ff", "#ff9f1c"];
@@ -1817,6 +1819,28 @@ function celebrate(reps) {
   if (amt) { const to = +amt.dataset.to, t0 = performance.now(); const step = t => { const k = Math.min(1, (t - t0) / 1400); amt.textContent = "+" + money(Math.round(to * (1 - Math.pow(1 - k, 3)))); if (k < 1) requestAnimationFrame(step); }; requestAnimationFrame(step); }
   box.addEventListener("click", () => box.remove());
   setTimeout(() => box.remove(), 4500);
+}
+// titre mondial : grande animation plein écran (rayons dorés, feux d'artifice, pluie de confettis, l'équipe championne)
+function worldCelebrate(t, count) {
+  const g = GAMES[t.game], u = user();
+  const roster = clubPlayers(t.winner, t.game).filter(p => p.starter || unitGame(t.game)).concat(unitGame(t.game) ? unitMates(t.winner, t.game) : []).slice(0, 8);
+  const gold = ["#ffd166", "#ffe8a3", "#f4b400", "#fff3c4", "#ffb703"], colors = gold.concat(["#06d6a0", "#ef476f", "#7c5cff", "#00d4ff"]);
+  const box = document.createElement("div"); box.className = "celebrate world-cel";
+  const fw = Array.from({ length: 9 }, (_, i) => { const x = randi(8, 92), y = randi(8, 50), c = pick(colors);
+    return `<div class="fw" style="left:${x}%;top:${y}%;animation-delay:${(0.4 + i * 0.55).toFixed(2)}s">${Array.from({ length: 18 }, (_, k) => `<b style="--a:${k * 20}deg;background:${c}"></b>`).join("")}</div>`; }).join("");
+  box.innerHTML = `<div class="wc-rays"></div>${fw}`
+    + Array.from({ length: 260 }, () => `<i style="left:${Math.random() * 100}%;background:${pick(colors)};animation-delay:${(Math.random() * 4).toFixed(2)}s;animation-duration:${(2.6 + Math.random() * 2.4).toFixed(2)}s;transform:rotate(${randi(0, 360)}deg)"></i>`).join("")
+    + `<div class="wc-card"><div class="wc-kicker">${g.icon} ${esc(g.name)} · ${S.season}</div>
+      <div class="wc-cup">🏆</div><div class="wc-big">CHAMPIONS DU MONDE</div>
+      <div class="wc-name">${esc(t.name)}</div><div class="wc-team">${displayName(t.winner, t.game)}</div>
+      ${roster.length ? `<div class="wc-roster">${roster.map(p => `<span>${flag(p.nat)} ${esc(p.handle)}</span>`).join("")}</div>` : ""}
+      ${t.prize ? `<div class="cel-amount" data-to="${Math.round(t.prize)}">+0 €</div>` : ""}
+      <div class="muted">${count > 1 ? `${count} trophées cette semaine · ` : ""}${esc(u.name)} entre dans l'histoire · cliquez pour continuer</div></div>`;
+  document.body.appendChild(box);
+  const amt = box.querySelector(".cel-amount[data-to]");
+  if (amt) { const to = +amt.dataset.to, t0 = performance.now() + 1200; const step = n => { const k = Math.max(0, Math.min(1, (n - t0) / 2200)); amt.textContent = "+" + money(Math.round(to * (1 - Math.pow(1 - k, 3)))); if (k < 1) requestAnimationFrame(step); }; requestAnimationFrame(step); }
+  setTimeout(() => box.addEventListener("click", () => box.remove()), 1500);
+  setTimeout(() => box.remove(), 14000);
 }
 // ---------- mercato : état des fenêtres et animation « Mercato time ! » ----------
 function mercatoBanner(game) {

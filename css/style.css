@@ -338,3 +338,22 @@ details.fold[open] > summary { margin-bottom: 6px; }
 .help-step p { margin: 4px 0 0; font-size: 14px; color: var(--muted); }
 .help-step p b { color: var(--text); }
 .res-qual { margin: 2px 0; font-size: .92em; }
+/* titre mondial */
+.world-cel { background: radial-gradient(circle at 50% 45%, #3a2a00ee, #000e 70%); animation: fadein .6s; }
+.wc-rays { position: absolute; left: 50%; top: 45%; width: 260vmax; height: 260vmax; margin: -130vmax 0 0 -130vmax; background: repeating-conic-gradient(#ffd16622 0 6deg, transparent 6deg 18deg); animation: wcspin 30s linear infinite; }
+@keyframes wcspin { to { transform: rotate(360deg); } }
+.wc-card { position: relative; text-align: center; padding: 26px 34px; max-width: min(92vw, 560px); border-radius: 22px; background: linear-gradient(160deg, #1d1606, #0b0e17); border: 3px solid #ffd166; box-shadow: 0 0 120px #ffd166aa, inset 0 0 40px #ffd16633; animation: wcpop 1.1s cubic-bezier(.2, 1.6, .4, 1) both; }
+@keyframes wcpop { 0% { transform: scale(.2) rotate(-8deg); opacity: 0; } 100% { transform: none; opacity: 1; } }
+.wc-kicker { letter-spacing: 3px; text-transform: uppercase; font-size: 12px; color: #ffe8a3; }
+.wc-cup { font-size: 96px; line-height: 1.1; filter: drop-shadow(0 0 24px #ffd166); animation: wccup 1.8s ease-in-out infinite; }
+@keyframes wccup { 50% { transform: translateY(-8px) scale(1.06); } }
+.wc-big { font-size: clamp(28px, 7vw, 48px); font-weight: 900; letter-spacing: 2px; background: linear-gradient(90deg, #f4b400, #fff3c4, #f4b400); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: wcshine 2.2s linear infinite; }
+@keyframes wcshine { to { background-position: -200% 0; } }
+.wc-name { font-size: 18px; font-weight: 800; margin-top: 4px; } .wc-team { font-size: 15px; margin: 4px 0 10px; color: #ffe8a3; }
+.wc-roster { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-bottom: 10px; }
+.wc-roster span { background: #ffd16622; border: 1px solid #ffd16666; border-radius: 99px; padding: 3px 10px; font-size: 13px; animation: wcpop .6s both; }
+.fw { position: absolute; width: 0; height: 0; opacity: 0; animation: fwshow 1.6s ease-out infinite; }
+.fw b { position: absolute; width: 6px; height: 6px; border-radius: 50%; transform: rotate(var(--a)) translateX(0); animation: fwburst 1.6s ease-out infinite; animation-delay: inherit; box-shadow: 0 0 8px currentColor; }
+@keyframes fwshow { 0% { opacity: 0; } 5% { opacity: 1; } 70% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes fwburst { 0% { transform: rotate(var(--a)) translateX(0) scale(1.4); } 100% { transform: rotate(var(--a)) translateX(110px) scale(.3); } }
+@media (prefers-reduced-motion: reduce) { .wc-rays, .fw, .wc-cup, .wc-big { animation: none; } .fw { display: none; } }

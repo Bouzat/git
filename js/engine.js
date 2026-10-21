@@ -2082,6 +2082,13 @@ function qualField(game, spec, name, week, raw) {
   }
   return null;
 }
+// titre mondial : le plus grand tournoi S-tier du jeu hors EWC (Worlds, The International, FNCS Global Championship…)
+function isWorldTitle(game, t) {
+  if (!t || tourTier(t) !== "S" || /^EWC/.test(t[0])) return false;
+  if (/Tactician's Crown/.test(t[0]) || (game === "cs2" && /\bMajor\b/.test(t[0]))) return true;
+  const top = allTournaments(game).filter(x => !/^EWC/.test(x[0])).reduce((a, b) => (b[2] > a[2] ? b : a), t);
+  return top[0] === t[0];
+}
 // place provisoire d'une équipe dans la course au Global Championship (points cumulés des grandes finales, par zone)
 function worldsStanding(game, id) {
   const O = S.tourOrder || {}, pts = {};
@@ -2472,7 +2479,7 @@ function playTournament(game, t) {
   (S.tourResults || (S.tourResults = [])).push({ season: S.season, week: w, game, name, prize, n: field.length, top: order.slice(0, 4), mine: mine || null, qual: mine ? quals[order[mine - 1]] || null : null });
   if (mine) {
     const won = Math.round(prize * (PLACE_SHARE[mine - 1] || 0) * clubKeep(game));
-    rep.tournaments.push({ game, name, place: mine, n: field.length, prize: won, winner: order[0], week: w, dd: 6, qual: quals[order[mine - 1]] || null, quals: order.filter(id => isMine(id) && quals[id]).map(id => ({ id, place: order.indexOf(id) + 1, ...quals[id] })) });
+    rep.tournaments.push({ game, name, place: mine, n: field.length, prize: won, winner: order[0], week: w, dd: 6, world: mine === 1 && isWorldTitle(game, t), qual: quals[order[mine - 1]] || null, quals: order.filter(id => isMine(id) && quals[id]).map(id => ({ id, place: order.indexOf(id) + 1, ...quals[id] })) });
     if (mine === 1) mail(`🏆 ${name} remporté !`, `${user().name} remporte le <b>${name} ${S.season}</b> (${GAMES[game].name}) et empoche ${money(won)}.`, "trophy", game);
   }
 }
