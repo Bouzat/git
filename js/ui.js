@@ -400,14 +400,14 @@ function unitRoster(game) {
     const pos = standings(L.key).findIndex(r => r.id === id) + 1;
     const opts = p => teams.filter(t => t !== id && divOf(t, game).zone === playerZone(p) && clubPlayers(t, game).length < g.size)
       .map(t => `<option value="${t}">→ ${g.unit} ${teams.indexOf(t) + 1} (${esc(soloName(S.clubs[t], game))})</option>`).join("") + (ps.length > 1 ? `<option value="new">→ nouveau ${g.unit} (${ZONE_NAMES[playerZone(p)]})</option>` : "");
-    const rows = ps.map(p => `<tr><td>${flag(p.nat)} <b class="link" data-act="player-info" data-v="${p.id}">${esc(p.handle)}</b> <small class="muted">${playRegion(p)}</small>${adaptFactor(p) < 1 ? ` <small class="warn" title="Adaptation à sa nouvelle région">✈️</small>` : ""}</td><td>${p.role}</td><td>${ageTxt(p)}</td><td>${R(p.rating)}</td><td>${potTxt(p)}</td><td>${noteChip(avgNote(p))}</td><td>${bar(p.form)}</td><td>${bar(p.morale)}</td>
+    const rows = ps.map(p => `<tr><td>${flag(p.nat)} <b class="link" data-act="player-info" data-v="${p.id}">${esc(p.handle)}</b> <small class="muted">${playRegion(p)}</small>${adaptFactor(p) < 1 ? ` <small class="warn" title="Adaptation à sa nouvelle région">✈️</small>` : ""}</td><td>${p.role}</td><td>${ageTxt(p)}</td><td>${R(p.rating)}</td><td>${potTxt(p)}</td><td>${evoCell(p)}</td><td>${noteChip(avgNote(p))}</td><td>${bar(p.form)}</td><td>${bar(p.morale)}</td>
       <td>${money(p.salary)}/sem</td><td class="${p.years <= 1 ? "warn" : ""}">${p.years} an(s)</td>
       <td style="white-space:nowrap"><button class="small" data-act="talk" data-v="${p.id}" title="Parler au joueur">💬</button> ${opts(p) ? `<select class="small-sel" data-change="unit-move" data-pid="${p.id}" aria-label="Changer d'équipe"><option value="">Changer d'équipe…</option>${opts(p)}</select>` : ""}
         <button class="small" data-act="contract" data-v="${p.id}">Contrat</button>${sellBtn(p)}<button class="small danger" data-act="release" data-v="${p.id}">Libérer</button></td></tr>`).join("")
       + mates.map(p => `<tr class="mate"><td>${flag(p.nat)} ${esc(p.handle)}* </td><td>${p.role}</td><td>${ageTxt(p)}</td><td>${R(p.rating)}</td><td colspan="7" class="muted">Partenaire extérieur au club : il joue avec votre joueur, vous ne le payez pas.</td></tr>`).join("");
     return `<div class="card" style="margin-bottom:14px"><div class="toolbar"><div style="flex:1;min-width:0"><h3 style="margin:0">${g.icon} ${g.unit[0].toUpperCase() + g.unit.slice(1)} ${k + 1} · ${ZONE_NAMES[d.zone]} — Force ${R(Math.round(teamStrength(id, game).str))}</h3>
       <div style="margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">${tchip(d.tier, game)}<span class="muted">${esc(leagueName(L))}${pos ? ` · ${pos}e / ${L.teams.length}` : ""}</span></div></div></div>
-      <div class="table-wrap"><table><tr><th>Joueur</th><th>Rôle</th><th>Âge</th><th>Note</th><th>Potentiel</th><th>Moy.</th><th>Forme</th><th>Moral</th><th>Salaire</th><th>Contrat</th><th></th></tr>${rows || `<tr><td colspan="11" class="muted">Aucun joueur.</td></tr>`}</table></div></div>`;
+      <div class="table-wrap"><table><tr><th>Joueur</th><th>Rôle</th><th>Âge</th><th>Note</th><th>Potentiel</th><th title="Points gagnés depuis son arrivée et rythme de progression (▲▲ rapide, ▲ normal, ↗ lent, → à l'arrêt)">Évol.</th><th>Moy.</th><th>Forme</th><th>Moral</th><th>Salaire</th><th>Contrat</th><th></th></tr>${rows || `<tr><td colspan="12" class="muted">Aucun joueur.</td></tr>`}</table></div></div>`;
   }).join("");
   return `<div class="card" style="margin-bottom:14px"><div class="toolbar"><div style="flex:1;min-width:0"><h3 style="margin:0">${g.icon} ${g.name} ${S.season} — ${g.unit}s (${g.size} joueurs)</h3>
       <p class="muted" style="margin:6px 0 0;font-size:13px">Pas de banc : chacun de vos joueurs joue dans un ${g.unit}. Vous pouvez aligner plusieurs ${g.unit}s, chacun dans la FNCS de sa région (un ${g.unit} américain en Amérique du Nord, un ${g.unit} européen en Europe). Un joueur seul se trouve un partenaire hors du club, que vous ne payez pas (marqué d'un astérisque). Pour changer un joueur de région, renégociez son contrat.</p></div>
@@ -480,7 +480,7 @@ function academyCard(game) {
   const ad = aca.divisions[game];
   const ps = clubPlayers(aca.id, game).sort((a, b) => (b.starter - a.starter) || b.rating - a.rating);
   const rows = ps.map(p => `<tr><td>${p.starter ? "⭐" : "<span class='muted'>banc</span>"}</td>
-    <td>${flag(p.nat)} <b>${esc(p.handle)}</b> <small class="muted">${playRegion(p)}</small></td><td>${p.role}</td><td>${ageTxt(p)}</td><td>${R(p.rating)}</td><td>${potTxt(p)}</td>
+    <td>${flag(p.nat)} <b class="link" data-act="player-info" data-v="${p.id}">${esc(p.handle)}</b> <small class="muted">${playRegion(p)}</small></td><td>${p.role}</td><td>${ageTxt(p)}</td><td>${R(p.rating)}</td><td>${potTxt(p)}</td><td>${evoCell(p)}</td>
     <td>${bar(p.form)}</td><td>${bar(p.morale)}</td><td>${money(p.salary)}/sem</td><td class="${p.years <= 1 ? "warn" : ""}">${p.years} an(s)</td>
     <td style="white-space:nowrap"><button class="small primary" data-act="to-academy" data-v="${p.id}">↑ Équipe première</button>
       <button class="small" data-act="contract" data-v="${p.id}">Contrat</button>
@@ -489,7 +489,7 @@ function academyCard(game) {
   return `<div class="card" style="margin-top:20px"><div class="toolbar"><div style="flex:1;min-width:0"><h3 style="margin:0">🎓 ${esc(aca.name)} — Force ${R(Math.round(teamStrength(aca.id, game).str))}</h3>
       <div style="margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">${tchip(ad.tier)}<span class="muted">${esc(leagueName(L))}${pos ? ` · ${pos}e` : ""} · composition automatique (les meilleurs jouent)</span></div></div>
       <button class="small danger" data-act="close-academy">Fermer l'académie</button></div>
-    <div class="table-wrap"><table><tr><th></th><th>Joueur</th><th>Rôle</th><th>Âge</th><th>Note</th><th>Potentiel</th><th>Forme</th><th>Moral</th><th>Salaire</th><th>Contrat</th><th></th></tr>${rows || `<tr><td colspan="11" class="muted">Aucun joueur.</td></tr>`}</table></div></div>`;
+    <div class="table-wrap"><table><tr><th></th><th>Joueur</th><th>Rôle</th><th>Âge</th><th>Note</th><th>Potentiel</th><th title="Points gagnés depuis son arrivée et rythme de progression (▲▲ rapide, ▲ normal, ↗ lent, → à l'arrêt)">Évol.</th><th>Forme</th><th>Moral</th><th>Salaire</th><th>Contrat</th><th></th></tr>${rows || `<tr><td colspan="12" class="muted">Aucun joueur.</td></tr>`}</table></div></div>`;
 }
 // le potentiel affiché est une estimation : plus le staff est bon, plus elle est précise
 const ageTxt = p => p.ageKnown === false ? `<span class="muted" title="Âge réel inconnu, estimé">~${p.age}</span>` : p.age;
