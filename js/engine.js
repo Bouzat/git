@@ -743,11 +743,19 @@ function nextWindow(game, w = S.week) {
   const ws = mercatoRules(game).w, n = ws.find(x => x[0] > w);
   return n ? [n[0], S.season, n] : [ws[0][0], S.season + 1, ws[0]];
 }
+// l'intersaison continue d'une saison à l'autre (fenêtre de fin de saison + fenêtre de janvier) : vraie date de fermeture
+function windowEnd(game, w = S.week) {
+  const r = mercatoRules(game), cur = windowAt(game, w); if (!cur) return null;
+  const first = cur[1] === SEASON_LAST && r.w.find(x => x[0] === SEASON_FIRST);
+  return first ? { season: S.season + 1, week: first[1], weeks: SEASON_LAST - w + 1 + first[1] - SEASON_FIRST + 1 } : { season: S.season, week: cur[1], weeks: cur[1] - w + 1 };
+}
+const windowContinues = (game, w = S.week) => w === SEASON_FIRST && mercatoRules(game).w.some(x => x[1] === SEASON_LAST) && !!windowAt(game, w);
+const untilTxt = e => `jusqu'au ${dayLabel(e.season, e.week, 6)}${e.season !== S.season ? " " + e.season : ""} (${e.weeks === 1 ? "dernière semaine" : e.weeks + " semaines"})`;
 function mercatoStatus(game) {
-  const r = mercatoRules(game), cur = windowAt(game), [nw, ns, nx] = nextWindow(game);
-  const until = cur && `jusqu'au ${dayLabel(S.season, cur[1], 6)}`;
+  const r = mercatoRules(game), cur = windowAt(game), [nw, ns, nx] = nextWindow(game), end = windowEnd(game);
+  const until = cur && untilTxt(end);
   if (r.always) return { open: true, hot: !!cur, text: cur ? `🔥 Marché en ébullition (${cur[2]}) ${until}` : `Pas de fenêtre réglementée : transferts possibles toute l'année. Prochain pic : ${weekLabel(ns, nw)} (${nx[2]})` };
-  if (cur) return { open: true, last: S.week === cur[1], text: `🟢 Mercato ouvert ${until} — ${cur[2]}` };
+  if (cur) return { open: true, last: end.weeks === 1, weeks: end.weeks, text: `🟢 Mercato ouvert ${until} — ${cur[2]}` };
   return { open: false, text: `🔴 Mercato fermé : réouverture le ${dayLabel(ns, nw, 0)}${ns !== S.season ? " " + ns : ""} (${nx[2]}). En attendant, seuls les agents libres et les indépendants peuvent signer.` };
 }
 // hors fenêtre, un club ne peut pas céder un joueur sous contrat
@@ -761,11 +769,11 @@ function mercatoChanges() {
   const u = user(), opened = [], closing = [];
   for (const g of Object.keys(GAMES)) {
     const cur = windowAt(g);
-    if (cur && cur[0] === S.week) opened.push([g, cur, !!u.divisions[g], !!mercatoRules(g).always]);
-    if (cur && cur[1] === S.week && u.divisions[g] && !mercatoRules(g).always) closing.push(g);
+    if (cur && cur[0] === S.week && !windowContinues(g)) opened.push([g, cur, !!u.divisions[g], !!mercatoRules(g).always, windowEnd(g)]);
+    if (cur && windowEnd(g).weeks === 1 && u.divisions[g] && !mercatoRules(g).always) closing.push(g);
   }
   const mine = opened.filter(o => o[2]);
-  if (mine.length) mail(`🔁 Mercato ouvert : ${mine.map(o => GAMES[o[0]].short).join(", ")}`, mine.map(([g, cur, , al]) => `${GAMES[g].icon} <b>${GAMES[g].name}</b> : ${al ? "le marché s'emballe" : "fenêtre ouverte"} jusqu'au ${dayLabel(S.season, cur[1], 6)} (${cur[2]}).`).join("<br>") + "<br>Vous pouvez faire des offres aux clubs pour leurs joueurs sous contrat, et vos joueurs placés sur la liste des transferts recevront des offres.", "transfer");
+  if (mine.length) mail(`🔁 Mercato ouvert : ${mine.map(o => GAMES[o[0]].short).join(", ")}`, mine.map(([g, cur, , al, end]) => `${GAMES[g].icon} <b>${GAMES[g].name}</b> : ${al ? "le marché s'emballe" : "fenêtre ouverte"} ${untilTxt(end)} — ${cur[2]}.`).join("<br>") + "<br>Vous pouvez faire des offres aux clubs pour leurs joueurs sous contrat, et vos joueurs placés sur la liste des transferts recevront des offres.", "transfer");
   if (closing.length) mail(`⏳ Dernière semaine du mercato : ${closing.map(g => GAMES[g].short).join(", ")}`, `La fenêtre de transferts se ferme dimanche pour ${closing.map(g => GAMES[g].name).join(", ")}. Ensuite, seuls les agents libres pourront signer.`, "transfer");
   return opened.length ? { opened, closing } : null;
 }

@@ -285,3 +285,4 @@ th.sorted-asc::after { content: " ▲"; color: var(--accent2); } th.sorted-desc:
 .mm-t td, .mm-t th { padding: 6px 8px; } .mm-t td b { font-size: 16px; }
 .afford { background: var(--panel2); border-radius: 10px; padding: 8px 12px; font-size: 13px; }
 .price-range { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; } .price-range input { width: 120px; }
+.mw-chip b { color: #06d6a0; } .mw-chip.last b { color: #ffd166; }

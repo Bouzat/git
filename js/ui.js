@@ -206,6 +206,7 @@ function render() {
         <div class="stat link-row" data-act="explain-fame" title="À quoi sert la notoriété ?"><b>${Math.round(u.fame)}<small class="muted">/100</small></b><span>Notoriété ⓘ</span></div>
         <div class="stat"><b>${u.fans.toLocaleString("fr-FR")}</b><span>Fans</span></div>
         <div class="stat"><b class="${S.board.confidence < 30 ? "bad" : S.board.confidence < 55 ? "warn" : "ok"}">${Math.round(S.board.confidence)}%</b><span>Confiance du conseil</span></div>
+        ${mercatoChip()}
         <div class="spacer"></div>
         ${S.over ? `<button class="danger" data-act="quit">Partie terminée — Menu</button>` : `<button data-act="skip" title="Joue cette semaine puis passe les semaines sans match jusqu'au prochain">⏭ Prochain match</button>
           <button class="primary" data-act="next">${pendingOffers().length ? `📨 Offres à traiter (${pendingOffers().length})` : pending.length ? `🎮 Jour de match (${pending.length})` : "Semaine suivante ▶"}</button>`}
@@ -1067,7 +1068,7 @@ Object.assign(ACTIONS, {
   "tour-game": v => { UI.tourGame = v; render(); },
   "tour-size": v => { UI.tourSize = v; render(); },
   "cal-mode": v => { UI.calMode = v; render(); },
-  "goto-market": v => { UI.market.game = v; UI.market.page = 0; UI.view = "market"; render(); },
+  "goto-market": v => { closeModal(); UI.market.game = v; UI.market.page = 0; UI.market.tab = "search"; UI.view = "market"; render(); },
   "open-div": v => {
     const [game, t] = v.split("|"), tier = +t, g = GAMES[game];
     const z = zoneFrom(game, REGION_OF[user().country] || "EU", user().country);
@@ -1518,10 +1519,26 @@ function mercatoDatesModal() {
     <div class="actions"><button class="primary" data-act="close-modal">Fermer</button></div>`);
 }
 ACTIONS["mercato-dates"] = () => mercatoDatesModal();
+function mercatoChip() {
+  const u = user(), open = Object.keys(u.divisions).filter(g => !mercatoRules(g).always && windowAt(g)).map(g => [g, windowEnd(g).weeks]).sort((a, b) => a[1] - b[1]);
+  if (!open.length) return "";
+  const [g, n] = open[0];
+  return `<div class="stat link-row mw-chip ${n === 1 ? "last" : ""}" data-act="goto-market" data-v="${open.length === 1 ? g : "all"}" title="${open.map(([x, k]) => `${GAMES[x].short} : encore ${k} sem.`).join(" · ")}"><b>🔁 ${n === 1 ? "Dernière semaine" : n + " sem."}</b><span>Mercato ${open.map(([x]) => GAMES[x].short).join(" · ")}</span></div>`;
+}
+// avant de passer la dernière semaine d'un mercato, on prévient une fois
+function mercatoCloseWarning() {
+  const u = user(), closing = Object.keys(u.divisions).filter(g => !mercatoRules(g).always && windowAt(g) && windowEnd(g).weeks === 1);
+  const key = S.season + "-" + S.week; if (!closing.length || UI.mwWarned === key) return false;
+  UI.mwWarned = key;
+  modal(`<h2>⏳ Le mercato se ferme</h2><p>C'est la <b>dernière semaine</b> du mercato en ${closing.map(g => `${GAMES[g].icon} ${GAMES[g].name}`).join(", ")}. Après, vous ne pourrez plus acheter de joueurs sous contrat (seulement des agents libres) jusqu'à la prochaine fenêtre : ${closing.map(g => { const [w, sn] = nextWindow(g); return `${GAMES[g].short} le ${dayLabel(sn, w, 0)}`; }).join(", ")}.</p>
+    <div class="actions"><button data-act="close-modal">Rester sur cette semaine</button><button data-act="goto-market" data-v="${closing.length === 1 ? closing[0] : "all"}">💱 Aller au mercato</button><button class="primary" data-act="mw-continue">Continuer quand même ▶</button></div>`);
+  return true;
+}
+ACTIONS["mw-continue"] = () => { closeModal(); playWeek(); };
 function mercatoTime(info) {
   if (!info || !info.opened.length) return;
   const u = user(), mine = info.opened.filter(o => o[2]), others = info.opened.filter(o => !o[2] && !o[3]);
-  const line = ([g, cur]) => `<div class="mt-g">${GAMES[g].icon} <b>${GAMES[g].name}</b> <span class="muted">jusqu'au ${dayLabel(S.season, cur[1], 6)} · ${esc(cur[2])}</span></div>`;
+  const line = ([g, cur, , , end]) => `<div class="mt-g">${GAMES[g].icon} <b>${GAMES[g].name}</b> <span class="muted">${untilTxt(end)} · ${esc(cur[2])}</span></div>`;
   const box = document.createElement("div"); box.className = "mercato-time";
   box.innerHTML = `<div class="mt-card"><div class="mt-title"><span>MERCATO</span> <span>TIME !</span></div>
     ${mine.length ? `<div class="mt-h">Vos sections</div>${mine.map(line).join("")}` : ""}
@@ -1646,16 +1663,19 @@ function offersModal() {
 }
 ACTIONS["offers-back"] = () => offersModal();
 ACTIONS["offers-later"] = () => { UI.offerFlow = false; closeModal(); UI.view = "market"; UI.market.tab = "list"; render(); };
-ACTIONS["md-finish"] = () => { if (pendingOffers().length) return offersModal(); playWeek(); };
+ACTIONS["md-finish"] = () => { if (pendingOffers().length) return offersModal(); if (!mercatoCloseWarning()) playWeek(); };
 // bouton principal : jour de match s'il reste des rencontres à lancer, sinon semaine suivante
-ACTIONS["next"] = () => { if (pendingOffers().length) return offersModal(); if (weekEvents().some(e => !e.done)) matchDayModal(); else playWeek(); };
+ACTIONS["next"] = () => { if (pendingOffers().length) return offersModal(); if (weekEvents().some(e => !e.done)) matchDayModal(); else if (!mercatoCloseWarning()) playWeek(); };
 // avance jusqu'à la prochaine semaine où le club joue (les semaines vides passent d'un coup)
 ACTIONS["skip"] = () => {
   if (pendingOffers().length) return offersModal();
+  if (mercatoCloseWarning()) return;
+  // « Prochain match » ne saute jamais une ouverture ni la dernière semaine d'un mercato de vos sections
+  const mwState = () => Object.keys(user().divisions).map(g => mercatoOpen(g) + ":" + (windowAt(g) && windowEnd(g).weeks === 1)).join();
   const reps = [];
   for (let i = 0; i < 20; i++) {
-    const rep = advanceWeek(); reps.push(rep);
-    if (rep.events.length || rep.seasonEnd || S.over || weekEvents().length || pendingOffers().length) break;
+    const before = mwState(), rep = advanceWeek(); reps.push(rep);
+    if (rep.events.length || rep.seasonEnd || S.over || weekEvents().length || pendingOffers().length || mwState() !== before) break;
   }
   showSummary(reps);
 };
