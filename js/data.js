@@ -438,6 +438,14 @@ const GAME_ZONES = {
   fn: { zones: ["EU", "NA", "SA", "MENA", "ASIA", "OCE"], map: { EU: "EU", NA: "NA", SA: "SA", MENA: "MENA", OCE: "OCE", ASIA: "ASIA" },
     names: ["FNCS {z}", "FNCS {z}", "FNCS {z}"] },
 };
+// ligues fermées (franchises) : ni montée ni descente ; on y entre en rachetant la place d'un club (prix de base d'une place, en €)
+const FRANCHISES = {
+  lol: { 1: { EU: 12000000, KR: 10000000, CN: 10000000, NA: 8000000, SA: 2500000, PAC: 3000000 } },
+  val: { 1: { EMEA: 8000000, AMER: 8000000, PAC: 5000000, CN: 5000000 } },
+  cod: { 1: { W: 25000000 } },
+};
+// région de jeu correspondant à une zone (pour une équipe qui rachète une franchise à l'étranger)
+const ZONE_REGION = { EU: "EU", EMEA: "EU", NA: "NA", AMER: "NA", SA: "SA", MENA: "MENA", KR: "ASIA", CN: "ASIA", PAC: "ASIA", ASIA: "ASIA", OCE: "OCE" };
 // zone d'une équipe dans un jeu, d'après sa région (et le pays de son organisation pour l'Asie)
 function zoneFrom(game, region, cc) {
   const Z = GAME_ZONES[game]; if (!Z) return "W";

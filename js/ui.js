@@ -260,7 +260,7 @@ function viewRoster() {
     <p class="muted" style="margin-top:-6px">Le tier 3 est ouvert à tous. Acheter une place plus haut demande de la notoriété : ${TIER_FAME_REQ[1]} pour le tier 2, ${TIER_FAME_REQ[0]} pour le tier 1 (vous êtes à ${u.fame.toFixed(0)}).</p>
     <div class="grid g3">${others.map(g => `
     <div class="open-div"><div><b>${GAMES[g].icon} ${GAMES[g].name}</b><div class="muted" style="font-size:12px">${FMT_LABEL[GAMES[g].fmt]} · ${GAMES[g].size} joueur(s)${GAMES[g].fmt === "br" ? " · lobbies de " + lobbyText(g) : ""}</div></div>
-      <div style="display:flex;gap:4px;flex-wrap:wrap">${(GAMES[g].open ? [3] : [3, 2, 1]).map(t => `<button class="small" data-act="open-div" data-v="${g}|${t}" ${canJoin(g, t) ? "disabled" : ""} title="${esc(canJoin(g, t) || tierName(g, GAMES[g].open ? 1 : t, zoneFrom(g, REGION_OF[u.country] || "EU", u.country)))}">${GAMES[g].open ? "Circuit ouvert" : "T" + t} · ${money(tierEntry(g, t))}</button>`).join("")}</div></div>`).join("")}</div></div>`;
+      <div style="display:flex;gap:4px;flex-wrap:wrap">${(GAMES[g].open ? [3] : [3, 2, 1]).map(t => `<button class="small" data-act="open-div" data-v="${g}|${t}" ${canJoin(g, t) ? "disabled" : ""} title="${esc(canJoin(g, t) || tierName(g, GAMES[g].open ? 1 : t, zoneFrom(g, REGION_OF[u.country] || "EU", u.country)))}">${GAMES[g].open ? "Circuit ouvert" : "T" + t} · ${money(tierEntry(g, t))}</button>`).join("")}${franchiseZones(g).length ? `<button class="small" data-act="franchise" data-v="${g}" title="Ligue fermée : racheter la place d'un club">🔒 Franchise</button>` : ""}</div></div>`).join("")}</div></div>`;
   if (!UI.rosterGame) return `<h2>Effectifs</h2><p class="muted">Votre club n'a encore aucune division.</p>${open}`;
   const g = GAMES[UI.rosterGame], d = u.divisions[UI.rosterGame];
   const ps = clubPlayers(u.id, UI.rosterGame).sort((a, b) => (b.starter - a.starter) || b.rating - a.rating);
@@ -285,6 +285,7 @@ function viewRoster() {
       <div style="margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">${tchip(d.tier, UI.rosterGame)}<span class="muted">${esc(divName(u.id, UI.rosterGame))}</span></div></div>
       <button class="small" data-act="auto-lineup">⚡ Composition auto</button>
       <button class="small" data-act="team-talk" data-v="${UI.rosterGame}">💬 Réunion d'équipe</button>
+      ${franchiseZones(UI.rosterGame).length && !isClosed(UI.rosterGame, d.tier, d.zone) ? `<button class="small" data-act="franchise" data-v="${UI.rosterGame}">🔒 Racheter une franchise</button>` : ""}
       <button class="small" data-act="goto-market" data-v="${UI.rosterGame}">🔎 Recruter</button>
       <button class="small danger" data-act="close-div">Fermer la division</button></div>
     <div class="table-wrap"><table><tr><th></th><th>Joueur</th><th>Rôle</th><th>Âge</th><th>Note</th><th>Potentiel</th><th title="Note moyenne en match cette saison (sur 10)">Moy.</th><th title="5 derniers matchs">Derniers matchs</th><th>Forme</th><th>Moral</th><th>Salaire</th><th>Contrat</th><th>Clause</th><th>Valeur</th><th></th></tr>${rows || `<tr><td colspan="15" class="muted">Aucun joueur. Rendez-vous au mercato !</td></tr>`}</table></div></div>
@@ -496,7 +497,7 @@ function viewComp() {
   const ttabs = g.open ? "" : [1, 2, 3].map(t => `<button class="tab small ${UI.compTier === t ? "active" : ""}" data-act="comp-tier" data-v="${t}">${TIER_LABEL[t - 1]} · ${esc(tierName(UI.compGame, t, UI.compZone))}${mineIn(t, UI.compZone) ? " ★" : ""}</button>`).join("");
   const st = standings(L.key), n = st.length;
   const cut = g.open ? statusCuts(n) : null;
-  const zone = i => cut ? (i < 8 ? "<span class='ok' title='Grande finale'>●</span>" : i === cut[0] - 1 ? "<span class='ok' title='Dernière place Élite'>▲</span>" : i === cut[1] - 1 ? "<span class='warn' title='Dernière place Pro'>▲</span>" : "") : i < 2 && UI.compTier > 1 ? "<span class='ok' title='Montée'>▲</span>" : i >= n - 2 && UI.compTier < 3 ? "<span class='bad' title='Relégation'>▼</span>" : (br ? i < 8 : i < 4) ? "<span class='ok'>●</span>" : "";
+  const zone = i => cut ? (i < 8 ? "<span class='ok' title='Grande finale'>●</span>" : i === cut[0] - 1 ? "<span class='ok' title='Dernière place Élite'>▲</span>" : i === cut[1] - 1 ? "<span class='warn' title='Dernière place Pro'>▲</span>" : "") : i < 2 && UI.compTier > 1 && !isClosed(UI.compGame, UI.compTier - 1, UI.compZone) ? "<span class='ok' title='Montée'>▲</span>" : i >= n - 2 && UI.compTier < 3 && !isClosed(UI.compGame, UI.compTier, UI.compZone) ? "<span class='bad' title='Relégation'>▼</span>" : (br ? i < 8 : i < 4) ? "<span class='ok'>●</span>" : "";
   const name = id => `<span style="color:${S.clubs[id].color}">■</span> <b data-act="club-info" data-v="${id}" style="cursor:pointer">${displayName(id, UI.compGame)}</b>`;
   const table = br
     ? `<tr><th>#</th><th>${g.unit === "duo" ? "Duo" : "Équipe"}</th><th>Pts</th><th>Top 1</th><th>Élims</th><th>Place moy.</th><th>Force</th></tr>` + st.map((r, i) => `<tr class="${r.id === u.id ? "me" : ""}"><td>${i + 1} ${zone(i)}</td><td>${name(r.id)}</td><td><b>${r.pts}</b></td><td>${r.top1}</td><td>${r.kills}</td><td>${r.games ? (r.place / r.games).toFixed(1) : "-"}</td><td>${R(Math.round(teamStrength(r.id, UI.compGame).str))}</td></tr>`).join("")
@@ -516,11 +517,12 @@ function viewComp() {
     const fixtures = nd ? L.schedule[nd - 1].map(([a, b]) => `<div class="match"><div class="r">${displayName(a, UI.compGame)}</div><div class="score muted">vs</div><div>${displayName(b, UI.compGame)}</div></div>`).join("") : `<p class="muted">Saison régulière terminée.</p>`;
     side = `<h3>${nd ? `Journée ${nd} — ${weekLabel(S.season, nw)}` : "Affiches"}</h3>${fixtures}<h3 style="margin-top:16px">Derniers résultats</h3>${L.results.slice(-6).reverse().map(matchRow).join("") || "<p class='muted'>Aucun résultat.</p>"}`;
   }
-  return `<h2>${g.icon} ${esc(leagueName(L))} <small class="muted">${g.open ? "circuit ouvert" : TIER_LABEL[L.tier - 1]}${L.zone !== "W" ? " · " + ZONE_NAMES[L.zone] : ""}</small></h2><div class="tabs">${tabs}</div>${ztabs ? `<div class="tabs">${ztabs}</div>` : ""}<div class="tabs">${ttabs}</div>
+  const closed = isClosed(L.game, L.tier, L.zone);
+  return `<h2>${g.icon} ${esc(leagueName(L))} <small class="muted">${g.open ? "circuit ouvert" : TIER_LABEL[L.tier - 1]}${L.zone !== "W" ? " · " + ZONE_NAMES[L.zone] : ""}</small>${closed ? ` <span class="chip warn" title="Ni montée ni relégation">🔒 Ligue fermée</span>${L.teams.some(isMine) ? "" : ` <button class="small" data-act="franchise" data-v="${L.game}|${L.zone}">Racheter une place</button>`}` : ""}</h2><div class="tabs">${tabs}</div>${ztabs ? `<div class="tabs">${ztabs}</div>` : ""}<div class="tabs">${ttabs}</div>
     ${RANKED_GAMES.includes(UI.compGame) ? rankCard(UI.compGame) : ""}
     <div class="grid g2">
       <div class="card"><h3>Classement · ${FMT_LABEL[g.fmt]}</h3><div class="table-wrap"><table>${table}</table></div>
-        <p class="muted" style="font-size:12px">${cut ? `circuit ouvert : dans cette région, le top ${cut[0]} obtient le statut Élite et le top ${cut[1]} le statut Pro pour la saison suivante (invitations, sponsors) · ` : ""}${!cut && UI.compTier > 1 ? "▲ montée · " : ""}${!cut && UI.compTier < 3 ? "▼ relégation · " : ""}cashprize ${money(tierPrize(UI.compGame, UI.compTier))} (40 % au champion)</p></div>
+        <p class="muted" style="font-size:12px">${cut ? `circuit ouvert : dans cette région, le top ${cut[0]} obtient le statut Élite et le top ${cut[1]} le statut Pro pour la saison suivante (invitations, sponsors) · ` : ""}${!cut && UI.compTier > 1 && !isClosed(UI.compGame, UI.compTier - 1, UI.compZone) ? "▲ montée · " : ""}${!cut && UI.compTier < 3 && !isClosed(UI.compGame, UI.compTier, UI.compZone) ? "▼ relégation · " : ""}${isClosed(UI.compGame, UI.compTier, UI.compZone) ? "🔒 ligue fermée (franchises) · " : ""}cashprize ${money(tierPrize(UI.compGame, UI.compTier))} (40 % au champion)</p></div>
       <div>
         <div class="card"><h3>${br ? "Grande finale" : "Playoffs"}</h3>${po}</div>
         <div class="card" style="margin-top:16px">${br ? "<h3>Dernières journées</h3>" : ""}${side}</div>
@@ -539,6 +541,25 @@ function rankCard(game) {
     <p class="muted" style="margin-top:-6px;font-size:13px">Chaque tournoi rapporte des points selon sa dotation et votre place, chaque victoire en ligue un peu. Les points comptent pleinement 3 mois, à 75 % jusqu'à 6 mois, à 40 % jusqu'à un an. Les invitations aux grands tournois suivent ce classement, et en fin de saison le top 12 joue en tier 1, les 12 suivants en tier 2.</p>
     <div class="table-wrap" style="max-height:420px;overflow:auto"><table><tr><th>#</th><th></th><th>Équipe</th><th>Tier</th><th style="text-align:right">Points</th></tr>${rows}</table></div></div>`;
 }
+// rachat d'une franchise (ligue fermée) : places à vendre et prix
+function franchiseModal(game, zone) {
+  const u = user(), zones = franchiseZones(game), d = u.divisions[game];
+  if (!zone || !zones.includes(zone)) zone = d && zones.includes(d.zone) ? d.zone : zones.includes(zoneFrom(game, REGION_OF[u.country] || "EU", u.country)) ? zoneFrom(game, REGION_OF[u.country] || "EU", u.country) : zones[0];
+  const L = S.leagues[lkey(game, 1, zone)], inIt = L.teams.some(isMine);
+  const slots = franchiseSlots(game, zone);
+  const rows = slots.map(x => { const c = S.clubs[x.id];
+    return `<tr><td><span style="color:${c.color}">■</span> <b>${displayName(x.id, game)}</b>${c.filler ? " <small class='muted'>(club modeste)</small>" : ""}</td><td>${c.fame.toFixed(0)}</td><td style="text-align:right"><b class="${u.budget >= x.price ? "" : "bad"}">${money(x.price)}</b></td>
+      <td><button class="small primary" data-act="franchise-buy" data-v="${game}|${zone}|${x.id}" ${inIt || u.budget < x.price || S.franchiseDeal ? "disabled" : ""}>Racheter</button></td></tr>`; }).join("");
+  modal(`<h2>🔒 Franchises ${GAMES[game].icon} ${GAMES[game].name}</h2>
+    <p class="muted" style="margin-top:-6px">Les ligues fermées n'ont ni montée ni relégation : pour y entrer, il faut racheter la place d'un club. Les grandes organisations ne vendent pas ; le prix dépend de la ligue et du prestige du vendeur. ${leagueSeasonOn() ? "<b>La saison de ligue est en cours : vous jouerez dans la ligue dès la saison prochaine.</b>" : "Le rachat prend effet tout de suite."} Si vous avez déjà une équipe dans ce jeu, elle monte avec ses joueurs et le vendeur prend sa place.</p>
+    <div class="tabs">${zones.map(z => `<button class="tab small ${z === zone ? "active" : ""}" data-act="franchise" data-v="${game}|${z}">${esc(tierName(game, 1, z))}</button>`).join("")}</div>
+    <p>Budget du club : <b>${money(u.budget)}</b> · prix de base d'une place en ${esc(tierName(game, 1, zone))} : ${money(FRANCHISES[game][1][zone])}${zoneFrom(game, REGION_OF[u.country] || "EU", u.country) !== zone ? ` · <span class="warn">ligue d'une autre région : vos titulaires devront y être inscrits</span>` : ""}</p>
+    ${S.franchiseDeal ? `<p class="warn">Rachat déjà conclu : ${esc(tierName(S.franchiseDeal.game, 1, S.franchiseDeal.zone))}, effectif à la fin de la saison.</p>` : ""}
+    ${inIt ? "<p class='ok'>Votre club a déjà sa place dans cette ligue.</p>" : `<div class="table-wrap"><table><tr><th>Club vendeur</th><th>Notoriété</th><th style="text-align:right">Prix</th><th></th></tr>${rows || "<tr><td colspan='4' class='muted'>Aucune place à vendre.</td></tr>"}</table></div>`}
+    <div class="actions"><button data-act="close-modal">Fermer</button></div>`);
+}
+ACTIONS["franchise"] = v => { const [g, z] = v.split("|"); franchiseModal(g, z); };
+ACTIONS["franchise-buy"] = v => { const [g, z, id] = v.split("|"); const e = buyFranchise(g, z, id); if (e) return toast(e); toast("🔒 Franchise rachetée !"); scheduleSave(); render(); franchiseModal(g, z); };
 // ---------- calendrier ----------
 // ce que le club joue (ou a joué) dans une ligue la semaine w (null si rien)
 function leagueEntry(L, w) {

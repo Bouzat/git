@@ -552,6 +552,7 @@ function userLeagues() { return Object.keys(user().divisions).map(g => leagueOf(
 function canJoin(game, tier) {
   const u = user();
   if (u.divisions[game]) return "Division déjà ouverte.";
+  if (tier === 1 && isClosed(game, 1, zoneFrom(game, REGION_OF[u.country] || "EU", u.country))) return `${tierName(game, 1, zoneFrom(game, REGION_OF[u.country] || "EU", u.country))} est une ligue fermée : il faut racheter la place (franchise) d'un club.`;
   if (GAMES[game].open && tier < 3) return `${GAMES[game].name} est un circuit ouvert : tout le monde y entre en statut ${tierLabel(game, 3)}, le statut ${tierLabel(game, tier)} se gagne au classement.`;
   if (u.fame < TIER_FAME_REQ[tier - 1]) return `Notoriété ${TIER_FAME_REQ[tier - 1]} requise pour acheter une place en ${TIER_LABEL[tier - 1]}.`;
   if (u.budget < tierEntry(game, tier)) return "Budget insuffisant.";
@@ -564,6 +565,60 @@ function openDivision(game, tier) {
   const late = joinLeague(game, tier);
   mail(`Nouvelle division : ${GAMES[game].name}`, `Votre club rejoint le <b>${divName(S.userId, game)}</b> (${tierLabel(game, tier)}) pour ${money(fee)}. Il vous faut ${GAMES[game].size} joueur(s) titulaire(s).${late ? "<br>Le calendrier étant déjà fixé, vos matchs commenceront la saison prochaine." : ""}`, "info");
   return null;
+}
+// ---------- franchises (ligues fermées : LEC, LCK, VCT, CDL…) ----------
+const isClosed = (game, tier, zone = "W") => !!(FRANCHISES[game] && FRANCHISES[game][tier] && FRANCHISES[game][tier][zone] !== undefined);
+const franchiseZones = game => FRANCHISES[game] && FRANCHISES[game][1] ? Object.keys(FRANCHISES[game][1]) : [];
+// prix d'une place : selon la ligue et le prestige du club vendeur
+function franchisePrice(game, zone, sellerId) {
+  const c = S.clubs[sellerId];
+  return Math.round(FRANCHISES[game][1][zone] * (c.filler ? 0.75 : 0.7 + c.fame / 150) / 100000) * 100000;
+}
+// places à vendre : les clubs fictifs et les 3 clubs les moins connus de la ligue (les grandes organisations ne vendent pas)
+function franchiseSlots(game, zone) {
+  const L = S.leagues[lkey(game, 1, zone)]; if (!L) return [];
+  const others = L.teams.filter(id => S.clubs[id] && !isMine(id) && !(S.franchiseDeal && S.franchiseDeal.sellerId === id));
+  const real = others.filter(id => !S.clubs[id].filler && S.clubs[id].fame < 75).sort((a, b) => S.clubs[a].fame - S.clubs[b].fame).slice(0, 3);
+  return others.filter(id => S.clubs[id].filler).concat(real).map(id => ({ id, price: franchisePrice(game, zone, id) }));
+}
+// pendant la saison de ligue, la place change de mains à la fin de la saison
+const leagueSeasonOn = () => S.week >= LEAGUE_DAYS[0] && S.week <= PO_FINAL;
+function buyFranchise(game, zone, sellerId) {
+  const u = user(), L = S.leagues[lkey(game, 1, zone)], seller = S.clubs[sellerId];
+  if (!isClosed(game, 1, zone) || !L || !L.teams.includes(sellerId)) return "Place introuvable.";
+  if (L.teams.some(isMine)) return "Votre club a déjà une place dans cette ligue.";
+  if (S.franchiseDeal) return "Un rachat de franchise est déjà en cours : il prendra effet à la fin de la saison.";
+  if (!franchiseSlots(game, zone).some(x => x.id === sellerId)) return `${seller.name} refuse de vendre sa place.`;
+  const price = franchisePrice(game, zone, sellerId);
+  if (u.budget < price) return `Budget insuffisant : la place coûte ${money(price)} (vous avez ${money(u.budget)}).`;
+  book("entry", -price, game, `Franchise ${tierName(game, 1, zone)} : rachat de la place de ${seller.name}`);
+  seller.budget += price;
+  if (leagueSeasonOn()) {
+    S.franchiseDeal = { game, zone, sellerId, price };
+    mail(`🔒 Franchise achetée : ${tierName(game, 1, zone)}`, `Vous rachetez la place de <b>${seller.name}</b> en ${tierName(game, 1, zone)} pour <b>${money(price)}</b>. La saison étant en cours, vous y jouerez dès la saison prochaine ; ${seller.name} prendra votre place actuelle.`, "info", game);
+  } else applyFranchise(game, zone, sellerId, price);
+  return null;
+}
+function applyFranchise(game, zone, sellerId, price) {
+  const u = user(), L = S.leagues[lkey(game, 1, zone)], seller = S.clubs[sellerId], sd = seller && seller.divisions[game];
+  if (!L || !sd || !L.teams.includes(sellerId)) return;
+  const myD = u.divisions[game];
+  if (myD) {
+    // échange des places : le vendeur prend la place actuelle du club
+    const myL = leagueOf(u.id, game), old = { tier: myD.tier, zone: myD.zone };
+    swapInLeague(L, sellerId, "__swap"); swapInLeague(myL, u.id, sellerId); swapInLeague(L, "__swap", u.id);
+    myD.tier = 1; myD.zone = zone; sd.tier = old.tier; sd.zone = old.zone;
+  } else {
+    u.divisions[game] = { tier: 1, zone, players: [] };
+    swapInLeague(L, sellerId, u.id);
+    if (seller.filler) dissolveDivision(sellerId, game);
+    else { const L2 = S.leagues[lkey(game, 2, zone)]; L2.teams.push(sellerId); L2.table[sellerId] = emptyRow(GAMES[game].fmt); sd.tier = 2; }
+  }
+  // une franchise à l'étranger : le club y est inscrit (règle des régions des joueurs, tournois régionaux)
+  const reg = ZONE_REGION[zone];
+  S.regionOverride = S.regionOverride || {};
+  if (reg && REGION_OF[u.country] !== reg && !(reg === "EU" && REGION_OF[u.country] === undefined)) S.regionOverride[game + ":" + u.id] = reg; else delete S.regionOverride[game + ":" + u.id];
+  mail(`🔒 Bienvenue en ${tierName(game, 1, zone)} !`, `${u.name} occupe désormais la place de ${seller.name} en <b>${tierName(game, 1, zone)}</b>${price ? ` (rachetée ${money(price)})` : ""}. Ligue fermée : pas de relégation possible. Il vous faut ${GAMES[game].size} joueurs titulaires.`, "info", game);
 }
 // place le club du joueur dans un circuit, en prenant si possible la place d'un club fictif
 function joinLeague(game, tier) {
@@ -1080,7 +1135,7 @@ function adaptFactor(p) {
 // région d'inscription d'une équipe : celle de l'organisation pour les jeux en équipe (Karmine Corp → Europe, même avec des imports
 // coréens), celle du premier joueur pour les duos, trios et joueurs indépendants
 function clubRegion(club, game) {
-  const ov = REGION_OVERRIDES[game + ":" + (club.sister || club.id)]; if (ov) return ov;
+  const ov = REGION_OVERRIDES[game + ":" + (club.sister || club.id)] || (S && S.regionOverride && S.regionOverride[game + ":" + club.id]); if (ov) return ov;
   if (GAMES[game].fmt === "team" && !club.solo && !club.filler && REGION_OF[club.country] !== undefined) return REGION_OF[club.country];
   if (GAMES[game].fmt === "team" && !club.solo && !club.filler) return "EU";
   const first = clubPlayers(club.id, game)[0];
@@ -1784,6 +1839,8 @@ function endSeason() {
     }
     if (RANKED_GAMES.includes(game)) { reassignByRanking(game, moves); continue; }
     for (const zone of gameZones(game)) for (let t = 1; t <= 2; t++) {
+      // ligue fermée (franchise) : ni relégation, ni montée depuis le tier inférieur
+      if (isClosed(game, t, zone)) continue;
       const up = S.leagues[lkey(game, t, zone)], low = S.leagues[lkey(game, t + 1, zone)];
       // une académie ne monte jamais dans la division de son équipe première
       const blocked = id => { const c = S.clubs[id]; return c && c.parent && S.clubs[c.parent] && S.clubs[c.parent].divisions[game] && S.clubs[c.parent].divisions[game].tier <= t; };
@@ -1874,6 +1931,8 @@ function endSeason() {
     c.fame = clamp(c.fame + (TIER_FAME_TARGET[Math.min(...ts) - 1] - c.fame) * (c.ai ? 0.08 : 0.15), 1, 100);
   }
   S.tourResults = (S.tourResults || []).filter(t => t.season >= S.season - 1);
+  // rachat de franchise conclu pendant la saison : la place change de mains maintenant
+  if (S.franchiseDeal) { const F = S.franchiseDeal; S.franchiseDeal = null; applyFranchise(F.game, F.zone, F.sellerId, F.price); moves.push(`🔒 ${GAMES[F.game].short} : votre club entre en ${tierName(F.game, 1, F.zone)} (franchise).`); }
   S.season++;
   newSeasonSetup(false);
   return { ok, moves };
