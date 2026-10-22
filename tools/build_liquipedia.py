@@ -29,11 +29,17 @@ GAMES = {
     "bw":    ("starcraft", ["S-Tier Tournaments", "A-Tier Tournaments"], "solo"),
     "smash": ("smash", ["S-Tier Tournaments", "A-Tier Tournaments"], "solo"),
 }
-MAX_EVENTS = {"team": 6, "solo": 6}
+MAX_EVENTS = {"team": 14, "solo": 14}
 # pages de tournois lues directement quand la liste S-Tier du wiki n'est pas exploitable (redirection, autre format)
 PAGES = {
-    "wr": ["Wild Rift Super League/2026/Summer", "Wild Rift Super League/2025/Stage 1/Finals", "Wild Rift Super League/2025/Stage 2/September Circuit"],
-    "hs": ["Hearthstone World Championship/2026", "Hearthstone World Championship/2025"],
+    "wr": ["Wild Rift Super League/2026/Summer", "Wild Rift Super League/2025/Stage 1/Finals", "Wild Rift Super League/2025/Stage 2/September Circuit",
+           "Wild Circuit/2026/Rift Legends/Spring Split/League", "Wild Circuit/2026/Rift Legends/Spring Split/Groups"],
+    "hs": ["Hearthstone World Championship/2026", "Hearthstone World Championship/2025", "Masters Tour/Winter/2026/Playoffs/Americas",
+           "Masters Tour/Winter/2026/Playoffs/Europe", "Masters Tour/Winter/2026/Playoffs/Asia"],
+    "cr": ["Clash Royale League/2026/Season 1", "Clash Royale League/2026/Season 2", "Clash Royale Champions Cup/2026/Finals",
+           "Clash Royale Champions Cup/2026/May Season/Monthly Final", "Clash Royale Champions Cup/2026/June Season/Monthly Final", "Clash Royale League/2025/Last Chance Qualifier"],
+    "mr": ["MR Ignite/2026/Stage 1/Americas", "MR Ignite/2026/Stage 1/EMEA", "MR Ignite/2026/Stage 1/Pacific/Asia", "MR Ignite/2026/Stage 1/Pacific/Oceania",
+           "MR Ignite/2026/Stage 2/Americas", "MR Ignite/2026/Stage 2/EMEA", "MR Ignite/2026/Stage 2/Pacific/Asia"],
     "bw": ["ASL/22", "ASL/21", "ASL/20"],
     "smash": ["GENESIS/X3/Ultimate", "Riptide/2026/Ultimate", "Kagaribi/15"],
 }
@@ -50,7 +56,8 @@ def infobox_event(wiki, title):
     done = datetime.date(y, mo, d) < datetime.date(2026, 10, 15)
     n = int(re.sub(r"[^\d]", "", g("team_number") or g("player_number") or g("participants_number") or "0") or 0)
     usd = int(float(re.sub(r"[^\d.]", "", g("prizepoolusd") or g("prizepool") or "0") or 0))
-    return {"year": y, "tier": "S", "page": title, "name": name, "date": datetime.date(y, mo, d).strftime("%b %d, %Y"), "usd": usd, "loc": "",
+    tier = "S" if g("liquipediatier").strip() == "1" else "A"
+    return {"year": y, "tier": tier, "page": title, "name": name, "date": datetime.date(y, mo, d).strftime("%b %d, %Y"), "usd": usd, "loc": "",
             "n": n, "winner": "?" if done else "TBD", "runner": ""}
 
 cur = json.loads(subprocess.run(["node", "-e", f"""

@@ -240,9 +240,10 @@ function findOrgId(name) {
   return findOrgId.idx[normTeam(name)] || null;
 }
 // titres réels (avant 2026) : palmarès des clubs et historique de « Clubs & palmarès »
-function seedRealHistory() {
+function seedRealHistory(only) {
   if (typeof LIVE_HISTORY === "undefined") return;
   for (const [game, list] of Object.entries(LIVE_HISTORY)) {
+    if (only && !only.includes(game)) continue;
     // équipes au nom propre dans ce jeu (« Team Liquid Brazil », section GC de Team Liquid)
     const byLabel = {};
     for (const c of Object.values(S.clubs)) if (c.divisions[game] && c.divisions[game].label) byLabel[normTeam(c.divisions[game].label)] = c.id;
@@ -378,7 +379,7 @@ function fillerClub(game, tier, zone = "W", sub = null, range = null) {
   const g = GAMES[game];
   const [lo, hi] = range || TIER_RATING[tier - 1], sccs = sub && SUB_CC[sub] ? SUB_CC[sub].split(" ") : null, ccs = sccs || zoneCountries(game, zone);
   if (g.fmt === "duel" || (g.fmt === "br" && g.size <= 2)) {
-    const roster = Array.from({ length: g.size }, () => [genHandle(), pick(ccs), randi(lo, hi), randi(16, 27)]);
+    const roster = Array.from({ length: g.size }, () => takeReal(game, lo, hi) || [genHandle(), pick(ccs), randi(lo, hi), randi(16, 27)]);
     const c = soloClub(game, tier, roster, zone, sub); c.filler = true; return c;
   }
   // un nom de club de la zone (« Seoul Phantoms » en Corée), libre dans ce jeu
@@ -393,9 +394,80 @@ function fillerClub(game, tier, zone = "W", sub = null, range = null) {
     c = S.clubs["f_" + tag] = baseClub("f_" + tag, (local.length ? pick(local) : pick(FILLER_NAMES))[0] + " " + tag, tag, pick(ccs), `hsl(${randi(0, 359)} 45% 50%)`, randi(...[[45, 60], [20, 40], [5, 20]][tier - 1]), true);
   }
   c.filler = true;
-  const roster = Array.from({ length: g.size }, () => [genHandle(), Math.random() < 0.7 && ccs.includes(c.country) ? c.country : pick(ccs), randi(lo, hi), randi(17, 29)]);
+  const roster = Array.from({ length: g.size }, () => takeReal(game, lo, hi) || [genHandle(), Math.random() < 0.7 && ccs.includes(c.country) ? c.country : pick(ccs), randi(lo, hi), randi(17, 29)]);
   addDivision(c, game, tier, roster, zone, sub);
   return c;
+}
+
+// vrais joueurs sans équipe (sources Liquipedia) : ils remplissent d'abord les clubs de remplissage de leur jeu,
+// les autres restent agents libres
+let REAL_POOL = null;
+function realPool(games) {
+  const src = typeof LIVE_FREE_AGENTS !== "undefined" ? LIVE_FREE_AGENTS : {}, out = {};
+  for (const g of games) if (src[g] && GAMES[g]) out[g] = src[g].map(x => x.slice()).sort((a, b) => b[2] - a[2]);
+  return out;
+}
+function takeReal(game, lo, hi) {
+  const pool = REAL_POOL && REAL_POOL[game]; if (!pool || !pool.length) return null;
+  const i = pool.findIndex(x => x[2] <= hi + 3 && x[2] >= lo - 6);
+  return i < 0 ? null : pool.splice(i, 1)[0];
+}
+function releaseRealPool() {
+  for (const [game, list] of Object.entries(REAL_POOL || {}))
+    list.forEach(([h, nat, r, a], i) => { const p = makePlayer(h, nat, r, a, game, i, null); p.years = 0; p.club = null; p.starter = false; addPlayer(p); });
+  REAL_POOL = null;
+}
+
+// crée les clubs, les ligues et les joueurs d'un jeu (nouvelle partie, ou jeu ajouté depuis la sauvegarde)
+function buildGameWorld(game) {
+  const g = GAMES[game], open = g.open, sizes = zoneSizes(game);
+  const byZone = {};
+  const slot = z => byZone[z] || (byZone[z] = [[], [], []]);
+  const all = planTiers(game);
+  for (const e of all) {
+    // une org peut aligner plusieurs duos/joueurs dans un jeu solo : les suivants jouent dans une équipe « sœur » à ses couleurs
+    let c = e.orgId ? orgClub(e.orgId) : null;
+    if (c && c.divisions[game]) c = g.size <= 2 ? sisterClub(e.orgId, game) : null;
+    if (c) { addDivision(c, game, e.tier, e.roster, e.zone, e.sub); c.divisions[game].verified = e.verified || !!SOLOS[game]; if (e.label) c.divisions[game].label = e.label; }
+    const club = c || soloClub(game, e.tier, e.roster, e.zone, e.sub);
+    slot(e.zone)[e.tier - 1].push(club.id);
+  }
+  // divisions réelles sans effectif connu : joueurs inventés au niveau du club
+  for (const [orgId, games] of Object.entries(EXTRA_DIVS)) {
+    if (!games.includes(game) || !ORGS[orgId]) continue;
+    const c = orgClub(orgId);
+    if (c.divisions[game]) continue;
+    const zone = entryZone(game, orgId, [[null, c.country]]), b = slot(zone);
+    // équipe aux joueurs inventés : en tier 1 seulement si les vraies équipes de sa zone ne suffisent pas à le remplir
+    const tier = open ? 1 : c.fame >= 70 && b[0].length < sizes[0] && !isClosed(game, 1, zone) ? 1 : b[1].length < sizes[1] ? 2 : 3;
+    const [lo, hi] = TIER_RATING[tier - 1];
+    const roster = Array.from({ length: g.size }, () => [genHandle(), c.country, randi(lo + 2, hi), randi(18, 26)]);
+    addDivision(c, game, tier, roster, zone, subFor(game, tier, zone, c.country));
+    c.divisions[game].generated = true;
+    b[tier - 1].push(c.id);
+  }
+  for (const zone of gameZones(game)) {
+    const b = slot(zone);
+    for (let t = 1; t <= 3; t++) {
+      if (open && t > 1) break;
+      // une ligue par sous-ligue nationale quand le tier en a (LFL, Prime League…), sinon une seule
+      for (const sub of subsOf(game, t, zone) || [null]) {
+        const key = lkey(game, t, zone, sub);
+        const teams = b[t - 1].filter(id => (divOf(id, game).sub || null) === sub);
+        const L = S.leagues[key] = { key, game, tier: t, zone, sub, teams, schedule: [], table: {}, results: [], playoffs: null, champion: null };
+        const min = zone === "W" ? LEAGUE_SIZE : open ? 12 : MIN_LEAGUE;
+        // clubs fictifs au niveau des vraies équipes de la ligue (une petite ligue nationale reste une petite ligue)
+        const rs = teams.flatMap(id => clubPlayers(id, game).map(p => p.rating)), avg = rs.length ? rs.reduce((a, b) => a + b, 0) / rs.length : 0;
+        const range = avg ? [Math.round(avg - 5), Math.round(avg + 1)] : null;
+        while (L.teams.length < min) L.teams.push(fillerClub(game, t, zone, sub, range).id);
+      }
+    }
+    // circuit ouvert : statut Élite / Pro / Open d'après le niveau, dans la région
+    if (open) {
+      const L = S.leagues[lkey(game, 1, zone)], [a, bb] = statusCuts(L.teams.length);
+      L.teams.slice().sort((x, y) => teamStrength(y, game).str - teamStrength(x, game).str).forEach((id, i) => S.clubs[id].divisions[game].tier = i < a ? 1 : i < bb ? 2 : 3);
+    }
+  }
 }
 
 // ---------- création du monde ----------
@@ -406,56 +478,8 @@ function newWorld(opts) {
     userId: null, board: { confidence: 60, objective: null }, lastWeek: null,
   };
   applySeasonFormats();
-  for (const game of Object.keys(GAMES)) {
-    const g = GAMES[game], open = g.open, sizes = zoneSizes(game);
-    const byZone = {};
-    const slot = z => byZone[z] || (byZone[z] = [[], [], []]);
-    const all = planTiers(game);
-    for (const e of all) {
-      // une org peut aligner plusieurs duos/joueurs dans un jeu solo : les suivants jouent dans une équipe « sœur » à ses couleurs
-      let c = e.orgId ? orgClub(e.orgId) : null;
-      if (c && c.divisions[game]) c = g.size <= 2 ? sisterClub(e.orgId, game) : null;
-      if (c) { addDivision(c, game, e.tier, e.roster, e.zone, e.sub); c.divisions[game].verified = e.verified || !!SOLOS[game]; if (e.label) c.divisions[game].label = e.label; }
-      const club = c || soloClub(game, e.tier, e.roster, e.zone, e.sub);
-      slot(e.zone)[e.tier - 1].push(club.id);
-    }
-    // divisions réelles sans effectif connu : joueurs inventés au niveau du club
-    for (const [orgId, games] of Object.entries(EXTRA_DIVS)) {
-      if (!games.includes(game) || !ORGS[orgId]) continue;
-      const c = orgClub(orgId);
-      if (c.divisions[game]) continue;
-      const zone = entryZone(game, orgId, [[null, c.country]]), b = slot(zone);
-      // équipe aux joueurs inventés : en tier 1 seulement si les vraies équipes de sa zone ne suffisent pas à le remplir
-      const tier = open ? 1 : c.fame >= 70 && b[0].length < sizes[0] && !isClosed(game, 1, zone) ? 1 : b[1].length < sizes[1] ? 2 : 3;
-      const [lo, hi] = TIER_RATING[tier - 1];
-      const roster = Array.from({ length: g.size }, () => [genHandle(), c.country, randi(lo + 2, hi), randi(18, 26)]);
-      addDivision(c, game, tier, roster, zone, subFor(game, tier, zone, c.country));
-      c.divisions[game].generated = true;
-      b[tier - 1].push(c.id);
-    }
-    for (const zone of gameZones(game)) {
-      const b = slot(zone);
-      for (let t = 1; t <= 3; t++) {
-        if (open && t > 1) break;
-        // une ligue par sous-ligue nationale quand le tier en a (LFL, Prime League…), sinon une seule
-        for (const sub of subsOf(game, t, zone) || [null]) {
-          const key = lkey(game, t, zone, sub);
-          const teams = b[t - 1].filter(id => (divOf(id, game).sub || null) === sub);
-          const L = S.leagues[key] = { key, game, tier: t, zone, sub, teams, schedule: [], table: {}, results: [], playoffs: null, champion: null };
-          const min = zone === "W" ? LEAGUE_SIZE : open ? 12 : MIN_LEAGUE;
-          // clubs fictifs au niveau des vraies équipes de la ligue (une petite ligue nationale reste une petite ligue)
-          const rs = teams.flatMap(id => clubPlayers(id, game).map(p => p.rating)), avg = rs.length ? rs.reduce((a, b) => a + b, 0) / rs.length : 0;
-          const range = avg ? [Math.round(avg - 5), Math.round(avg + 1)] : null;
-          while (L.teams.length < min) L.teams.push(fillerClub(game, t, zone, sub, range).id);
-        }
-      }
-      // circuit ouvert : statut Élite / Pro / Open d'après le niveau, dans la région
-      if (open) {
-        const L = S.leagues[lkey(game, 1, zone)], [a, bb] = statusCuts(L.teams.length);
-        L.teams.slice().sort((x, y) => teamStrength(y, game).str - teamStrength(x, game).str).forEach((id, i) => S.clubs[id].divisions[game].tier = i < a ? 1 : i < bb ? 2 : 3);
-      }
-    }
-  }
+  REAL_POOL = realPool(Object.keys(GAMES));
+  for (const game of Object.keys(GAMES)) buildGameWorld(game);
   // un remplaçant pour chaque équipe d'au moins 3 joueurs
   for (const c of Object.values(S.clubs)) for (const [game, d] of Object.entries(c.divisions)) {
     if (GAMES[game].size >= 3) {
@@ -469,10 +493,7 @@ function newWorld(opts) {
   for (const c of Object.values(S.clubs)) for (const game of Object.keys(c.divisions)) aiFillRoster(c.id, game);
   aiFillRoster.pool = null;
   // vrais joueurs sans équipe (sources Liquipedia) : agents libres
-  for (const [game, list] of Object.entries(typeof LIVE_FREE_AGENTS !== "undefined" ? LIVE_FREE_AGENTS : {})) {
-    if (!GAMES[game]) continue;
-    list.forEach(([h, nat, r, a], i) => { const p = makePlayer(h, nat, r, a, game, i, null); p.years = 0; p.club = null; p.starter = false; addPlayer(p); });
-  }
+  releaseRealPool();
   // agents libres générés
   for (const game of Object.keys(GAMES)) {
     const n = GAMES[game].size * 14 + 8;
@@ -1765,8 +1786,8 @@ function coachFromPlayer(p) {
       jeunes: clamp(Math.round(base - 2 + (traitOf(p) === "Mentor" ? 6 : 0) + rand(-3, 3)), 1, 20), discipline: clamp(Math.round(base + (traitOf(p) === "Leader" ? 4 : traitOf(p) === "Toxique" ? -6 : 0) + rand(-3, 3)), 1, 20) } });
 }
 // entraîneurs fictifs : libres (surtout moyens, un seul vraiment bon par jeu) et en poste dans les clubs des tiers 1 et 2
-function seedCoaches() {
-  for (const game of Object.keys(GAMES)) {
+function seedCoaches(only) {
+  for (const game of only || Object.keys(GAMES)) {
     for (let i = 0; i < 7; i++) makeCoach(game, { lvl: i === 0 ? randi(12, 14) : i < 3 ? randi(9, 12) : randi(5, 9) });
     for (const c of Object.values(S.clubs)) {
       const d = c.divisions[game];
@@ -3278,7 +3299,30 @@ function saveNow() {
   clearTimeout(scheduleSave.t); scheduleSave.t = null; saveSeq++; savePending = false;
   writeSave(packSave(JSON.stringify(S)));
 }
-function load() { try { const s = readSave(); if (s) { S = JSON.parse(s); applySeasonFormats(); return true; } } catch (e) { } return false; }
+function load() { try { const s = readSave(); if (s) { S = JSON.parse(s); applySeasonFormats(); addMissingGames(); return true; } } catch (e) { } return false; }
+// jeux ajoutés au jeu depuis la création de la partie : leurs clubs, ligues et vrais joueurs sont créés au chargement
+function addMissingGames() {
+  const have = new Set(Object.values(S.leagues).map(L => L.game));
+  const games = Object.keys(GAMES).filter(g => !have.has(g));
+  if (!games.length) return;
+  REAL_POOL = realPool(games);
+  for (const g of games) buildGameWorld(g);
+  for (const c of Object.values(S.clubs)) for (const g of games) {
+    const d = c.divisions[g]; if (!d) continue;
+    if (GAMES[g].size >= 3) { const [lo, hi] = TIER_RATING[d.tier - 1]; const sub = genPlayer(g, lo - 4, hi - 6, 17, 24, c.id); addPlayer(sub); d.players.push(sub.id); }
+    aiFillRoster(c.id, g);
+  }
+  releaseRealPool();
+  for (const g of games) for (let i = 0, n = GAMES[g].size * 14 + 8; i < n; i++) { const r = Math.random(); const p = r < 0.65 ? genPlayer(g, 48, 64, 16, 26) : r < 0.95 ? genPlayer(g, 62, 72, 17, 28) : genPlayer(g, 72, 77, 19, 30); p.years = 0; addPlayer(p); }
+  seedRealHistory(games); seedCoaches(games);
+  // les ligues de la saison en cours reçoivent leur calendrier (matchs à partir de la saison suivante si elle est entamée)
+  for (const L of Object.values(S.leagues)) if (games.includes(L.game)) {
+    const fmt = GAMES[L.game].fmt, rr = fmt === "br" ? [] : roundRobin(shuffle(L.teams));
+    L.schedule = rr.concat(rr.map(rd => rd.map(([a, b]) => [b, a]))).slice(0, LEAGUE_DAYS.length);
+    L.table = {}; L.teams.forEach(id => L.table[id] = emptyRow(fmt));
+  }
+  mail(`🆕 ${games.length} nouveau${games.length > 1 ? "x" : ""} jeu${games.length > 1 ? "x" : ""} disponible${games.length > 1 ? "s" : ""}`, `Votre partie s'ouvre à de nouvelles scènes, avec leurs vrais clubs et joueurs : ${games.map(g => `${GAMES[g].icon} <b>${GAMES[g].name}</b>`).join(", ")}. Ouvrez une division depuis l'onglet Effectifs.`, "info");
+}
 // empreinte de la base de données : une partie créée avant une mise à jour des effectifs garde l'ancien monde
 function dataVersion() {
   const txt = JSON.stringify([ORGS, ROSTERS, SOLOS, typeof EXTRA_DIVS !== "undefined" ? EXTRA_DIVS : 0]);
