@@ -49,7 +49,7 @@ function weekMonday(season, w) {
 const DAYS = ["lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim."];
 function dayLabel(season, w, d) { const t = new Date(weekMonday(season, w).getTime() + (d || 0) * 864e5); return `${DAYS[d || 0]} ${t.getUTCDate()} ${MONTHS[t.getUTCMonth()]}`; }
 // jour habituel des journées de ligue de chaque jeu (LoL le samedi, CS2 le mercredi…)
-const LEAGUE_WEEKDAY = { lol: 5, val: 4, valgc: 3, cs2: 2, dota: 3, rl: 6, ow: 5, r6: 3, cod: 4, mlbb: 4, hok: 5, cf: 3, fn: 6, apex: 5, pubg: 3, pubgm: 4, ff: 5, wz: 6, tft: 2, trackmania: 3, fc: 1, sf6: 2, tk8: 2, fatal: 3, chess: 1, sc2: 4 };
+const LEAGUE_WEEKDAY = { lol: 5, val: 4, valgc: 3, cs2: 2, dota: 3, rl: 6, ow: 5, r6: 3, cod: 4, mlbb: 4, hok: 5, cf: 3, fn: 6, apex: 5, pubg: 3, pubgm: 4, ff: 5, wz: 6, tft: 2, trackmania: 3, fc: 1, sf6: 2, tk8: 2, fatal: 3, chess: 1, sc2: 4, bs: 6, mr: 5, wr: 4, wot: 3, hots: 2, hs: 1, cr: 6, geo: 2, aoe: 5, wc3: 1, bw: 3, smash: 6 };
 // « 12-18 janv. » ou « 26 janv. - 1 févr. » (avec l'année si demandé)
 function weekLabel(season, w, year) {
   if (season === undefined) { season = S.season; w = S.week; }
@@ -163,6 +163,10 @@ const GAME_ECO = {
   wz: { view: 7, spon: 1, bet: 0.2, eth: 0.12 }, pubgm: { view: 35, spon: 0.95, bet: 0.3, eth: 0.12 }, ff: { view: 25, spon: 0.9, bet: 0.3, eth: 0.12 },
   tft: { view: 8, spon: 1, bet: 0.1, eth: 0.2 }, trackmania: { view: 3, spon: 1.05, bet: 0.05, eth: 0.3 }, tk8: { view: 6, spon: 0.95, bet: 0.15, eth: 0.15 },
   fatal: { view: 2, spon: 0.9, bet: 0.15, eth: 0.15 }, chess: { view: 8, spon: 1.15, bet: 0.08, eth: 0.35 },
+  bs: { view: 14, spon: 1.2, bet: 0.05, eth: 0.3 }, mr: { view: 15, spon: 1.05, bet: 0.15, eth: 0.15 }, wr: { view: 15, spon: 1, bet: 0.2, eth: 0.15 },
+  wot: { view: 4, spon: 0.85, bet: 0.25, eth: 0.1 }, hots: { view: 1, spon: 0.8, bet: 0.1, eth: 0.2 }, hs: { view: 6, spon: 1, bet: 0.15, eth: 0.2 },
+  cr: { view: 8, spon: 1.1, bet: 0.1, eth: 0.25 }, geo: { view: 5, spon: 1.15, bet: 0.05, eth: 0.35 }, aoe: { view: 6, spon: 1, bet: 0.1, eth: 0.25 },
+  wc3: { view: 3, spon: 0.8, bet: 0.15, eth: 0.15 }, bw: { view: 6, spon: 0.8, bet: 0.3, eth: 0.1 }, smash: { view: 6, spon: 1, bet: 0.05, eth: 0.25 },
 };
 const ecoOf = game => GAME_ECO[game] || { view: 10, spon: 1, bet: 0.2, eth: 0.15 };
 // poids économique d'un jeu (audience) : la valeur des joueurs et leurs salaires en dépendent
