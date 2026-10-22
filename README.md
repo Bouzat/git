@@ -254,3 +254,10 @@ Un bandeau sur le tableau de bord pendant l'EWC et dans l'onglet Tournois y renv
 - le calendrier S-Tier de 2026 et le palmarès 2025.
 
 Les notes viennent des résultats : vainqueur, finaliste et nombre de grands tournois joués. En Heroes of the Storm, la scène se joue surtout entre sélections nationales : ses vrais joueurs sont des agents libres à recruter. Les pages lues sont mises en cache dans `tools/sources/liquipedia` (hors du dépôt). Liquipedia limite fortement les requêtes, le premier import est donc long.
+
+**Calendrier façon Google Agenda** : trois vues.
+- **Mois** : grille du lundi au dimanche. Les tournois sont des bandeaux sur leurs jours de compétition (S-Tier en doré, EWC sur toute la semaine), les matchs de ligue apparaissent à leur jour et heure, avec « +N » quand une journée est chargée.
+- **Semaine** : grille horaire avec une ligne « Journée » pour les tournois.
+- **Planning** : liste jour par jour avec les résultats.
+
+On navigue avec le bouton « Aujourd'hui » et les flèches ‹ ›, et un filtre choisit les événements affichés. Un clic sur un événement ouvre sa fiche (dates, dotation, résultat, décliner le tournoi). Les ouvertures et fermetures du mercato et la fin de saison y figurent aussi.

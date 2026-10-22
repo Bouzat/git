@@ -890,40 +890,132 @@ function tourState(game, t) {
   }
   return { st: "in", html: `<span class="ok">${cands.length > 1 ? "✅ Choisi" : invitational(tiers) ? "Invité" : "Inscrit"}</span>${past ? "" : ` <button class="small" data-act="tour-toggle" data-v="${esc(game + "|" + name)}" title="Ne pas participer : pas de frais de déplacement, les joueurs se reposent">Décliner</button>`}` };
 }
-function viewCalendar() {
-  const u = user();
-  if (!UI.calMode) UI.calMode = "mine";
-  const myGames = Object.keys(u.divisions);
-  const modes = [["mine", "Mes matchs et mes tournois"], ["eligible", "+ tournois de mes jeux"], ["all", "Tous les tournois"]]
-    .map(([k, l]) => `<button class="tab small ${UI.calMode === k ? "active" : ""}" data-act="cal-mode" data-v="${k}">${l}</button>`).join("");
-  const months = {};
-  for (let w = SEASON_FIRST; w <= SEASON_LAST; w++) {
-    const items = [];
-    for (const L of userLeagues()) { const e = leagueEntry(L, w); if (e) items.push({ kind: "league", ...e }); }
-    const games = UI.calMode === "all" ? Object.keys(GAMES) : myGames;
-    for (const g of games) for (const t of allTournaments(g)) {
-      if (t[1] !== w) continue;
-      const r = tourStatus(g, t[0], w), state = tourState(g, t);
-      const playing = r ? !!r.mine : state.st === "in";
-      if (UI.calMode === "mine" && !playing && state.st !== "out") continue;
-      items.push({ kind: t[0].startsWith("EWC") ? "ewc" : "tour", name: `${GAMES[g].icon} ${GAMES[g].short}`, what: `<b>${esc(t[0])}</b>${t[5] ? ` <small class="muted">${REGION_LABEL(t[5])}</small>` : ""} · ${t[2] ? money(t[2]) : "sans dotation"}`,
-        res: r ? (r.mine ? (r.mine === 1 ? "<b class='win'>🏆 Vainqueur</b>" : `<b>${r.mine}e</b> / ${r.n}`) : `🏆 ${displayName(r.top[0], g)}`) : state.html || "" });
-    }
-    if (UI.calMode === "mine" && !items.length && w !== S.week) continue;
-    const md = matchday(w);
-    const tags = (md ? `<span class='chip'>${md <= 11 ? "Split 1" : "Split 2"} · J${md}</span>` : "") + (w >= EWC_FIRST && w <= EWC_LAST_WEEK ? "<span class='chip ewc'>🌍 EWC</span>" : "")
-      + (w === PO_SEMI || w === PO_FINAL ? "<span class='chip'>🔥 Playoffs</span>" : "") + (w === SEASON_LAST ? "<span class='chip'>🏁 Fin de saison</span>" : "")
-      + (() => { const g = myGames.filter(g => !mercatoRules(g).always && windowAt(g, w)); return g.length ? `<span class='chip mw'>🔁 Mercato ${g.map(x => GAMES[x].short).join(" · ")}</span>` : ""; })();
-    const mo = weekMonday(S.season, w).getUTCMonth();
-    (months[mo] = months[mo] || []).push(`<div class="card cal-week ${w === S.week ? "now" : w < S.week ? "past" : ""}" ${w === S.week ? 'id="cal-now"' : ""}>
-      <div class="cal-head"><b>${weekLabel(S.season, w)}</b>${w === S.week ? "<span class='chip now'>Cette semaine</span>" : ""}${tags}</div>
-      ${items.length ? items.map(it => `<div class="cal-item ${it.kind}"><span class="cal-game">${it.name}</span><span class="cal-what">${it.what}</span><span class="cal-res">${it.res}</span></div>`).join("") : "<p class='muted'>Rien de prévu.</p>"}
-    </div>`);
+// ---------- calendrier façon Google Agenda : vues Mois, Semaine et Planning ----------
+const MONTH_FULL = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
+const DAY_SHORT = ["LUN.", "MAR.", "MER.", "JEU.", "VEN.", "SAM.", "DIM."];
+// heure habituelle des matchs de chaque jeu (pour la vue Semaine)
+const calHour = game => ({ lol: 18, val: 19, cs2: 19, dota: 16, rl: 20, ow: 20, r6: 18, cod: 21, mlbb: 13, hok: 12, cf: 12, fn: 20, apex: 21, pubg: 14, pubgm: 13, ff: 22, wz: 22,
+  fc: 19, sf6: 20, tk8: 20, fatal: 21, chess: 17, sc2: 15, tft: 18, trackmania: 20, valgc: 17 })[game] || 14 + zlibHash(game) % 8;
+const zlibHash = s => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
+// semaine ISO et jour (0 = lundi) d'une date de la saison
+function calWeekDay(date) {
+  const m0 = weekMonday(S.season, 1), diff = Math.round((date - m0) / 864e5);
+  return [Math.floor(diff / 7) + 1, ((diff % 7) + 7) % 7];
+}
+// événements d'une semaine : { d (jour de début), span (jours), allDay, h (heure), game, title, sub, res, kind, imp }
+function calEvents(w) {
+  if (w < SEASON_FIRST || w > SEASON_LAST) return [];
+  const u = user(), out = [], myGames = Object.keys(u.divisions);
+  for (const L of userLeagues()) {
+    const e = leagueEntry(L, w); if (!e) continue;
+    const po = w === PO_SEMI || w === PO_FINAL;
+    out.push({ d: po ? (w === PO_FINAL ? 6 : 5) : LEAGUE_WEEKDAY[L.game] ?? 5, span: 1, h: calHour(L.game), game: L.game, title: (po ? "🔥 " : "") + leagueName(L), sub: e.what, res: e.res, kind: "league", imp: po ? "gold" : "normal" });
   }
-  const MONTH_FULL = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
-  return `<h2>🗓️ Calendrier ${S.season}</h2>
-    <p class="muted" style="margin-top:-6px">La saison suit le vrai calendrier : split 1 de mi-janvier à fin mars, split 2 d'avril à mi-juin, Esports World Cup en juillet-août, playoffs en septembre, puis les championnats du monde jusqu'en décembre. Vous pouvez décliner un tournoi (pas de frais de déplacement, vos joueurs se reposent) ou vous y inscrire.</p>
-    <div class="tabs">${modes}</div>${Object.entries(months).map(([m, ws]) => `<h3 style="margin-top:18px">${MONTH_FULL[m]} ${S.season}</h3><div class="cal-grid">${ws.join("")}</div>`).join("")}`;
+  const games = UI.calMode === "all" ? Object.keys(GAMES) : myGames;
+  for (const g of games) for (const t of allTournaments(g)) {
+    if (t[1] !== w) continue;
+    const r = tourStatus(g, t[0], w), state = tourState(g, t), playing = r ? !!r.mine : state.st === "in";
+    if (UI.calMode === "mine" && !playing && state.st !== "out") continue;
+    const tier = tourTier(t), ewc = /^EWC — (?!Qualif)/.test(t[0]), span = ewc ? 7 : tier === "S" ? 4 : tier === "A" ? 3 : 2;
+    out.push({ d: 7 - span, span, allDay: true, game: g, title: t[0], sub: `${t[5] ? REGION_LABEL(t[5]) + " · " : ""}${t[2] ? "Dotation " + money(t[2]) : "Sans dotation"} · ${tier}-Tier`,
+      res: r ? (r.mine ? (r.mine === 1 ? "<b class='win'>🏆 Vainqueur</b>" : `<b>${r.mine}e</b> / ${r.n}`) : `🏆 ${displayName(r.top[0], g)}`) : state.html || "", kind: ewc ? "ewc" : "tour", imp: TIER_IMP[tier], playing });
+  }
+  // fenêtres de mercato (ouverture et fermeture) et grandes dates de la saison
+  for (const g of myGames) {
+    const R = mercatoRules(g); if (R.always) continue;
+    for (const [a, b] of R.w) {
+      if (a === w) out.push({ d: 0, span: 1, allDay: true, game: g, title: `🔁 Ouverture du mercato ${GAMES[g].short}`, sub: `Jusqu'au ${dayLabel(S.season, b, 6)}`, kind: "info" });
+      if (b === w) out.push({ d: 6, span: 1, allDay: true, game: g, title: `🔒 Fermeture du mercato ${GAMES[g].short}`, sub: "Derniers transferts", kind: "info" });
+    }
+  }
+  if (w === SEASON_LAST) out.push({ d: 6, span: 1, allDay: true, title: "🏁 Fin de la saison", sub: "Bilan, montées et descentes", kind: "info" });
+  // deux matchs le même jour ne se chevauchent pas : le second est décalé d'une heure
+  const taken = {};
+  for (const ev of out.filter(e => !e.allDay).sort((a, b) => a.h - b.h)) { while (taken[ev.d + ":" + ev.h]) ev.h++; ev.h = Math.min(ev.h, 23); taken[ev.d + ":" + ev.h] = 1; }
+  return out;
+}
+const calColor = ev => ev.game && GAMES[ev.game] ? GAMES[ev.game].color : "#7c5cff";
+function calChip(ev, w, i, cls = "") {
+  const past = w < S.week || (w === S.week && ev.res && /class|<b>/.test(ev.res) && !/data-act/.test(ev.res));
+  return `<div class="gc-ev ${ev.allDay ? "all" : "timed"} imp-${ev.imp || "normal"} ${ev.kind} ${past ? "past" : ""} ${cls}" style="--c:${calColor(ev)}" data-act="cal-ev" data-v="${w}|${i}" title="${esc(ev.title.replace(/<[^>]+>/g, ""))}">
+    ${ev.allDay ? "" : `<span class="gc-dot"></span><span class="gc-time">${ev.h}h</span>`}<span class="gc-t">${ev.game && GAMES[ev.game] ? GAMES[ev.game].icon + " " : ""}${esc(ev.title.replace(/<[^>]+>/g, ""))}</span></div>`;
+}
+function viewCalendar() {
+  if (!UI.calMode) UI.calMode = "mine";
+  if (!UI.calView) UI.calView = "month";
+  const now = weekMonday(S.season, S.week);
+  if (UI.calMonth == null || UI.calSeason !== S.season) { UI.calMonth = now.getUTCMonth(); UI.calWeek = S.week; UI.calSeason = S.season; }
+  const views = [["month", "Mois"], ["week", "Semaine"], ["agenda", "Planning"]].map(([k, l]) => `<button class="gc-vbtn ${UI.calView === k ? "on" : ""}" data-act="cal-view" data-v="${k}">${l}</button>`).join("");
+  const filt = `<select data-change="cal-filter" class="gc-sel" aria-label="Événements affichés">${[["mine", "Mes matchs et mes tournois"], ["eligible", "+ tournois de mes jeux"], ["all", "Tous les tournois"]].map(([k, l]) => `<option value="${k}" ${UI.calMode === k ? "selected" : ""}>${l}</option>`).join("")}</select>`;
+  let title, body;
+  if (UI.calView === "month") {
+    const first = new Date(Date.UTC(S.season, UI.calMonth, 1)), start = new Date(first.getTime() - ((first.getUTCDay() + 6) % 7) * 864e5);
+    title = `${MONTH_FULL[UI.calMonth]} ${S.season}`;
+    const rows = [];
+    for (let r = 0; r < 6; r++) {
+      const d0 = new Date(start.getTime() + r * 7 * 864e5);
+      if (r >= 4 && d0.getUTCMonth() !== UI.calMonth) break;
+      const [w] = calWeekDay(d0), evs = calEvents(w);
+      const cells = Array.from({ length: 7 }, (_, d) => {
+        const dt = new Date(d0.getTime() + d * 864e5), out = dt.getUTCMonth() !== UI.calMonth, today = w === S.week && d === 0;
+        return `<div class="gc-cell ${out ? "out" : ""} ${w === S.week ? "cur" : ""}" style="grid-column:${d + 1};grid-row:1 / span 6"></div>
+          <div class="gc-num ${today ? "today" : ""}" style="grid-column:${d + 1};grid-row:1">${dt.getUTCDate() === 1 ? dt.getUTCDate() + " " + MONTHS[dt.getUTCMonth()] : dt.getUTCDate()}</div>`;
+      }).join("");
+      // bandeaux (tournois) puis matchs, 4 lignes au plus ; le reste dans « +N »
+      const lanes = [], placed = [], hidden = Array(7).fill(0);
+      const order = evs.map((ev, i) => [ev, i]).sort((a, b) => (b[0].allDay - a[0].allDay) || (b[0].span - a[0].span) || (a[0].h || 0) - (b[0].h || 0));
+      for (const [ev, i] of order) {
+        let lane = 0; while (lanes[lane] && lanes[lane].some(([a, b]) => ev.d < b && a < ev.d + ev.span)) lane++;
+        if (lane >= 4) { for (let d = ev.d; d < ev.d + ev.span; d++) hidden[d]++; continue; }
+        (lanes[lane] = lanes[lane] || []).push([ev.d, ev.d + ev.span]);
+        placed.push(`<div style="grid-column:${ev.d + 1} / span ${ev.span};grid-row:${lane + 2}">${calChip(ev, w, i)}</div>`);
+      }
+      const more = hidden.map((n, d) => n ? `<div class="gc-more" style="grid-column:${d + 1};grid-row:6" data-act="cal-day" data-v="${w}|${d}" title="${n} autre(s) événement(s)">+${n}</div>` : "").join("");
+      rows.push(`<div class="gc-row ${w === S.week ? "cur" : ""}">${cells}${placed.join("")}${more}</div>`);
+    }
+    body = `<div class="gc-month"><div class="gc-dow">${DAY_SHORT.map(d => `<div>${d}</div>`).join("")}</div>${rows.join("")}</div>`;
+  } else if (UI.calView === "week") {
+    const w = UI.calWeek, evs = calEvents(w), m = weekMonday(S.season, w);
+    title = weekLabel(S.season, w, true);
+    const all = evs.map((ev, i) => [ev, i]).filter(([ev]) => ev.allDay), timed = evs.map((ev, i) => [ev, i]).filter(([ev]) => !ev.allDay);
+    const H0 = 10, H1 = 24;
+    const head = Array.from({ length: 7 }, (_, d) => { const dt = new Date(m.getTime() + d * 864e5); return `<div class="gc-wh ${w === S.week && d === 0 ? "today" : ""}"><span>${DAY_SHORT[d]}</span><b>${dt.getUTCDate()}</b></div>`; }).join("");
+    const lanes = []; const allHtml = all.map(([ev, i]) => { let l = 0; while (lanes[l] && lanes[l].some(([a, b]) => ev.d < b && a < ev.d + ev.span)) l++; (lanes[l] = lanes[l] || []).push([ev.d, ev.d + ev.span]);
+      return `<div style="grid-column:${ev.d + 2} / span ${ev.span};grid-row:${l + 1}">${calChip(ev, w, i)}</div>`; }).join("");
+    const hours = Array.from({ length: H1 - H0 }, (_, k) => `<div class="gc-hour" style="grid-row:${k + 1}">${H0 + k}:00</div>`).join("");
+    const lines = Array.from({ length: (H1 - H0) * 7 }, (_, k) => `<div class="gc-slot" style="grid-column:${(k % 7) + 2};grid-row:${Math.floor(k / 7) + 1}"></div>`).join("");
+    const tEv = timed.map(([ev, i]) => `<div class="gc-block" style="grid-column:${ev.d + 2};grid-row:${Math.max(1, ev.h - H0 + 1)};--c:${calColor(ev)}" data-act="cal-ev" data-v="${w}|${i}">
+      <b>${ev.game ? GAMES[ev.game].icon + " " : ""}${esc(ev.title.replace(/<[^>]+>/g, ""))}</b><small>${ev.h}:00 · ${ev.sub.replace(/<[^>]+>/g, "")}</small></div>`).join("");
+    body = `<div class="gc-week"><div class="gc-wrow"><div></div>${head}</div>
+      <div class="gc-allday"><div class="gc-hour">Journée</div>${allHtml || ""}</div>
+      <div class="gc-grid">${hours}${lines}${tEv}</div></div>`;
+  } else {
+    title = `Planning ${S.season}`;
+    const days = [];
+    for (let w = Math.max(SEASON_FIRST, UI.calMode === "all" ? S.week : S.week - 2); w <= SEASON_LAST; w++) {
+      const evs = calEvents(w);
+      for (let d = 0; d < 7; d++) {
+        const list = evs.map((ev, i) => [ev, i]).filter(([ev]) => ev.d === d);
+        if (!list.length) continue;
+        const dt = new Date(weekMonday(S.season, w).getTime() + d * 864e5);
+        days.push(`<div class="gc-ag-day ${w === S.week ? "cur" : ""} ${w < S.week ? "past" : ""}"><div class="gc-ag-date"><b>${dt.getUTCDate()}</b><span>${MONTHS[dt.getUTCMonth()]} · ${DAY_SHORT[d].toLowerCase()}</span></div>
+          <div class="gc-ag-list">${list.map(([ev, i]) => `<div class="gc-ag-ev" data-act="cal-ev" data-v="${w}|${i}"><span class="gc-dot" style="--c:${calColor(ev)}"></span><span class="gc-ag-time">${ev.allDay ? (ev.span > 1 ? `${ev.span} jours` : "Journée") : ev.h + ":00"}</span><span class="gc-ag-t"><b>${esc(ev.title.replace(/<[^>]+>/g, ""))}</b> <small class="muted">${ev.sub}</small></span><span class="gc-ag-res">${ev.res || ""}</span></div>`).join("")}</div></div>`);
+      }
+    }
+    body = `<div class="gc-agenda">${days.join("") || "<p class='muted'>Rien de prévu.</p>"}</div>`;
+  }
+  return `<div class="gc-bar"><h2 style="margin:0">🗓️ Calendrier</h2><button class="gc-today" data-act="cal-today">Aujourd'hui</button>
+      ${UI.calView === "agenda" ? "" : `<button class="gc-nav" data-act="cal-step" data-v="-1" aria-label="Précédent">‹</button><button class="gc-nav" data-act="cal-step" data-v="1" aria-label="Suivant">›</button>`}
+      <span class="gc-title">${title}</span><span style="flex:1"></span>${filt}<div class="gc-views">${views}</div></div>
+    ${body}
+    <p class="muted" style="font-size:12px;margin-top:8px">Cliquez sur un événement pour le détail (et pour décliner un tournoi). Les tournois s'étalent sur leurs jours de compétition, les matchs de ligue sont à leur jour et heure habituels.</p>`;
+}
+function calEventModal(w, i) {
+  const ev = calEvents(w)[i]; if (!ev) return;
+  modal(`<div class="gc-pop" style="--c:${calColor(ev)}"><div class="gc-pop-h"><span class="gc-sq"></span><div><h2 style="margin:0">${ev.game && GAMES[ev.game] ? GAMES[ev.game].icon + " " : ""}${esc(ev.title.replace(/<[^>]+>/g, ""))}</h2>
+    <div class="muted">${ev.allDay ? (ev.span > 1 ? `${dayLabel(S.season, w, ev.d)} – ${dayLabel(S.season, w, ev.d + ev.span - 1)}` : dayLabel(S.season, w, ev.d)) : `${dayLabel(S.season, w, ev.d)} · ${ev.h}:00`}</div></div></div>
+    <p>${ev.sub}</p>${ev.res ? `<p>${ev.res}</p>` : ""}${ev.imp === "gold" ? `<p><span class="imp-chip imp-gold">Match capital</span></p>` : ""}
+    <div class="actions">${ev.kind === "tour" || ev.kind === "ewc" ? `<button data-act="view" data-v="${ev.kind === "ewc" ? "ewc" : "tours"}">Voir ${ev.kind === "ewc" ? "l'EWC" : "les tournois"}</button>` : ""}<button class="primary" data-act="close-modal">Fermer</button></div></div>`);
 }
 ACTIONS["tour-toggle"] = v => {
   const k = v; S.tourChoice = S.tourChoice || {};
@@ -1384,6 +1476,11 @@ Object.assign(ACTIONS, {
   "tour-game": v => { UI.tourGame = v; render(); },
   "tour-size": v => { UI.tourSize = v; render(); },
   "cal-mode": v => { UI.calMode = v; render(); },
+  "cal-view": v => { UI.calView = v; if (v === "week") UI.calWeek = Math.max(SEASON_FIRST, Math.min(SEASON_LAST, UI.calWeek || S.week)); render(); },
+  "cal-today": () => { UI.calMonth = weekMonday(S.season, S.week).getUTCMonth(); UI.calWeek = S.week; render(); },
+  "cal-step": v => { if (UI.calView === "week") UI.calWeek = Math.max(SEASON_FIRST, Math.min(SEASON_LAST, UI.calWeek + +v)); else UI.calMonth = Math.max(0, Math.min(11, UI.calMonth + +v)); render(); },
+  "cal-ev": v => { const [w, i] = v.split("|").map(Number); calEventModal(w, i); },
+  "cal-day": v => { const [w, d] = v.split("|").map(Number); UI.calView = "week"; UI.calWeek = w; render(); },
   "goto-market": v => { closeModal(); UI.market.game = v; UI.market.page = 0; UI.market.tab = "search"; UI.view = "market"; render(); },
   "open-div": v => {
     const [game, t] = v.split("|"), tier = +t, g = GAMES[game];
@@ -2350,6 +2447,7 @@ document.addEventListener("change", e => {
   }
   if (k === "unit-move") { if (e.target.value) { const err = assignUnit(e.target.dataset.pid, e.target.value); if (err) toast(err); scheduleSave(); } return render(); }
   if (k.startsWith("al-")) return allocSum();
+  if (k === "cal-filter") { UI.calMode = e.target.value; return render(); }
   if (k === "fin-game") { UI.finGame = e.target.value; return render(); }
   if (k === "sp-f-ethic") { UI.spFilter.ethic = e.target.value; return render(); }
   if (k === "sp-f-size") { UI.spFilter.size = e.target.value; return render(); }
