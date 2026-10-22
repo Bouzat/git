@@ -12,14 +12,39 @@ python3 -m http.server 8000   # puis http://localhost:8000
 
 La partie est sauvegardée automatiquement dans le navigateur (localStorage) à chaque semaine, compressée (environ 12 fois plus petite) pour tenir sous la limite de 5 Mo des navigateurs.
 
+## Modifier le jeu
+
+Le jeu est en JavaScript sans framework ni étape de compilation : on modifie un fichier, on recharge `index.html`, c'est pris en compte.
+
+| Fichier | Contenu |
+|---|---|
+| `index.html` | la page ; le numéro `?v=…` des scripts force le rechargement après une modification |
+| `js/data.js` | les données fixes : jeux (`GAMES`), organisations, effectifs, tournois, mercatos, EWC… |
+| `js/data_live.js` | les effectifs, tournois et palmarès réels importés (généré par les scripts de `tools/`, ne pas éditer à la main) |
+| `js/engine.js` | la simulation : matchs, ligues, tournois, transferts, finances, sponsors, sauvegarde |
+| `js/ui.js` | l'interface : écrans, fenêtres, boutons (`ACTIONS`), calendrier, direct des matchs |
+| `css/style.css` | le style |
+| `desktop/` | la version Windows (Electron) : `cd desktop && npm install && npm run build` crée `desktop/dist/EsportsManager.exe` |
+| `tools/` | les scripts d'import des données réelles (Liquipedia, CSV fournis) |
+
+Quelques repères :
+- **Ajouter un jeu** : une entrée dans `GAMES` (`js/data.js`), son économie dans `GAME_ECO` et son jour de match dans `LEAGUE_WEEKDAY` (`js/engine.js`), ses tournois dans `TOURNAMENTS` et ses petits tournois dans `SMALL_EVENTS`. Les ligues et les joueurs se créent tout seuls.
+- **Mettre à jour les joueurs d'une scène Liquipedia** : `python3 tools/build_liquipedia.py bs mr …`. L'API est très limitée en débit ; les pages déjà lues sont gardées dans `tools/sources/liquipedia`.
+- **Un nouveau bouton** : `data-act="mon-action"` dans le HTML et `ACTIONS["mon-action"] = v => { … }` dans `js/ui.js`.
+- L'état de la partie est l'objet global `S`, sauvegardé dans le navigateur. Après un changement des données, une partie existante reçoit les nouveaux jeux au chargement (`addMissingGames`).
+
+Pour contribuer : faites un *fork* du dépôt (ou demandez à être ajouté comme collaborateur), créez une branche, puis ouvrez une *pull request*.
+
 ## Deux modes de jeu
 
 - **🚀 Créer un club** : partez de zéro avec 250 k€ sur une **petite scène (tier 3)** du jeu de votre choix. Recrutez des amateurs, montez de division en division.
 - **👔 Reprendre un club** : prenez les commandes d'une organisation réelle (T1, G2, Karmine Corp, Vitality, Fnatic, NAVI, Team Liquid, Falcons, FURIA…) avec ses effectifs, son budget et des attentes élevées.
 
-## 25 jeux (les 24 titres de l'EWC 2026 + StarCraft II) et le circuit Valorant Game Changers
+## 38 jeux : les 24 titres de l'EWC 2026, StarCraft II, le circuit Valorant Game Changers et 12 autres scènes suivies par Liquipedia
 
 League of Legends · Counter-Strike 2 · Valorant · Dota 2 · Rocket League · Overwatch 2 · Rainbow Six Siege · Call of Duty: Black Ops 7 · Call of Duty: Warzone · Mobile Legends · Honor of Kings · Crossfire · Fortnite · Apex Legends · PUBG · PUBG Mobile · Free Fire · Teamfight Tactics · Trackmania · EA Sports FC · Street Fighter 6 · Tekken 8 · Fatal Fury · Échecs · StarCraft II
+
+Hors EWC : Brawl Stars · Marvel Rivals · Wild Rift · World of Tanks · Heroes of the Storm · Hearthstone · Clash Royale · GeoGuessr · Age of Empires II · Warcraft III · StarCraft: Brood War · Super Smash Bros. Ultimate
 
 Pour les jeux ajoutés, les échecs (Carlsen, Nakamura, Firouzja, Gukesh…), Tekken 8 (Arslan Ash, Knee…) et **Warzone** ont de vrais joueurs. Warzone se joue en trios, avec les équipes du World Series of Warzone 2025 et de l'EWC 2025 : Team Vision (Fifakill, Echo1867, Lenun), Twisted Minds (Aydan, Almond, zSmit), Gentle Mates (HalloW, Gromalok, Enkeo), Team Falcons (Biffle, Shifty, Hisoka), Team BDS, ROC, ESC Champenois, ONIC, Raven eSports, 100 Thieves et le trio indépendant de Stukex. Les autres scènes sont peuplées de clubs et joueurs inventés.
 
