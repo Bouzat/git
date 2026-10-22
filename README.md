@@ -24,10 +24,14 @@ Le jeu est en JavaScript sans framework ni étape de compilation : on modifie un
 | `js/engine.js` | la simulation : matchs, ligues, tournois, transferts, finances, sponsors, sauvegarde |
 | `js/ui.js` | l'interface : écrans, fenêtres, boutons (`ACTIONS`), calendrier, direct des matchs |
 | `css/style.css` | le style |
+| `js/logos.js` | les logos : tracés SVG des jeux (Simple Icons, CC0) et images des clubs (`img/clubs/`) |
 | `desktop/` | la version Windows (Electron) : `cd desktop && npm install && npm run build` crée `desktop/dist/EsportsManager.exe` |
 | `tools/` | les scripts d'import des données réelles (Liquipedia, CSV fournis) |
 
 Quelques repères :
+- **Couleurs du club** : toute l'interface (bandeau, menu, titres des panneaux, boutons) prend la couleur du club géré (`--club`, posée par `render0()` dans `js/ui.js`).
+- **Ajouter un logo de club** : déposez l'image dans `img/clubs/` et ajoutez-la à `CLUB_LOGOS` dans `js/logos.js` (clé = identifiant du club dans `ORGS`). Un motif optionnel pour le bandeau va dans `CLUB_PATTERNS`. Sans logo, le club garde son écusson avec son tag.
+- **Ajouter un logo de jeu** : ajoutez le tracé SVG (viewBox 24×24) à `GAME_LOGOS` dans `js/logos.js`. Sans logo, le jeu est signalé par une pastille à sa couleur.
 - **Ajouter un jeu** : une entrée dans `GAMES` (`js/data.js`), son économie dans `GAME_ECO` et son jour de match dans `LEAGUE_WEEKDAY` (`js/engine.js`), ses tournois dans `TOURNAMENTS` et ses petits tournois dans `SMALL_EVENTS`. Les ligues et les joueurs se créent tout seuls.
 - **Mettre à jour les joueurs d'une scène Liquipedia** : `python3 tools/build_liquipedia.py bs mr …`. L'API est très limitée en débit ; les pages déjà lues sont gardées dans `tools/sources/liquipedia`.
 - **Un nouveau bouton** : `data-act="mon-action"` dans le HTML et `ACTIONS["mon-action"] = v => { … }` dans `js/ui.js`.
