@@ -261,3 +261,5 @@ Les notes viennent des résultats : vainqueur, finaliste et nombre de grands tou
 - **Planning** : liste jour par jour avec les résultats.
 
 On navigue avec le bouton « Aujourd'hui » et les flèches ‹ ›, et un filtre choisit les événements affichés. Un clic sur un événement ouvre sa fiche (dates, dotation, résultat, décliner le tournoi). Les ouvertures et fermetures du mercato et la fin de saison y figurent aussi.
+
+**Vrais joueurs partout** : une partie commencée avant l'ajout d'un jeu le reçoit au chargement, avec ses vrais clubs, joueurs et ligues, et un message l'annonce. Les clubs de remplissage prennent d'abord les vrais agents libres de leur jeu ; c'est ainsi que les vrais joueurs de Heroes of the Storm forment les clubs. L'import couvre aussi les tournois régionaux, avec par exemple 51 équipes en Marvel Rivals, 28 en Wild Rift, 131 joueurs en Clash Royale et 49 en Hearthstone. L'échelle des notes est recalée pour que l'élite d'une scène soit autour de 92.

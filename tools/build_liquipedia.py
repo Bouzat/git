@@ -280,7 +280,10 @@ NATIONS = {"Germany", "France", "Netherlands", "Poland", "Sweden", "Ukraine", "S
 GAME_SIZE = {"bs": 3, "mr": 6, "wr": 5, "wot": 7, "hots": 5}
 def assemble(game, best, cnt, info):
     kind = GAMES[game][2]
-    rate = lambda k: min(94, best[k] + min(2, cnt[k] - 1))
+    raw = lambda k: best[k] + min(2, cnt[k] - 1)
+    # chaque scène a son élite : si ses meilleurs tournois sont classés A-Tier, l'échelle est remontée (le meilleur vers 92)
+    lift = max(0, 92 - max([raw(k) for k in best] or [92]))
+    rate = lambda k: min(94, raw(k) + lift)
     orgs, out = {}, []
     fa, used = [], set()
     if kind == "team":
