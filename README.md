@@ -246,3 +246,5 @@ Le classement des structures affiche les points, les titres, les 2es et 3es plac
 Un bandeau sur le tableau de bord pendant l'EWC et dans l'onglet Tournois y renvoie. Quand vous gagnez plusieurs titres la même semaine, la célébration les liste tous, avec leurs gains.
 
 **Version Windows (.exe)** : le dossier `desktop/` empaquette le jeu avec Electron en un seul `EsportsManager.exe` portable, sans installation. Pour le refaire : `cd desktop && npm install && npm run build` ; le fichier arrive dans `desktop/dist/`. La sauvegarde est enregistrée sur l'ordinateur du joueur.
+
+**Alertes de sponsors** : les clauses en danger n'encombrent plus le tableau de bord. Elles n'apparaissent que lorsque le verdict approche : les 6 dernières journées de ligue pour un objectif de classement, le dernier quart du contrat pour les fans ou un titre. Elles sont regroupées en une seule ligne (nombre de clauses, primes en jeu, objectifs principaux, votre place), et les rappels par mail sont regroupés en un seul message.

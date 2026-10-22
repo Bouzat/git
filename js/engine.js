@@ -3059,8 +3059,12 @@ function clauseRisk(d, c) {
   if (c.kind === "title") return done >= 0.6 && u.titles.length <= d.titles0 ? "aucun titre pour l'instant" : null;
   return null;
 }
-// clauses non respectées (alertes) : liste [contrat, clause, texte]
-const sponsorAlerts = () => user().sponsorDeals.flatMap(d => (d.clauses || []).map(c => [d, c, clauseRisk(d, c)]).filter(x => x[2]));
+// une clause devient vraiment importante à l'approche de son verdict : les dernières journées de ligue pour un classement,
+// le dernier quart du contrat pour les fans ou un titre
+const LEAGUE_END = LEAGUE_DAYS[LEAGUE_DAYS.length - 1];
+const clauseUrgent = (d, c) => c.kind === "rank" ? S.week >= LEAGUE_END - 6 && S.week <= LEAGUE_END : d.weeks <= Math.max(6, Math.round((d.total || 0) * 0.25));
+// clauses non respectées (alertes) : liste [contrat, clause, texte] ; urgent : seulement celles qui se jouent bientôt
+const sponsorAlerts = urgent => user().sponsorDeals.flatMap(d => (d.clauses || []).map(c => [d, c, clauseRisk(d, c)]).filter(x => x[2] && (!urgent || clauseUrgent(d, x[1]))));
 // joueurs du club dont le contrat se termine à la fin de la saison
 const expiringPlayers = () => allUserPlayers().filter(p => p.years <= 1);
 // chaque semaine : paiements, clauses, fins de contrat et propositions de renouvellement, marques intéressées
@@ -3068,12 +3072,17 @@ function sponsorWeek(report) {
   const u = user();
   for (const d of u.sponsorDeals) book("sponsors", d.weekly, "", d.name);
   for (const d of u.sponsorDeals) for (const c of d.clauses || []) checkClause(d, c, c.kind === "rank" && S.week === PO_FINAL);
-  // alertes : une clause qui n'est plus respectée (rappel toutes les 6 semaines), puis qui l'est de nouveau
+  // alertes regroupées en un seul message : les clauses qui se jouent bientôt et ne sont pas respectées (rappel toutes
+  // les 6 semaines), puis celles qui le sont de nouveau
+  const warn = [], back = [];
   for (const d of u.sponsorDeals) for (const c of d.clauses || []) {
     const risk = clauseRisk(d, c);
-    if (risk && (!c.warnedAt || nowIndex() - c.warnedAt >= 6)) { c.warnedAt = nowIndex(); mail(`⚠️ Clause en danger : ${d.name}`, `<b>${esc0(c.label)}</b> : ${risk}. Si l'objectif n'est pas atteint, pas de prime de ${money(c.bonus)}${c.main ? " et la marque ne renouvellera sans doute pas" : ""}.`, "sponsor"); }
-    else if (!risk && c.warnedAt && c.status === "pending") { delete c.warnedAt; mail(`✅ Clause de nouveau respectée : ${d.name}`, `<b>${esc0(c.label)}</b> : vous êtes de nouveau dans les clous. Il faut tenir jusqu'au bout.`, "sponsor"); }
+    if (risk && clauseUrgent(d, c) && (!c.warnedAt || nowIndex() - c.warnedAt >= 6)) { c.warnedAt = nowIndex(); warn.push([d, c, risk]); }
+    else if (!risk && c.warnedAt && c.status === "pending") { delete c.warnedAt; back.push([d, c]); }
   }
+  if (warn.length) mail(`⚠️ ${warn.length > 1 ? warn.length + " clauses de sponsors en danger" : "Clause en danger : " + warn[0][0].name}`, `Ces objectifs se jouent bientôt et ne sont pas atteints pour l'instant (${money(warn.reduce((a, x) => a + x[1].bonus, 0))} de primes en jeu) :<br>` +
+    warn.map(([d, c, risk]) => `• <b>${esc0(d.name)}</b> — ${esc0(c.label)} : ${risk}. Prime ${money(c.bonus)}${c.main ? " (objectif principal : sans lui, pas de renouvellement)" : ""}.`).join("<br>"), "sponsor");
+  if (back.length) mail(`✅ ${back.length > 1 ? back.length + " clauses de nouveau respectées" : "Clause de nouveau respectée : " + back[0][0].name}`, back.map(([d, c]) => `• <b>${esc0(d.name)}</b> — ${esc0(c.label)}`).join("<br>") + "<br>Il faut tenir jusqu'au bout.", "sponsor");
   for (const d of u.sponsorDeals) {
     --d.weeks;
     if (d.weeks === 4) mail(`⏳ Fin de contrat dans 4 semaines : ${d.name}`, `Le contrat avec <b>${d.name}</b> (${money(d.weekly)}/sem) se termine dans 4 semaines. Dans 2 semaines, vous pourrez décider de le renouveler ou non.`, "sponsor");

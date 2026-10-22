@@ -267,7 +267,17 @@ function alertsCard() {
   for (const g of incompleteGames()) items.push(`<div class="bad">⚠️ ${GAMES[g].icon} Effectif incomplet en ${GAMES[g].name} (${gamePlayers(g).length}/${GAMES[g].size}) : vos équipes jouent en sous-nombre. <span class="link" data-act="goto-market" data-v="${g}">Recruter</span></div>`);
   const exp = expiringPlayers();
   if (exp.length && S.week >= 26) items.push(`<div class="warn">⏳ ${exp.length} joueur(s) en fin de contrat à la fin de la saison : ${exp.slice(0, 6).map(p => `${GAMES[p.game].icon} ${esc(p.handle)}`).join(", ")}${exp.length > 6 ? "…" : ""}. <span class="link" data-act="contracts">Prolonger</span></div>`);
-  for (const [d, c, risk] of sponsorAlerts()) items.push(`<div class="warn">📉 ${esc(d.name)} — clause en danger : ${esc(c.label)} (${risk}). Prime : ${money(c.bonus)}.</div>`);
+  // clauses de sponsors : une seule ligne, seulement quand le verdict approche ; regroupées par situation (même compétition)
+  const sa = sponsorAlerts(true);
+  if (sa.length) {
+    const groups = {};
+    for (const [d, c, risk] of sa) { const k = (c.game || "") + "|" + (c.kind === "rank" ? (leagueOf(S.userId, c.game) ? leagueName(leagueOf(S.userId, c.game)) : c.label) : c.kind); (groups[k] = groups[k] || []).push([d, c, risk]); }
+    const parts = Object.values(groups).map(list => { const [d, c, risk] = list[0];
+      return c.kind === "rank" ? `${c.game ? GAMES[c.game].icon + " " : ""}${esc(leagueOf(S.userId, c.game) ? leagueName(leagueOf(S.userId, c.game)) : c.label)} : vous êtes ${leagueRank(c.game)}e (${[...new Set(list.map(x => x[1].target))].sort().map(t => `${list.filter(x => x[1].target === t).length} ${t === 1 ? "veulent la 1re place" : "le top " + t}`).join(", ")})`
+        : `${list.length} objectif(s) ${c.kind === "fans" ? "de fans" : "de titre"} (${esc(risk)})`; });
+    const main = sa.filter(x => x[1].main).length;
+    items.push(`<div class="warn">📉 ${sa.length} clause(s) de sponsors en danger, ${money(sa.reduce((a, x) => a + x[1].bonus, 0))} de primes en jeu${main ? ` · <b>${main} objectif(s) principal(aux)</b> : sans eux, pas de renouvellement` : ""} — ${parts.join(" · ")}. <span class="link" data-act="view" data-v="sponsors">Voir</span></div>`);
+  }
   for (const d of u.sponsorDeals.filter(d => d.weeks <= 4)) items.push(`<div class="warn">🤝 Contrat ${esc(d.name)} : fin dans ${d.weeks} semaine(s)${d.renew === "yes" ? " (prolongation acceptée, à négocier à la fin)" : d.renew === "no" ? " (vous ne renouvelez pas)" : d.renew === "refused" ? " (la marque ne prolonge pas)" : d.weeks <= 2 ? "" : " — décision de renouvellement dans " + (d.weeks - 2) + " semaine(s)"}.</div>`);
   return items;
 }
