@@ -1,0 +1,9 @@
+SELECT ?p ?label ?alias ?nick ?birth ?cc ?gameLabel WHERE {
+  ?p wdt:P106/wdt:P279* wd:Q4379701 ; wdt:P569 ?birth .
+  FILTER(?birth > "1975-01-01"^^xsd:dateTime)
+  OPTIONAL { ?p rdfs:label ?label FILTER(lang(?label)="en") }
+  OPTIONAL { ?p skos:altLabel ?alias FILTER(lang(?alias)="en") }
+  OPTIONAL { ?p wdt:P1449|wdt:P742 ?nick }
+  OPTIONAL { ?p wdt:P27 ?c . ?c wdt:P297 ?cc }
+  OPTIONAL { ?p wdt:P2416 ?game . ?game rdfs:label ?gameLabel FILTER(lang(?gameLabel)="en") }
+}
