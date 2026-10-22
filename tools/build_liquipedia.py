@@ -30,6 +30,28 @@ GAMES = {
     "smash": ("smash", ["S-Tier Tournaments", "A-Tier Tournaments"], "solo"),
 }
 MAX_EVENTS = {"team": 6, "solo": 6}
+# pages de tournois lues directement quand la liste S-Tier du wiki n'est pas exploitable (redirection, autre format)
+PAGES = {
+    "wr": ["Wild Rift Super League/2026/Summer", "Wild Rift Super League/2025/Stage 1/Finals", "Wild Rift Super League/2025/Stage 2/September Circuit"],
+    "hs": ["Hearthstone World Championship/2026", "Hearthstone World Championship/2025"],
+    "bw": ["ASL/22", "ASL/21", "ASL/20"],
+    "smash": ["GENESIS/X3/Ultimate", "Riptide/2026/Ultimate", "Kagaribi/15"],
+}
+# dotation plafonnée (certaines listes affichent des montants en monnaie locale)
+PRIZE_CAP = {"wc3": 200000, "hots": 60000, "geo": 150000, "aoe": 200000}
+def infobox_event(wiki, title):
+    t = lp.page(wiki, title)
+    g = lambda k: (re.search(r"\|\s*" + k + r"\s*=\s*([^|\n}]*)", t) or [None, ""])[1].strip()
+    sd = g("sdate") or g("date")
+    m = re.match(r"(\d{4})-(\d{2})-(\d{2})", sd)
+    if not m: return None
+    y, mo, d = map(int, m.groups())
+    name = re.sub(r"\[\[|\]\]", "", g("name")) or title.replace("/", " ")
+    done = datetime.date(y, mo, d) < datetime.date(2026, 10, 15)
+    n = int(re.sub(r"[^\d]", "", g("team_number") or g("player_number") or g("participants_number") or "0") or 0)
+    usd = int(float(re.sub(r"[^\d.]", "", g("prizepoolusd") or g("prizepool") or "0") or 0))
+    return {"year": y, "tier": "S", "page": title, "name": name, "date": datetime.date(y, mo, d).strftime("%b %d, %Y"), "usd": usd, "loc": "",
+            "n": n, "winner": "?" if done else "TBD", "runner": ""}
 
 cur = json.loads(subprocess.run(["node", "-e", f"""
 const fs=require('fs');eval(fs.readFileSync({json.dumps(os.path.join(ROOT, 'js/data.js'))},'utf8')+fs.readFileSync({json.dumps(LIVE)},'utf8')+';global.X={{ORGS}}');
@@ -127,14 +149,19 @@ def team_participants(text):
     # format plus récent : {{TeamParticipants … {{Opponent|team=…|players={{Persons|{{Person|nom|flag=…}}…}}}}}}
     for b in templates(text, "Opponent"):
         d, pos = args(b)
-        team = strip_links(d.get("team") or (pos[0] if pos and d.get("type") == "team" else ""))
-        if not team or "players" not in d: continue
+        if "players" not in d: continue
+        team = strip_links(d.get("team") or (pos[0] if pos else ""))
+        if not team: continue
         ps = []
         for pb in templates(d["players"], "Person"):
             pd_, ppos = args(pb)
             h = strip_links(pd_.get("name") or (ppos[0] if ppos else ""))
-            if h and not pd_.get("role"): ps.append([h, cc(pd_.get("flag", ""))])
-        if ps and not any(t["team"] == team for t in teams): teams.append({"team": team, "flag": "", "players": ps, "place": None})
+            if h and pd_.get("type") != "staff" and pd_.get("status") != "sub" and "coach" not in pd_.get("role", ""): ps.append([h, cc(pd_.get("flag", ""))])
+        q = d.get("qualification", "") + " " + d.get("qualifier", "")
+        reg = next((c for k_, c in (("China", "CN"), ("Americas", "US"), ("North America", "US"), ("South America", "BR"), ("Brazil", "BR"), ("LATAM", "MX"),
+                                     ("EMEA", "GB"), ("Europe", "GB"), ("MENA", "SA"), ("Oceania", "AU"), ("Japan", "JP"), ("Korea", "KR"), ("SEA", "PH"),
+                                     ("Asia", "KR"), ("Pacific", "JP")) if k_ in q), "")
+        if ps and not any(t["team"] == team for t in teams): teams.append({"team": team, "flag": cc(d.get("flag", "")) or reg, "players": ps, "place": None})
     return teams
 
 def solo_participants(text):
@@ -179,9 +206,17 @@ def build(game):
     events = []
     for k, t in enumerate(lists):
         tier = "S" if k == 0 else "A"
+        cached = os.path.exists(os.path.join(lp.CACHE, wiki, re.sub(r"[^A-Za-z0-9_.-]", "_", t) + ".html"))
+        if k > 0 and not cached: continue   # listes A-Tier : seulement si déjà téléchargées (requêtes très limitées)
         try: events += [dict(e, tier=tier) for e in lp_lists.tournaments(lp.html(wiki, t), tier)]
         except Exception as ex: print(game, t, "liste indisponible :", ex, file=sys.stderr)
+    for t in PAGES.get(game, []):
+        try:
+            e = infobox_event(wiki, t)
+            if e and not any(x["page"] == t for x in events): events.append(e)
+        except Exception as ex: print(game, t, "page indisponible :", ex, file=sys.stderr)
     events = [e for e in events if e["year"] in (2025, 2026)]
+    for e in events: e["usd"] = min(e["usd"], PRIZE_CAP.get(game, 10 ** 9))
     # ---- calendrier 2026 : les tournois de 2026 ; ceux de 2025 dont la série n'a pas (encore) d'édition 2026 sont repris à la même date
     series = lambda e: norm(re.sub(r"\b(20\d\d|[IVX]+|\d+)\b", "", e["name"]))
     s26 = {series(e) for e in events if e["year"] == 2026}
@@ -198,7 +233,7 @@ def build(game):
         cal.append([name, w, eur, "1" if e["tier"] == "S" else "12", size])
     cal.sort(key=lambda x: (x[1], -x[2]))
     # ---- palmarès : tournois terminés
-    hist = [[e["year"], e["name"], e["winner"], e["runner"], e["usd"], e["tier"]] for e in events if e["winner"] and e["winner"] != "TBD"]
+    hist = [[e["year"], e["name"], e["winner"], e["runner"], e["usd"], e["tier"]] for e in events if e["winner"] and e["winner"] not in ("TBD", "?")]
     # ---- participants des tournois terminés les plus récents (les plus grands d'abord)
     done = sorted([e for e in events if e["winner"] and e["winner"] != "TBD"], key=lambda e: (e["tier"] != "S", -e["year"], -e["usd"]))[:MAX_EVENTS[kind]]
     best, cnt, info = {}, {}, {}
