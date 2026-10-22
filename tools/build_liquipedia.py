@@ -76,7 +76,8 @@ by_name = {norm(v[0]): k for k, v in ORGS.items()}
 by_name.update({norm(v[1]): k for k, v in ORGS.items() if len(v[1]) > 2})
 def org_for(name):
     n = norm(name); o = ALIASES.get(n) or by_name.get(n)
-    return o if o in ORGS else None
+    # les organisations créées par ce script sont recréées à chaque passage
+    return o if o in ORGS and o.split("_")[0] not in GAMES else None
 
 # drapeaux Liquipedia (codes à 2 lettres, parfois des noms ou des régions)
 FLAG_ALIAS = {"uk": "GB", "en": "GB", "england": "GB", "scotland": "GB", "wales": "GB", "usa": "US", "kr": "KR", "korea": "KR", "southkorea": "KR",
@@ -167,13 +168,23 @@ def team_participants(text):
 def solo_participants(text):
     """Joueurs d'un tournoi en 1 contre 1 : tableaux de participants, dotation (places) et arbres."""
     seen = {}
-    for b in templates(text, "Opponent") + templates(text, "Player") + templates(text, "1Opponent"):
+    teams = {}
+    for b in templates(text, "ParticipantSection") + templates(text, "ParticipantTable"):
+        d, _ = args(b)
+        for k in range(1, 200):
+            h = strip_links(d.get("p%d" % k, ""))
+            if not h: continue
+            if h.startswith("{{"): continue
+            f = cc(d.get("p%dflag" % k, ""))
+            if h not in seen or (f and not seen[h]): seen[h] = f
+    for b in templates(text, "Opponent") + templates(text, "Player") + templates(text, "1Opponent") + templates(text, "SoloOpponent"):
         d, pos = args(b)
         if d.get("type") in ("team", "literal"): continue
         h = strip_links(d.get("1") or d.get("name") or d.get("link") or (pos[0] if pos else ""))
         if not h or h.upper() in ("TBD", "BYE", "") or len(h) > 30: continue
         f = cc(d.get("flag", ""))
         if h not in seen or (f and not seen[h]): seen[h] = f
+        if d.get("team"): teams[h] = strip_links(d["team"])
     # places : modèles de dotation {{Slot|place=…|{{Opponent|…}}}}
     places = {}
     for b in templates(text, "Slot"):
@@ -184,7 +195,7 @@ def solo_participants(text):
             od, opos = args(ob)
             h = strip_links(od.get("1") or od.get("name") or (opos[0] if opos else ""))
             if h: places[h] = min(places.get(h, 999), p)
-    return [{"player": h, "flag": f, "place": places.get(h)} for h, f in seen.items()]
+    return [{"player": h, "flag": f, "place": places.get(h), "team": teams.get(h, "")} for h, f in seen.items()]
 
 # ---------- notes : place obtenue, pondérée par le prestige du tournoi ----------
 def place_rating(place, n, tier, usd):
@@ -235,7 +246,7 @@ def build(game):
     # ---- palmarès : tournois terminés
     hist = [[e["year"], e["name"], e["winner"], e["runner"], e["usd"], e["tier"]] for e in events if e["winner"] and e["winner"] not in ("TBD", "?")]
     # ---- participants des tournois terminés les plus récents (les plus grands d'abord)
-    done = sorted([e for e in events if e["winner"] and e["winner"] != "TBD"], key=lambda e: (e["tier"] != "S", -e["year"], -e["usd"]))[:MAX_EVENTS[kind]]
+    done = sorted([e for e in events if e["winner"] and e["winner"] != "TBD"], key=lambda e: (-e["year"], e["tier"] != "S", -e["usd"]))[:MAX_EVENTS[kind]]
     best, cnt, info = {}, {}, {}
     for e in done:
         try: text = lp.page(wiki, e["page"])
@@ -245,25 +256,36 @@ def build(game):
                 k = norm(t["team"])
                 r = place_rating(1 if norm(e["winner"]) == k else 2 if norm(e["runner"]) == k else None, e["n"], e["tier"], e["usd"])
                 best[k] = max(best.get(k, 0), r); cnt[k] = cnt.get(k, 0) + 1
-                if k not in info or len(t["players"]) >= len(info[k]["players"]): info[k] = t
+                if k not in info: info[k] = t   # effectif du tournoi le plus récent et le plus prestigieux
         else:
             for p in solo_participants(text):
                 k = norm(p["player"])
                 if not k: continue
-                r = place_rating(p["place"] or (1 if norm(e["winner"]) == k else 2 if norm(e["runner"]) == k else None), e["n"], e["tier"], e["usd"])
+                r = place_rating(1 if norm(e["winner"]) == k else 2 if norm(e["runner"]) == k else p["place"], e["n"], e["tier"], e["usd"])
                 best[k] = max(best.get(k, 0), r); cnt[k] = cnt.get(k, 0) + 1
                 if k not in info or (p["flag"] and not info[k]["flag"]): info[k] = p
     return events, cal, hist, best, cnt, info
 
+NATIONS = {"Germany", "France", "Netherlands", "Poland", "Sweden", "Ukraine", "Spain", "Italy", "United Kingdom", "Russia", "Finland", "Denmark", "Norway",
+           "Belgium", "Austria", "Switzerland", "Czechia", "Czech Republic", "Portugal", "Turkey", "Greece", "Hungary", "Romania", "Brazil", "United States",
+           "Canada", "Mexico", "Argentina", "Chile", "Korea", "South Korea", "China", "Taiwan", "Japan", "Australia", "Europe", "Americas", "Asia", "Slovakia",
+           "Lithuania", "Latvia", "UAE", "Saudi Arabia", "Egypt", "Estonia", "Ireland", "Scotland", "England", "Wales", "Israel", "Belarus", "Kazakhstan", "Bulgaria", "Serbia", "Croatia"}
 GAME_SIZE = {"bs": 3, "mr": 6, "wr": 5, "wot": 7, "hots": 5}
 def assemble(game, best, cnt, info):
     kind = GAMES[game][2]
     rate = lambda k: min(94, best[k] + min(2, cnt[k] - 1))
     orgs, out = {}, []
+    fa, used = [], set()
     if kind == "team":
         for k in sorted(best, key=lambda k: -rate(k)):
             t = info[k]
-            ps = t["players"][:GAME_SIZE[game]]
+            if re.sub(r"\s*\d+$", "", t["team"]) in NATIONS:
+                fa += [[h, c or t["flag"], max(65, rate(k) - 3 + jit(h, 5) - 1), 0] for h, c in t["players"]]
+                continue
+            # un joueur n'appartient qu'à une équipe (les effectifs bougent d'un tournoi à l'autre)
+            ps = [p for p in t["players"] if norm(p[0]) not in used][:GAME_SIZE[game]]
+            if len(ps) < max(2, GAME_SIZE[game] // 2): continue
+            used.update(norm(p[0]) for p in ps)
             occ = t["flag"] or max([p[1] for p in ps if p[1]] or ["US"], key=[p[1] for p in ps].count)
             o = org_for(t["team"])
             if not o:
@@ -274,8 +296,10 @@ def assemble(game, best, cnt, info):
     else:
         for k in sorted(best, key=lambda k: -rate(k)):
             p = info[k]
-            out.append([p["player"], p["flag"], max(65, rate(k) + jit(p["player"], 3) - 1), 0])
-    return orgs, out
+            e = [p["player"], p["flag"], max(65, rate(k) + jit(p["player"], 3) - 1), 0]
+            o = org_for(p.get("team") or "") if p.get("team") else None
+            out.append([o, [e]] if o else e)
+    return orgs, out, fa
 
 def main(only):
     lines = open(LIVE, encoding="utf-8").read().split("\n")
@@ -287,11 +311,14 @@ def main(only):
         raise SystemExit("constante introuvable : " + const)
     for game in only:
         events, cal, hist, best, cnt, info = build(game)
-        orgs, out = assemble(game, best, cnt, info)
+        orgs, out, fa = assemble(game, best, cnt, info)
         kind = GAMES[game][2]
         top = ", ".join(("%s %d" % (ORGS.get(e[0], orgs.get(e[0], [e[0]]))[0], e[1][0][2])) if kind == "team" else "%s %d" % (e[0], e[2]) for e in out[:8])
         print("%s : %d %s, %d tournois au calendrier, %d titres ; meilleurs : %s" % (game, len(out), "équipes" if kind == "team" else "joueurs", len(cal), len(hist), top), file=sys.stderr)
-        if not out: continue
+        if fa: patch("LIVE_FREE_AGENTS", lambda v: v.__setitem__(game, fa))
+        if not out:
+            patch("LIVE_ROSTERS" if kind == "team" else "LIVE_SOLOS", lambda v: v.pop(game, None))
+            continue
         def set_orgs(v):
             for k in [k for k in v if k.startswith(game + "_")]: del v[k]
             v.update(orgs)

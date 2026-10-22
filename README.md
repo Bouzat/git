@@ -248,3 +248,9 @@ Un bandeau sur le tableau de bord pendant l'EWC et dans l'onglet Tournois y renv
 **Version Windows (.exe)** : le dossier `desktop/` empaquette le jeu avec Electron en un seul `EsportsManager.exe` portable, sans installation. Pour le refaire : `cd desktop && npm install && npm run build` ; le fichier arrive dans `desktop/dist/`. La sauvegarde est enregistrée sur l'ordinateur du joueur.
 
 **Alertes de sponsors** : les clauses en danger n'encombrent plus le tableau de bord. Elles n'apparaissent que lorsque le verdict approche : les 6 dernières journées de ligue pour un objectif de classement, le dernier quart du contrat pour les fans ou un titre. Elles sont regroupées en une seule ligne (nombre de clauses, primes en jeu, objectifs principaux, votre place), et les rappels par mail sont regroupés en un seul message.
+
+**12 nouvelles scènes (Liquipedia)** : Brawl Stars, Marvel Rivals, Wild Rift, World of Tanks, Heroes of the Storm, Hearthstone, Clash Royale, GeoGuessr, Age of Empires II, Warcraft III, StarCraft: Brood War et Super Smash Bros. Ultimate. Ces jeux ne sont pas à l'Esports World Cup. `tools/build_liquipedia.py` importe depuis l'API de Liquipedia :
+- les vraies équipes et les vrais joueurs des grands tournois 2025-2026, par exemple Crazy Raccoon et HMBLE en Brawl Stars, Virtus.pro et NaVi en Marvel Rivals, Hera, Liereyy et TheViper en AoE, Happy en Warcraft III, Bisu et Larva en Brood War, MkLeo en Smash ;
+- le calendrier S-Tier de 2026 et le palmarès 2025.
+
+Les notes viennent des résultats : vainqueur, finaliste et nombre de grands tournois joués. En Heroes of the Storm, la scène se joue surtout entre sélections nationales : ses vrais joueurs sont des agents libres à recruter. Les pages lues sont mises en cache dans `tools/sources/liquipedia` (hors du dépôt). Liquipedia limite fortement les requêtes, le premier import est donc long.
