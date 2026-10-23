@@ -288,3 +288,13 @@ Les notes viennent des résultats : vainqueur, finaliste et nombre de grands tou
 On navigue avec le bouton « Aujourd'hui » et les flèches ‹ ›, et un filtre choisit les événements affichés. Un clic sur un événement ouvre sa fiche (dates, dotation, résultat, décliner le tournoi). Les ouvertures et fermetures du mercato et la fin de saison y figurent aussi.
 
 **Vrais joueurs partout** : une partie commencée avant l'ajout d'un jeu le reçoit au chargement, avec ses vrais clubs, joueurs et ligues, et un message l'annonce. Les clubs de remplissage prennent d'abord les vrais agents libres de leur jeu ; c'est ainsi que les vrais joueurs de Heroes of the Storm forment les clubs. L'import couvre aussi les tournois régionaux, avec par exemple 51 équipes en Marvel Rivals, 28 en Wild Rift, 131 joueurs en Clash Royale et 49 en Hearthstone. L'échelle des notes est recalée pour que l'élite d'une scène soit autour de 92.
+
+**Succès** : la Salle des trophées a deux onglets. **Palmarès** regroupe les trophées gagnés en compétition. **Succès** propose 50 défis à débloquer :
+- finances (premier million, sponsor majeur, jackpot…) ;
+- compétition (100 victoires, 10 tournois, champion du monde, doublé…) ;
+- séries (5, 10 ou 20 victoires d'affilée, 5 ou 10 défaites d'affilée…) ;
+- effectif (star à 90, pépite, formateur…) ;
+- club (1 million de fans, 10 jeux, dynastie…) ;
+- insolites (dans le rouge, sur la sellette).
+
+Chaque succès affiche sa progression et se débloque avec une notification. En reprenant un grand club, les succès déjà remplis sont acquis sans fanfare. Le suivi est dans `js/engine.js` (`ACHIEVEMENTS`, `achievementsWeek`, `checkAch`).

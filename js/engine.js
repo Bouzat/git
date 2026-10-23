@@ -2336,6 +2336,7 @@ function advanceWeek() {
     S.over = true;
     mail("❌ Licencié", `Le conseil d'administration a perdu confiance. ${S.ceo} est démis de ses fonctions de CEO de ${u.name}.`, "board");
   }
+  achievementsWeek(out);
   scheduleSave();
   return out;
 }
@@ -3278,6 +3279,7 @@ function getSaveWorker() {
   return saveWorker;
 }
 function scheduleSave() {
+  try { checkAch(); } catch (e) { }
   if (typeof setTimeout !== "function" || typeof Worker === "undefined") return saveNow();
   savePending = true;
   clearTimeout(scheduleSave.t);
@@ -3334,3 +3336,121 @@ function saveIsOutdated() {
 }
 function hasSave() { try { return !!localStorage.getItem(SAVE_KEY); } catch (e) { return false; } }
 function wipeSave() { clearTimeout(scheduleSave.t); scheduleSave.t = null; saveSeq++; savePending = false; try { localStorage.removeItem(SAVE_KEY); } catch (e) { } }
+
+// ---------- succès (50 trophées à débloquer en accomplissant des choses) ----------
+// Les statistiques (séries, victoires, transferts…) sont suivies chaque semaine dans S.ach.st ; un succès se débloque
+// quand sa progression atteint son objectif. S.ach.done : id -> [saison, semaine] ; S.ach.pending : à annoncer à l'écran.
+const ACH_CATS = [["fin", "💰 Finances"], ["comp", "🏆 Compétition"], ["streak", "📈 Séries"], ["squad", "👥 Effectif et mercato"], ["club", "🏟️ Club"], ["fun", "😅 Insolites"]];
+const achSt = () => (S.ach = S.ach || { done: {}, st: {}, pending: [] }).st;
+const A = (id, cat, icon, name, desc, prog) => ({ id, cat, icon, name, desc, prog });
+const nPlayers = min => allUserPlayers().filter(p => p.rating >= min).length;
+const ACHIEVEMENTS = [
+  A("million", "fin", "💶", "Premier million", "Avoir 1 M€ en caisse", () => [user().budget, 1e6]),
+  A("ten_m", "fin", "💰", "Multimillionnaire", "Avoir 10 M€ en caisse", () => [user().budget, 1e7]),
+  A("fifty_m", "fin", "🏦", "Empire financier", "Avoir 50 M€ en caisse", () => [user().budget, 5e7]),
+  A("sponsors5", "fin", "🤝", "Carnet d'adresses", "Avoir 5 sponsors en même temps", () => [user().sponsorDeals.length, 5]),
+  A("bigsponsor", "fin", "💎", "Sponsor majeur", "Signer un sponsor à 50 k€/semaine ou plus", () => [achSt().bestSponsor || 0, 50000]),
+  A("jackpot", "fin", "🎰", "Jackpot", "Toucher 1 M€ de gains sur un seul tournoi", () => [achSt().bestPrize || 0, 1e6]),
+  A("bigbuy", "fin", "🛒", "Coup de folie", "Acheter un joueur 1 M€ ou plus", () => [achSt().maxBuy || 0, 1e6]),
+  A("bigsale", "fin", "📈", "Vendeur avisé", "Vendre un joueur 1 M€ ou plus", () => [achSt().maxSale || 0, 1e6]),
+  A("first_win", "comp", "✅", "Première victoire", "Gagner un match", () => [achSt().wins || 0, 1]),
+  A("wins100", "comp", "💯", "Centurion", "Gagner 100 matchs", () => [achSt().wins || 0, 100]),
+  A("wins500", "comp", "🏅", "Machine à gagner", "Gagner 500 matchs", () => [achSt().wins || 0, 500]),
+  A("first_cup", "comp", "🏆", "Premier trophée", "Remporter un tournoi", () => [achSt().tourWins || 0, 1]),
+  A("cups10", "comp", "🗄️", "Collectionneur", "Remporter 10 tournois", () => [achSt().tourWins || 0, 10]),
+  A("cups50", "comp", "🏛️", "Musée", "Remporter 50 tournois", () => [achSt().tourWins || 0, 50]),
+  A("league", "comp", "🥇", "Champion", "Remporter un titre de ligue", () => [achSt().leagueTitles || 0, 1]),
+  A("world", "comp", "🌍", "Champion du monde", "Remporter un championnat du monde", () => [achSt().world || 0, 1]),
+  A("double", "comp", "✌️", "Doublé", "Gagner 2 titres la même semaine", () => [achSt().bestWeekTitles || 0, 2]),
+  A("ewc_win", "comp", "🇸🇦", "Roi d'un jeu", "Remporter un tournoi de l'Esports World Cup", () => [achSt().ewcWins || 0, 1]),
+  A("ewc_club", "comp", "👑", "Champion des clubs", "Finir 1er du Club Championship de l'EWC", () => [achSt().ewcClub || 0, 1]),
+  A("top1", "comp", "🎯", "Top 1", "Finir 1er d'un lobby de battle royale", () => [achSt().top1 || 0, 1]),
+  A("no1", "comp", "📊", "Numéro 1 mondial", "Être 1er du classement mondial CS2", () => [user().divisions.cs2 && rankPos("cs2", S.userId) === 1 ? 1 : achSt().no1 || 0, 1]),
+  A("streak5", "streak", "🔥", "En feu", "Gagner 5 matchs d'affilée", () => [achSt().bestWs || 0, 5]),
+  A("streak10", "streak", "⚡", "Inarrêtable", "Gagner 10 matchs d'affilée", () => [achSt().bestWs || 0, 10]),
+  A("streak20", "streak", "🛡️", "Invincible", "Gagner 20 matchs d'affilée", () => [achSt().bestWs || 0, 20]),
+  A("lose5", "streak", "🥶", "Coup de mou", "Perdre 5 matchs d'affilée", () => [achSt().bestLs || 0, 5]),
+  A("lose10", "streak", "🧊", "La crise", "Perdre 10 matchs d'affilée", () => [achSt().bestLs || 0, 10]),
+  A("second3", "streak", "🥈", "Éternel second", "Finir 2e de 3 tournois", () => [achSt().seconds || 0, 3]),
+  A("promo", "streak", "⬆️", "Ascension", "Monter de division", () => [achSt().promos || 0, 1]),
+  A("promo5", "streak", "🚀", "Fusée", "Monter de division 5 fois", () => [achSt().promos || 0, 5]),
+  A("sign1", "squad", "✍️", "Premier contrat", "Recruter un joueur", () => [achSt().signings || 0, 1]),
+  A("sign25", "squad", "📋", "Recruteur", "Recruter 25 joueurs", () => [achSt().signings || 0, 25]),
+  A("star", "squad", "⭐", "Star", "Avoir un joueur noté 90 ou plus", () => [nPlayers(90), 1]),
+  A("galacticos", "squad", "🌟", "Galactiques", "Avoir 5 joueurs notés 90 ou plus", () => [nPlayers(90), 5]),
+  A("prodigy", "squad", "💎", "Pépite", "Avoir un joueur de 19 ans ou moins au potentiel de 88+", () => [allUserPlayers().some(p => p.age <= 19 && p.pot >= 88) ? 1 : 0, 1]),
+  A("growth", "squad", "🌱", "Formateur", "Faire progresser un joueur de 10 points depuis son arrivée", () => [Math.max(0, ...allUserPlayers().map(p => p.rating - ((p.hist || [])[0] || [0, p.rating])[1])), 10]),
+  A("academy", "squad", "🎓", "Centre de formation", "Ouvrir une académie", () => [userAcademies().length, 1]),
+  A("squad50", "squad", "👨‍👩‍👧‍👦", "Grande famille", "Avoir 50 joueurs sous contrat", () => [allUserPlayers().length, 50]),
+  A("coach", "squad", "🧑‍🏫", "Staff de luxe", "Employer un entraîneur de niveau 15 ou plus", () => [Math.max(0, ...Object.values(user().coaches || {}).map(id => S.coaches && S.coaches[id]).filter(Boolean).map(c => coachLevel(c))), 15]),
+  A("games5", "club", "🎮", "Multigaming", "Être présent dans 5 jeux", () => [Object.keys(user().divisions).length, 5]),
+  A("games10", "club", "🕹️", "Conglomérat", "Être présent dans 10 jeux", () => [Object.keys(user().divisions).length, 10]),
+  A("tier1", "club", "🔝", "L'élite", "Avoir une équipe en tier 1", () => [Object.values(user().divisions).some(d => d.tier === 1) ? 1 : 0, 1]),
+  A("fans1m", "club", "📣", "Populaire", "Atteindre 1 million de fans", () => [user().fans, 1e6]),
+  A("fans10m", "club", "🏟️", "Phénomène", "Atteindre 10 millions de fans", () => [user().fans, 1e7]),
+  A("fame100", "club", "✨", "Légende", "Atteindre 100 de notoriété", () => [Math.round(user().fame), 100]),
+  A("board", "club", "🤵", "Conseil conquis", "Atteindre 95 % de confiance du conseil", () => [Math.round(S.board.confidence), 95]),
+  A("builder", "club", "🏗️", "Bâtisseur", "Monter une infrastructure au niveau maximum", () => [Math.max(...Object.values(user().facilities)), MAX_FAC]),
+  A("seasons3", "club", "📅", "Vétéran", "Diriger le club 3 saisons", () => [S.season - (achSt().start || S.season) + 1, 3]),
+  A("seasons10", "club", "🗿", "Dynastie", "Diriger le club 10 saisons", () => [S.season - (achSt().start || S.season) + 1, 10]),
+  A("red", "fun", "📉", "Dans le rouge", "Avoir un budget négatif", () => [achSt().wasRed || 0, 1]),
+  A("survivor", "fun", "😰", "Sur la sellette", "Tomber sous 15 % de confiance du conseil… et survivre", () => [achSt().lowBoard || 0, 1]),
+];
+// statistiques de la semaine : séries de victoires et de défaites, trophées, transferts, montées
+function achievementsWeek(rep) {
+  const st = achSt(), u = user();
+  if (!st.start) st.start = S.season;
+  const ms = (rep.matches || []).filter(r => isMine(r.a) || isMine(r.b)).sort((a, b) => (a.week - b.week) || ((a.dd ?? 5) - (b.dd ?? 5)));
+  for (const r of ms) {
+    if (isMine(r.winner)) { st.wins = (st.wins || 0) + 1; st.ws = (st.ws || 0) + 1; st.ls = 0; st.bestWs = Math.max(st.bestWs || 0, st.ws); }
+    else { st.ls = (st.ls || 0) + 1; st.ws = 0; st.bestLs = Math.max(st.bestLs || 0, st.ls); }
+  }
+  st.top1 = (st.top1 || 0) + (rep.lobbies || []).filter(l => l.rank === 1).length;
+  let titles = 0;
+  for (const t of rep.tournaments || []) {
+    if (t.place === 1) { st.tourWins = (st.tourWins || 0) + 1; titles++; if (t.world) st.world = (st.world || 0) + 1; if (/^EWC — (?!Qualif)/.test(t.name)) st.ewcWins = (st.ewcWins || 0) + 1; }
+    if (t.place === 2) st.seconds = (st.seconds || 0) + 1;
+    st.bestPrize = Math.max(st.bestPrize || 0, t.prize || 0);
+  }
+  const lt = (rep.fans || []).filter(([l]) => /^🏆 Titre/.test(l)).length;
+  st.leagueTitles = (st.leagueTitles || 0) + lt; titles += lt;
+  st.bestWeekTitles = Math.max(st.bestWeekTitles || 0, titles);
+  if (S.ewcResult && S.ewcResult.ranking[0] && S.ewcResult.ranking[0].id === u.id) st.ewcClub = 1;
+  if (u.divisions.cs2 && rankPos("cs2", u.id) === 1) st.no1 = 1;
+  // montées : un jeu dont le tier s'est amélioré depuis la semaine dernière
+  st.tiers = st.tiers || {};
+  for (const [g, d] of Object.entries(u.divisions)) { if (st.tiers[g] && d.tier < st.tiers[g] && !GAMES[g].open) st.promos = (st.promos || 0) + 1; st.tiers[g] = d.tier; }
+  if (S.board.confidence < 15) st.lowBoard = 1;
+  return checkAch();
+}
+// à chaque sauvegarde : budget, recrues, transferts, sponsors… puis les succès atteints
+function checkAch() {
+  if (!S || !S.userId || !user()) return [];
+  const st = achSt(), u = user(), first = !S.ach.init;
+  if (u.budget < 0) st.wasRed = 1;
+  st.bestSponsor = Math.max(st.bestSponsor || 0, ...u.sponsorDeals.map(d => d.weekly || 0));
+  // recrues : tout joueur arrivé au club depuis le début de la partie (l'effectif d'origine ne compte pas)
+  st.seen = st.seen || {};
+  for (const p of allUserPlayers()) if (!st.seen[p.id]) { st.seen[p.id] = 1; if (!first) st.signings = (st.signings || 0) + 1; }
+  // transferts payants (achats et ventes) depuis le dernier passage
+  const mv = S.moves || [];
+  for (let i = Math.min(st.mi || 0, mv.length); i < mv.length; i++) {
+    const [, , , , , from, to, fee] = mv[i];
+    if (to && isMine(to)) st.maxBuy = Math.max(st.maxBuy || 0, fee);
+    if (from && isMine(from)) st.maxSale = Math.max(st.maxSale || 0, fee);
+  }
+  st.mi = mv.length;
+  const fresh = [];
+  for (const a of ACHIEVEMENTS) {
+    if (S.ach.done[a.id]) continue;
+    let ok = false; try { const [c, t] = a.prog(); ok = c >= t; } catch (e) { }
+    if (ok) { S.ach.done[a.id] = [S.season, S.week, first ? 1 : 0]; fresh.push(a); }
+  }
+  // au premier passage (partie en cours ou reprise d'un grand club), les succès déjà remplis sont acquis sans fanfare
+  if (first) { S.ach.init = true; if (fresh.length) mail(`🎖️ Succès : ${fresh.length} déjà acquis`, `En reprenant le club, vous avez déjà rempli : ${fresh.map(a => `${a.icon} <b>${a.name}</b>`).join(", ")}. ${ACHIEVEMENTS.length - Object.keys(S.ach.done).length} succès restent à débloquer (Salle des trophées → Succès).`, "trophy"); return []; }
+  if (fresh.length) {
+    S.ach.pending.push(...fresh.map(a => a.id));
+    mail(`🎖️ Succès débloqué${fresh.length > 1 ? "s" : ""} : ${fresh.map(a => a.name).join(", ")}`, fresh.map(a => `${a.icon} <b>${a.name}</b> — ${a.desc}`).join("<br>"), "trophy");
+  }
+  return fresh;
+}

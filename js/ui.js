@@ -192,6 +192,7 @@ function render() {
   if (MEMO || !S) return render0();
   MEMO = new Map();
   try { render0(); } finally { MEMO = null; }
+  achPopup();
 }
 function render0() {
   if (!S) return renderHome();
@@ -1370,6 +1371,9 @@ function trophyKind(t) {
   return tt === "S" ? { k: 1, ic: "🏆", cls: "s", lbl: "Tournoi S-Tier" } : tt === "A" ? { k: 3, ic: "🏅", cls: "a", lbl: "Tournoi A-Tier" } : { k: 4, ic: "🎖️", cls: "b", lbl: `Tournoi ${tt}-Tier` };
 }
 function viewTrophies() {
+  checkAch();
+  const tabs0 = `<div class="tabs tr-tabs"><button class="tab ${UI.trophyTab !== "ach" ? "active" : ""}" data-act="trophy-tab" data-v="cups">🏆 Palmarès</button><button class="tab ${UI.trophyTab === "ach" ? "active" : ""}" data-act="trophy-tab" data-v="ach">🎖️ Succès <small>${Object.keys(S.ach.done).length}/${ACHIEVEMENTS.length}</small></button></div>`;
+  if (UI.trophyTab === "ach") return `<h2>🏆 Salle des trophées de ${esc(user().name)}</h2>${tabs0}${achievementsView()}`;
   const u = user(), f = UI.trophyGame || "all";
   const mineT = S.titles.filter(t => t.clubId && isMine(t.clubId) && (f === "all" || t.game === f));
   const won = mineT.filter(t => !t.real), legacy = mineT.filter(t => t.real);
@@ -1386,7 +1390,7 @@ function viewTrophies() {
   const shelf = (title, list) => list.length ? `<div class="card"><h3>${title} <small class="muted">(${list.length})</small></h3><div class="shelf">${list.map(card).join("")}</div></div>` : "";
   const sorted = all.filter(x => x.kd.k > 0).sort((a, b) => a.kd.k - b.kd.k || b.t.season - a.t.season);
   const stat = (n, l, cls = "") => `<div class="tr-stat ${cls}"><b>${n}</b><span>${l}</span></div>`;
-  return `<h2>🏆 Salle des trophées de ${esc(u.name)}</h2>
+  return `<h2>🏆 Salle des trophées de ${esc(u.name)}</h2>${tabs0}
     <div class="tr-stats">${stat(won.length, "trophées remportés", "gold")}${stat(worlds.length, "titres mondiaux", "gold")}${stat(all.filter(x => x.kd.k === 2).length, "titres de ligue")}${stat(all.filter(x => x.kd.k === 1 || x.kd.k >= 3).length, "tournois gagnés")}${stat(medals.length, "podiums (S/A)")}${stat(money(earned), "gains en tournoi")}</div>
     ${games.length > 1 ? `<div class="tabs">${tabs}</div>` : ""}
     ${worlds.length ? `<div class="card world-shelf"><h3>🌍 Champions du monde</h3><div class="shelf">${worlds.sort((a, b) => b.t.season - a.t.season).map(card).join("")}</div></div>` : ""}
@@ -1396,6 +1400,38 @@ function viewTrophies() {
     ${legacy.length ? `<div class="card"><h3>📜 Héritage du club <small class="muted">(titres remportés avant votre arrivée)</small></h3><div class="medals">${legacy.slice().sort((a, b) => b.season - a.season).map(t => `<div class="medal">${trophyKind(t).ic} <b>${esc(t.name)}</b> ${gameChip(t.game)} <small class="muted">${t.season}${t.club && t.club !== u.name ? " · " + esc(t.club) : ""}</small></div>`).join("")}</div></div>` : ""}`;
 }
 ACTIONS["trophy-game"] = v => { UI.trophyGame = v; render(); };
+ACTIONS["trophy-tab"] = v => { UI.trophyTab = v; render(); };
+ACTIONS["ach-filter"] = v => { UI.achFilter = v; render(); };
+// onglet Succès : les 50 succès par catégorie, débloqués en couleur, les autres grisés avec leur progression
+function achievementsView() {
+  const done = S.ach.done, n = Object.keys(done).length, f = UI.achFilter || "all";
+  const fmtN = (x, t, a) => a.cat === "fin" && t >= 1000 ? money(x) : t >= 1e5 ? Math.round(x).toLocaleString("fr-FR") : Math.round(x).toLocaleString("fr-FR");
+  const card = a => {
+    const d = done[a.id]; let c = 0, t = 1; try { [c, t] = a.prog(); } catch (e) { }
+    const pct = Math.max(0, Math.min(100, Math.round(c / t * 100)));
+    return `<div class="ach ${d ? "on" : "off"} ${a.cat === "fun" ? "fun" : ""}"><div class="ach-ic">${a.icon}</div><div class="ach-body"><b>${esc(a.name)}</b><div class="ach-desc">${esc(a.desc)}</div>
+      ${d ? `<div class="ach-date">✅ ${d[2] ? "Acquis à la reprise du club" : `Débloqué · ${weekLabel(d[0], d[1], true)}`}</div>` : t > 1 ? `<div class="ach-bar"><i style="width:${pct}%"></i></div><div class="ach-date">${fmtN(Math.max(0, c), t, a)} / ${fmtN(t, t, a)}</div>` : `<div class="ach-date">🔒 À débloquer</div>`}</div></div>`;
+  };
+  const list = ACHIEVEMENTS.filter(a => f === "all" || (f === "done" ? done[a.id] : !done[a.id]));
+  const filt = [["all", "Tous"], ["done", "Débloqués"], ["todo", "À débloquer"]].map(([k, l]) => `<button class="tab small ${f === k ? "active" : ""}" data-act="ach-filter" data-v="${k}">${l}</button>`).join("");
+  return `<div class="card ach-head"><div class="ach-score"><b>${n}</b><span>/ ${ACHIEVEMENTS.length} succès</span></div><div style="flex:1;min-width:200px"><div class="ach-bar big"><i style="width:${Math.round(n / ACHIEVEMENTS.length * 100)}%"></i></div>
+      <p class="muted" style="margin:6px 0 0;font-size:13px">Des défis à relever au fil de vos saisons : finances, compétition, séries, mercato, club… et quelques moments moins glorieux 😅. Ils se débloquent tout seuls, avec une notification.</p></div></div>
+    <div class="tabs">${filt}</div>
+    ${ACH_CATS.map(([k, l]) => { const xs = list.filter(a => a.cat === k); return xs.length ? `<h3 style="margin-top:16px">${l} <small class="muted">${xs.filter(a => done[a.id]).length}/${ACHIEVEMENTS.filter(a => a.cat === k).length}</small></h3><div class="ach-grid">${xs.map(card).join("")}</div>` : ""; }).join("")}`;
+}
+// notification des succès débloqués (en bas à droite, quelques secondes)
+function achPopup() {
+  if (!S || !S.ach || !S.ach.pending || !S.ach.pending.length) return;
+  const ids = S.ach.pending.splice(0), list = ids.map(id => ACHIEVEMENTS.find(a => a.id === id)).filter(Boolean);
+  let box = document.getElementById("ach-pop"); if (!box) { box = document.createElement("div"); box.id = "ach-pop"; document.body.appendChild(box); }
+  for (const a of list) {
+    const el = document.createElement("div"); el.className = "ach-toast"; el.dataset.act = "ach-open";
+    el.innerHTML = `<div class="ach-ic">${a.icon}</div><div><small>🎖️ Succès débloqué</small><b>${esc(a.name)}</b><span>${esc(a.desc)}</span></div>`;
+    box.appendChild(el); setTimeout(() => el.classList.add("out"), 6000); setTimeout(() => el.remove(), 6600);
+  }
+  scheduleSave();
+}
+ACTIONS["ach-open"] = () => { document.querySelectorAll(".ach-toast").forEach(e => e.remove()); UI.view = "trophies"; UI.trophyTab = "ach"; closeModal(); render(); };
 
 // ---------- monde ----------
 function viewWorld() {
