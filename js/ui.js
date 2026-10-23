@@ -218,7 +218,7 @@ function render0() {
         <div class="stat link-row" data-act="explain-fame" title="À quoi sert la notoriété ?"><b>${Math.round(u.fame)}<small class="muted">/100</small></b><span>Notoriété ⓘ</span></div>
         <div class="stat"><b>${u.fans.toLocaleString("fr-FR")}</b><span>Fans</span></div>
         <div class="stat link-row" data-act="explain-board" title="Comment marche la confiance du conseil ?"><b class="${S.board.confidence < 30 ? "bad" : S.board.confidence < 55 ? "warn" : "ok"}">${Math.round(S.board.confidence)}%</b><span>Confiance du conseil ⓘ</span></div>
-        ${mercatoChip()}
+        ${mercatoChip()}${S.saveError ? `<div class="stat bad" title="Le stockage est plein : la partie n'est plus enregistrée">⚠️ <b>Sauvegarde impossible</b><span>stockage plein</span></div>` : ""}
         <div class="spacer"></div>
         ${S.over ? `<button class="danger" data-act="quit">Partie terminée — Menu</button>` : `<div class="go-bar"><button class="go-skip" data-act="skip" title="Joue cette semaine puis passe les semaines sans match jusqu'au prochain">⏭<span>Aller au prochain match</span></button>
           <button class="primary go-main" data-act="next"><b>▶ Continuer</b><small>${pendingOffers().length ? `📨 ${pendingOffers().length} offre(s) à traiter` : pending.length ? `🎮 ${pending.length} match(s) à jouer cette semaine` : "Passer à la semaine suivante"}</small></button></div>`}

@@ -3294,8 +3294,26 @@ if (typeof window !== "undefined" && window.addEventListener) window.addEventLis
 function readSave() { const s = localStorage.getItem(SAVE_KEY); return s ? unpackSave(s) : null; }
 function writeSave(z) {
   try { localStorage.removeItem("esports-manager-save-v2"); } catch (e) { }   // ancienne version incompatible : libère la place
-  try { localStorage.setItem(SAVE_KEY, z); S.saveError = false; }
-  catch (e) { if (!S.saveError) { S.saveError = true; if (typeof toast === "function") toast("⚠️ Sauvegarde impossible : stockage du navigateur plein ou bloqué."); } }
+  try { localStorage.setItem(SAVE_KEY, z); S.saveError = false; return; } catch (e) { }
+  // stockage plein (longue partie) : on allège les vieilles données et on réessaie aussitôt
+  if (pruneSave()) { try { localStorage.setItem(SAVE_KEY, packSave(JSON.stringify(S))); S.saveError = false; return; } catch (e) { } }
+  if (!S.saveError) { S.saveError = true; if (typeof toast === "function") toast("⚠️ Sauvegarde impossible : stockage plein ou bloqué. La partie continue mais n'est plus enregistrée."); }
+  if (typeof render === "function") try { render(); } catch (e) { }
+}
+// allège une longue partie : palmarès des autres clubs, résultats et classements des saisons passées, vieux messages
+function pruneSave() {
+  const before = JSON.stringify(S).length, old = S.season - 2;
+  S.titles = S.titles.filter(t => t.real || t.season >= old || (t.clubId && isMine(t.clubId)) || (t.tier === 1 && t.season >= S.season - 6));
+  S.tourResults = (S.tourResults || []).filter(t => t.season >= S.season - 1 || t.mine);
+  for (const t of S.tourResults) if (t.season < S.season) delete t.top;
+  S.inbox = S.inbox.slice(0, 120);
+  S.ledger = (S.ledger || []).slice(-400);
+  if (S.moves) S.moves = S.moves.slice(-600);
+  if (S.rankLog) for (const g of Object.keys(S.rankLog)) S.rankLog[g] = S.rankLog[g].filter(x => x[0] >= rankNow() - 60);
+  for (const p of Object.values(S.players)) { if (p.hist && p.hist.length > 30) p.hist = [p.hist[0]].concat(p.hist.slice(-29)); if (p.notes && p.notes.length > 10) p.notes = p.notes.slice(-10); }
+  // joueurs sans club ni intérêt (vieux, faibles) : retirés du monde
+  for (const p of Object.values(S.players)) if (!p.club && p.age >= 30 && p.rating < 70) delete S.players[p.id];
+  return JSON.stringify(S).length < before;
 }
 function saveNow() {
   clearTimeout(scheduleSave.t); scheduleSave.t = null; saveSeq++; savePending = false;
