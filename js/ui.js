@@ -115,11 +115,32 @@ function restoreRaw(raw) {
   if (!raw || !load(raw)) return toast("⚠️ Impossible de lire cette partie : " + (LOAD_ERROR || "fichier invalide"));
   closeModal(); saveNow(); UI.view = "dash"; render(); toast(`✅ Partie restaurée : ${user().name}, saison ${S.season}, semaine ${S.week}.`);
 }
+// version Windows : recherche des sauvegardes encore présentes dans les fichiers du profil (versions anciennes ou effacées)
+const RECOVERED = {};
+ACTIONS["scan-pc"] = () => {
+  const el = document.getElementById("pc-saves"); if (!el || !window.emDesktop) return;
+  el.innerHTML = `<p class="muted">🔎 Recherche en cours…</p>`;
+  window.emDesktop.scanSaves().then(list => {
+    const seen = {}, rows = [];
+    for (const { raw } of list) {
+      let m = null; try { const x = JSON.parse(unpackSave(raw)); m = { club: x.clubs[x.userId].name, season: x.season, week: x.week, ceo: x.ceo }; } catch (e) { continue; }
+      const k = `${m.club}|${m.season}|${m.week}`; if (seen[k]) continue; seen[k] = 1;
+      const id = "r" + rows.length; RECOVERED[id] = raw; rows.push({ id, ...m });
+    }
+    rows.sort((a, b) => b.season - a.season || b.week - a.week);
+    el.innerHTML = rows.length ? `<p class="ok" style="margin:6px 0">${rows.length} sauvegarde(s) retrouvée(s) sur ce PC :</p>` + rows.map(r => `<div class="bk-row"><div><b>${esc(r.club)}</b> <span class="muted">· saison ${r.season}, semaine ${r.week} (${weekLabel(r.season, r.week, true)}) · CEO ${esc(r.ceo || "")}</span></div><button class="small primary" data-act="pc-restore" data-v="${r.id}">Restaurer</button></div>`).join("")
+      : `<p class="muted">Aucune ancienne sauvegarde retrouvée dans les fichiers de l'application.</p>`;
+  }).catch(e => { el.innerHTML = `<p class="bad">Recherche impossible : ${esc(e.message || String(e))}</p>`; });
+};
+ACTIONS["pc-restore"] = v => restoreRaw(RECOVERED[v]);
 // copies de secours trouvées dans IndexedDB (dernière version de chaque partie, puis une par saison)
 function listBackups() {
+  const pc = window.emDesktop ? `<div class="card" style="margin-top:20px"><h3 style="margin-top:0">🔎 Partie perdue ?</h3>
+    <p class="muted" style="margin-top:-6px;font-size:13px">Le jeu peut fouiller ses fichiers sur ce PC pour retrouver d'anciennes sauvegardes, même effacées ou remplacées (tant qu'elles n'ont pas été écrasées).</p>
+    <button class="primary small" data-act="scan-pc">🔎 Rechercher mes anciennes sauvegardes sur ce PC</button><div id="pc-saves"></div></div>` : "";
   idbAll().then(list => {
     const el = document.getElementById("backups"); if (!el) return;
-    if (!list.length) { el.innerHTML = `<div style="margin-top:14px"><button class="small" data-act="save-import">📂 Importer une partie (.emsave)</button></div>`; return; }
+    if (!list.length) { el.innerHTML = pc + `<div style="margin-top:14px"><button class="small" data-act="save-import">📂 Importer une partie (.emsave)</button></div>`; return; }
     const games = list.filter(([k]) => k.startsWith("game:")).sort((a, b) => b[1].at - a[1].at);
     const seasons = list.filter(([k]) => k.startsWith("season:")).sort((a, b) => b[1].at - a[1].at);
     const row = ([k, m], tag) => `<div class="bk-row"><div><b>${esc(m.club || "?")}</b> <span class="muted">· saison ${m.season}, semaine ${m.week}${tag ? " · " + tag : ""}</span><div class="muted" style="font-size:12px">enregistrée le ${new Date(m.at).toLocaleString("fr-FR")}</div></div><button class="small" data-act="backup-restore" data-v="${esc(k)}">Restaurer</button></div>`;
@@ -127,7 +148,7 @@ function listBackups() {
       <p class="muted" style="margin-top:-6px;font-size:13px">Le jeu garde une copie de chaque partie (et une par saison). Si votre partie a disparu ou a été remplacée, restaurez-la ici.</p>
       ${games.map(x => row(x, "dernière version")).join("")}
       ${UI.backupAll ? seasons.map(x => row(x, "copie de la saison")).join("") : seasons.length ? `<span class="link" data-act="backup-more">Voir aussi les ${seasons.length} copies par saison</span>` : ""}
-      <div style="margin-top:10px"><button class="small" data-act="save-import">📂 Importer un fichier .emsave</button></div></div>`;
+      <div style="margin-top:10px"><button class="small" data-act="save-import">📂 Importer un fichier .emsave</button></div></div>` + pc;
   });
 }
 

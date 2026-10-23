@@ -6,7 +6,7 @@
   "main": "app/main.js",
   "author": "Esports Manager",
   "scripts": {
-    "prepare-app": "node -e \"const fs=require('fs');fs.rmSync('app',{recursive:true,force:true});fs.mkdirSync('app');for(const f of ['index.html','js','css'])fs.cpSync('../'+f,'app/'+f,{recursive:true});fs.copyFileSync('main.js','app/main.js')\"",
+    "prepare-app": "node -e \"const fs=require('fs');fs.rmSync('app',{recursive:true,force:true});fs.mkdirSync('app');for(const f of ['index.html','js','css'])fs.cpSync('../'+f,'app/'+f,{recursive:true});for(const f of ['main.js','preload.js','recover.js'])fs.copyFileSync(f,'app/'+f)\"",
     "build": "npm run prepare-app && electron-builder --win portable --x64"
   },
   "build": {
