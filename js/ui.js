@@ -101,6 +101,36 @@ document.addEventListener("click", e => {
 });
 function closeModal() { document.getElementById("modal").classList.add("hidden"); }
 
+// une partie sauvegardée existe : on demande avant de la remplacer (une copie de secours reste de toute façon)
+function confirmReplace(act) {
+  if (UI.replaceOk || !hasSave()) return false;
+  let info = ""; try { const x = JSON.parse(readSave()); info = `${esc(x.clubs[x.userId].name)} · saison ${x.season}, semaine ${x.week}`; } catch (e) { }
+  modal(`<h2>Remplacer la partie en cours ?</h2><p>Une partie est déjà sauvegardée${info ? ` (<b>${info}</b>)` : ""}. La nouvelle partie prendra sa place.</p>
+    <p class="muted">Une copie de secours de l'ancienne partie est conservée : vous pourrez la restaurer depuis l'écran d'accueil.</p>
+    <div class="actions"><button data-act="close-modal">Annuler</button><button data-act="save-export">💾 Exporter l'ancienne d'abord</button><button class="danger" data-act="replace-ok" data-v="${act}">Remplacer</button></div>`);
+  return true;
+}
+// restaure une partie (copie de secours ou fichier) et la remet en sauvegarde principale
+function restoreRaw(raw) {
+  if (!raw || !load(raw)) return toast("⚠️ Impossible de lire cette partie : " + (LOAD_ERROR || "fichier invalide"));
+  closeModal(); saveNow(); UI.view = "dash"; render(); toast(`✅ Partie restaurée : ${user().name}, saison ${S.season}, semaine ${S.week}.`);
+}
+// copies de secours trouvées dans IndexedDB (dernière version de chaque partie, puis une par saison)
+function listBackups() {
+  idbAll().then(list => {
+    const el = document.getElementById("backups"); if (!el) return;
+    if (!list.length) { el.innerHTML = `<div style="margin-top:14px"><button class="small" data-act="save-import">📂 Importer une partie (.emsave)</button></div>`; return; }
+    const games = list.filter(([k]) => k.startsWith("game:")).sort((a, b) => b[1].at - a[1].at);
+    const seasons = list.filter(([k]) => k.startsWith("season:")).sort((a, b) => b[1].at - a[1].at);
+    const row = ([k, m], tag) => `<div class="bk-row"><div><b>${esc(m.club || "?")}</b> <span class="muted">· saison ${m.season}, semaine ${m.week}${tag ? " · " + tag : ""}</span><div class="muted" style="font-size:12px">enregistrée le ${new Date(m.at).toLocaleString("fr-FR")}</div></div><button class="small" data-act="backup-restore" data-v="${esc(k)}">Restaurer</button></div>`;
+    el.innerHTML = `<div class="card" style="margin-top:20px"><h3 style="margin-top:0">💾 Copies de secours</h3>
+      <p class="muted" style="margin-top:-6px;font-size:13px">Le jeu garde une copie de chaque partie (et une par saison). Si votre partie a disparu ou a été remplacée, restaurez-la ici.</p>
+      ${games.map(x => row(x, "dernière version")).join("")}
+      ${UI.backupAll ? seasons.map(x => row(x, "copie de la saison")).join("") : seasons.length ? `<span class="link" data-act="backup-more">Voir aussi les ${seasons.length} copies par saison</span>` : ""}
+      <div style="margin-top:10px"><button class="small" data-act="save-import">📂 Importer un fichier .emsave</button></div></div>`;
+  });
+}
+
 // =====================================================================
 //  Écran titre
 // =====================================================================
@@ -143,7 +173,8 @@ function renderHome() {
     </div>
     ${typeof LIVE_BUILD === "undefined" || LIVE_BUILD !== LIVE_EXPECTED ? `<div class="card" style="margin-top:20px;border-color:var(--bad)">⚠️ <b>Les effectifs à jour ne sont pas chargés</b> : votre navigateur utilise une ancienne copie du fichier de données (équipes Fortnite et Valorant, âges). Rechargez la page en vidant le cache (Ctrl + F5, ou Cmd + Maj + R sur Mac), puis lancez une nouvelle partie.</div>` : ""}
     ${hasSave() && saveIsOutdated() ? `<div class="card" style="margin-top:20px;border-color:var(--warn,#e0a030)">⚠️ <b>La base de données a été mise à jour</b> (équipes, joueurs, nationalités) depuis le début de votre partie sauvegardée. Elle garde l'ancien monde : lancez une nouvelle partie pour profiter des effectifs à jour.</div>` : ""}
-    ${hasSave() ? `<div style="margin-top:20px;display:flex;gap:10px;flex-wrap:wrap"><button class="primary" data-act="continue">▶ Continuer la partie sauvegardée</button><button class="danger" data-act="wipe">Effacer la sauvegarde</button></div>` : ""}`;
+    <div id="backups"></div>
+    ${hasSave() ? `<div style="margin-top:20px;display:flex;gap:10px;flex-wrap:wrap"><button class="primary" data-act="continue">▶ Continuer la partie sauvegardée</button><button data-act="save-export">💾 Exporter dans un fichier</button><button class="danger" data-act="wipe">Effacer la sauvegarde</button></div>` : ""}`;
   } else if (UI.screen === "create") {
     const cc = Object.entries(COUNTRIES).map(([k, v]) => `<option value="${k}" ${k === "FR" ? "selected" : ""}>${flag(k)} ${v}</option>`).join("");
     const gs = Object.entries(GAMES).map(([k, g]) => `<option value="${k}">${g.icon} ${g.name} — ${g.tiers[2]} · cashprize ${money(tierPrize(k, 3))}</option>`).join("");
@@ -183,6 +214,7 @@ function renderHome() {
     <p class="muted" style="margin-top:-12px;margin-bottom:24px;text-align:center">${Object.keys(GAMES).length} jeux · 3 tiers par jeu, ligues régionales (${Object.keys(GAMES).reduce((s, g) => s + gameZones(g).length * (GAMES[g].open ? 1 : 3), 0)} ligues : LEC, LCK, LPL, VCT EMEA…) · ${Object.keys(ORGS).length} organisations réelles · ${realPlayerCount()} joueurs pros réels + des milliers de talents générés</p>
     ${body}
   </div>`;
+  if (UI.screen === "home") listBackups();
 }
 
 // =====================================================================
@@ -1486,6 +1518,7 @@ Object.assign(ACTIONS, {
   "screen": v => { UI.screen = v; renderHome(); },
   "pick-club": v => { UI.pickClub = v; const ceo = document.getElementById("f-ceo").value; renderHome(); document.getElementById("f-ceo").value = ceo; },
   "start-create": () => {
+    if (confirmReplace("start-create")) return;
     const val = id => document.getElementById(id).value.trim();
     const name = val("f-name"), tag = val("f-tag").toUpperCase();
     if (!name || tag.length < 2) return toast("Indiquez un nom de club et un tag de 2 à 4 lettres.");
@@ -1493,12 +1526,35 @@ Object.assign(ACTIONS, {
     UI.view = "dash"; UI.market.status = "free"; UI.market.game = val("f-game"); render(); if (!firstHelp()) maybeAlloc();
   },
   "start-takeover": () => {
+    if (confirmReplace("start-takeover")) return;
     newWorld({ ceo: document.getElementById("f-ceo").value.trim() || "Le CEO", mode: "takeover", clubId: UI.pickClub });
     UI.view = "dash"; render(); if (!firstHelp()) maybeAlloc();
   },
-  "continue": () => { if (load()) { UI.view = "dash"; render(); } },
+  "continue": () => {
+    if (load()) { UI.view = "dash"; render(); if (S.loadWarning) { toast("⚠️ " + S.loadWarning); delete S.loadWarning; } return; }
+    modal(`<h2>⚠️ La sauvegarde n'a pas pu être chargée</h2><p>Erreur : <code>${esc(LOAD_ERROR || "inconnue")}</code></p>
+      <p>Rien n'est effacé. Vous pouvez restaurer une copie de secours (liste sur l'écran d'accueil) ou exporter la sauvegarde dans un fichier pour la faire réparer.</p>
+      <div class="actions"><button data-act="close-modal">Fermer</button><button class="primary" data-act="save-export">💾 Exporter le fichier</button></div>`);
+  },
+  // exporter / importer la partie dans un fichier (pour la garder, la transférer ou la faire réparer)
+  "save-export": () => {
+    const raw = S ? packSave(JSON.stringify(S)) : localStorage.getItem(SAVE_KEY);
+    if (!raw) return toast("Aucune partie à exporter.");
+    let name = "partie";
+    try { const x = S || JSON.parse(readSave()); name = `${x.clubs[x.userId].name} ${x.season}-S${x.week}`; } catch (e) { }
+    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([raw], { type: "text/plain" })); a.download = `EsportsManager - ${name.replace(/[^\w -]/g, "")}.emsave`;
+    document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+  },
+  "save-import": () => {
+    const inp = document.createElement("input"); inp.type = "file"; inp.accept = ".emsave,.txt,.json";
+    inp.onchange = () => { const f = inp.files[0]; if (!f) return; f.text().then(raw => restoreRaw(raw.trim())); };
+    inp.click();
+  },
+  "backup-restore": v => idbAll().then(list => { const x = list.find(([k]) => k === v); if (x) restoreRaw(x[1].z); else toast("Copie introuvable."); }),
+  "backup-more": () => { UI.backupAll = !UI.backupAll; listBackups(); },
   "wipe": () => modal(`<h2>Effacer la sauvegarde ?</h2><p>La partie en cours sera définitivement perdue.</p><div class="actions"><button data-act="close-modal">Annuler</button><button class="danger" data-act="do-wipe">Effacer</button></div>`),
   "do-wipe": () => { wipeSave(); closeModal(); renderHome(); },
+  "replace-ok": v => { UI.replaceOk = true; closeModal(); ACTIONS[v](); UI.replaceOk = false; },
   "quit": () => { saveNow(); S = null; UI.screen = "home"; UI.compGame = UI.compTier = UI.rosterGame = null; renderHome(); },
   "view": v => { UI.view = v; render(); window.scrollTo(0, 0); },
   "roster-game": v => { UI.rosterGame = v; render(); },

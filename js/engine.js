@@ -473,7 +473,7 @@ function buildGameWorld(game) {
 // ---------- création du monde ----------
 function newWorld(opts) {
   S = {
-    version: 2, dataVersion: dataVersion(), ceo: opts.ceo, mode: opts.mode, season: 2026, week: 1, over: false,
+    version: 2, gameId: uid("g"), dataVersion: dataVersion(), ceo: opts.ceo, mode: opts.mode, season: 2026, week: 1, over: false,
     clubs: {}, players: {}, leagues: {}, inbox: [], finance: [], titles: [], ledger: [], tourResults: [], tourChoice: {},
     userId: null, board: { confidence: 60, objective: null }, lastWeek: null,
   };
@@ -3292,8 +3292,32 @@ function scheduleSave() {
 const save = scheduleSave;
 if (typeof window !== "undefined" && window.addEventListener) window.addEventListener("beforeunload", () => { if (savePending && S) saveNow(); });
 function readSave() { const s = localStorage.getItem(SAVE_KEY); return s ? unpackSave(s) : null; }
+// copies de secours dans IndexedDB (stockage bien plus grand que localStorage) : la dernière version de chaque partie,
+// plus une copie par saison. Elles permettent de retrouver une partie si la sauvegarde principale est perdue ou remplacée.
+const IDB = { db: null };
+function idbOpen() {
+  return new Promise((res, rej) => {
+    if (IDB.db) return res(IDB.db);
+    if (typeof indexedDB === "undefined") return rej(new Error("IndexedDB indisponible"));
+    const r = indexedDB.open("esports-manager", 1);
+    r.onupgradeneeded = () => r.result.createObjectStore("saves");
+    r.onsuccess = () => res(IDB.db = r.result); r.onerror = () => rej(r.error);
+  });
+}
+const idbPut = (k, v) => idbOpen().then(db => new Promise(res => { const t = db.transaction("saves", "readwrite"); t.objectStore("saves").put(v, k); t.oncomplete = () => res(true); t.onerror = () => res(false); })).catch(() => false);
+const idbAll = () => idbOpen().then(db => new Promise(res => { const out = [], t = db.transaction("saves"), c = t.objectStore("saves").openCursor();
+  c.onsuccess = () => { const x = c.result; if (x) { out.push([x.key, x.value]); x.continue(); } else res(out); }; c.onerror = () => res(out); })).catch(() => []);
+const idbDel = k => idbOpen().then(db => new Promise(res => { const t = db.transaction("saves", "readwrite"); t.objectStore("saves").delete(k); t.oncomplete = () => res(true); })).catch(() => false);
+function backupSave(z) {
+  if (!S || !S.userId) return;
+  if (!S.gameId) S.gameId = uid("g");
+  const meta = { z, club: user().name, ceo: S.ceo, season: S.season, week: S.week, at: Date.now() };
+  idbPut("game:" + S.gameId, meta);
+  idbPut("season:" + S.gameId + ":" + S.season, meta);
+}
 function writeSave(z) {
   try { localStorage.removeItem("esports-manager-save-v2"); } catch (e) { }   // ancienne version incompatible : libère la place
+  backupSave(z);
   try { localStorage.setItem(SAVE_KEY, z); S.saveError = false; return; } catch (e) { }
   // stockage plein (longue partie) : on allège les vieilles données et on réessaie aussitôt
   if (pruneSave()) { try { localStorage.setItem(SAVE_KEY, packSave(JSON.stringify(S))); S.saveError = false; return; } catch (e) { } }
@@ -3319,7 +3343,17 @@ function saveNow() {
   clearTimeout(scheduleSave.t); scheduleSave.t = null; saveSeq++; savePending = false;
   writeSave(packSave(JSON.stringify(S)));
 }
-function load() { try { const s = readSave(); if (s) { S = JSON.parse(s); applySeasonFormats(); addMissingGames(); return true; } } catch (e) { } return false; }
+// charge la partie (sauvegarde principale, ou texte d'une copie / d'un fichier) ; une mise à jour qui échoue n'empêche pas de jouer
+let LOAD_ERROR = null;
+function load(raw) {
+  LOAD_ERROR = null;
+  try { const s = raw ? unpackSave(raw) : readSave(); if (!s) { LOAD_ERROR = "aucune sauvegarde trouvée"; return false; } S = JSON.parse(s); }
+  catch (e) { LOAD_ERROR = e.message || String(e); S = null; return false; }
+  try { applySeasonFormats(); } catch (e) { console.error(e); }
+  try { addMissingGames(); } catch (e) { console.error(e); S.loadWarning = "Les nouveaux jeux n'ont pas pu être ajoutés : " + e.message; }
+  if (!S.gameId) S.gameId = uid("g");
+  return true;
+}
 // jeux ajoutés au jeu depuis la création de la partie : leurs clubs, ligues et vrais joueurs sont créés au chargement
 function addMissingGames() {
   const have = new Set(Object.values(S.leagues).map(L => L.game));

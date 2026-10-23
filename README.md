@@ -298,3 +298,5 @@ On navigue avec le bouton « Aujourd'hui » et les flèches ‹ ›, et un filtr
 - insolites (dans le rouge, sur la sellette).
 
 Chaque succès affiche sa progression et se débloque avec une notification. En reprenant un grand club, les succès déjà remplis sont acquis sans fanfare. Le suivi est dans `js/engine.js` (`ACHIEVEMENTS`, `achievementsWeek`, `checkAch`).
+
+**Sauvegardes** : la partie est enregistrée dans le navigateur (localStorage). Une copie de secours est aussi gardée dans IndexedDB : la dernière version de chaque partie et une copie par saison. On peut les restaurer depuis l'écran d'accueil. La partie s'exporte et s'importe dans un fichier `.emsave`. Créer une nouvelle partie demande une confirmation si une partie existe déjà. Un chargement qui échoue affiche l'erreur au lieu de ne rien faire.

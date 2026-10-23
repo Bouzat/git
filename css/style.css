@@ -472,3 +472,4 @@ details.fold[open] > summary { margin-bottom: 6px; }
 .blk-list { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; }
 .blk { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 10px; background: var(--panel2); }
 .blk > div { flex: 1; min-width: 0; } .blk-ic { font-size: 22px; }
+.bk-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line, #ffffff14); }
