@@ -1424,10 +1424,13 @@ function achPopup() {
   if (!S || !S.ach || !S.ach.pending || !S.ach.pending.length) return;
   const ids = S.ach.pending.splice(0), list = ids.map(id => ACHIEVEMENTS.find(a => a.id === id)).filter(Boolean);
   let box = document.getElementById("ach-pop"); if (!box) { box = document.createElement("div"); box.id = "ach-pop"; document.body.appendChild(box); }
-  for (const a of list) {
+  // au plus 3 notifications à la fois ; au-delà, une seule qui les regroupe (elles ne doivent jamais cacher l'écran)
+  box.querySelectorAll(".ach-toast").forEach(e => e.remove());
+  const show = list.length > 3 ? [{ icon: "🎖️", name: `${list.length} succès débloqués`, desc: list.map(a => a.name).join(", ") }] : list;
+  for (const a of show) {
     const el = document.createElement("div"); el.className = "ach-toast"; el.dataset.act = "ach-open";
     el.innerHTML = `<div class="ach-ic">${a.icon}</div><div><small>🎖️ Succès débloqué</small><b>${esc(a.name)}</b><span>${esc(a.desc)}</span></div>`;
-    box.appendChild(el); setTimeout(() => el.classList.add("out"), 6000); setTimeout(() => el.remove(), 6600);
+    box.appendChild(el); setTimeout(() => el.classList.add("out"), 5000); setTimeout(() => el.remove(), 5600);
   }
   scheduleSave();
 }
@@ -1992,6 +1995,7 @@ ACTIONS["prospect"] = () => { UI.view = "sponsors"; render(); };
 
 // ---------- boucle hebdomadaire ----------
 let pendingEvents = [];
+window.addEventListener("error", e => { try { toast("⚠️ Erreur : " + (e.message || e)); } catch (x) { } });
 // récapitulatif des fans : les raisons sont regroupées, du plus gros gain à la plus grosse perte
 function fanRecap(list, title = "📈 Fans") {
   if (!list.length) return "";
@@ -2353,7 +2357,38 @@ ACTIONS["tier-cancel"] = v => { const u = user(); if (u.tierReq) delete u.tierRe
 ACTIONS["check-continue"] = () => { closeModal(); const a = UI.afterCheck || "next"; UI.afterCheck = null; ACTIONS[a](); };
 ACTIONS["md-finish"] = () => { if (pendingOffers().length) return offersModal(); if (!preWeekChecks("md-finish")) playWeek(); };
 // bouton principal : jour de match s'il reste des rencontres à lancer, sinon semaine suivante
-ACTIONS["next"] = () => { if (pendingOffers().length) return offersModal(); if (incompleteGames().length && UI.incWarned !== S.season + "-" + S.week) return preWeekChecks("next"); if (weekEvents().some(e => !e.done)) matchDayModal(); else if (!preWeekChecks("next")) playWeek(); };
+ACTIONS["next0"] = () => { if (pendingOffers().length) return offersModal(); if (incompleteGames().length && UI.incWarned !== S.season + "-" + S.week) return preWeekChecks("next"); if (weekEvents().some(e => !e.done)) matchDayModal(); else if (!preWeekChecks("next")) playWeek(); };
+// « Continuer » : si rien ne se passe (ni fenêtre, ni semaine suivante) ou en cas d'erreur, une fenêtre explique ce qui bloque
+ACTIONS["next"] = () => {
+  const w = S.week, sea = S.season;
+  try { ACTIONS.next0(); } catch (e) { console.error(e); return blockersModal(e); }
+  setTimeout(() => {
+    if (!S || S.over || S.week !== w || S.season !== sea) return;
+    if (!document.getElementById("modal").classList.contains("hidden") || document.querySelector(".celebrate, .mercato-time")) return;
+    blockersModal();
+  }, 350);
+};
+// tout ce qui peut empêcher d'avancer, avec le bouton pour le régler
+function blockersModal(err) {
+  const u = user(), items = [];
+  const offers = pendingOffers().length;
+  if (offers) items.push(["📨", `${offers} offre(s) de transfert à traiter`, "Acceptez, refusez ou faites une contre-proposition.", "offers-back", "Traiter les offres"]);
+  if (pendingEvents.length) items.push(["📌", `${pendingEvents.length} décision(s) en attente`, "Sponsors à renouveler, événements du club…", "next-event", "Décider"]);
+  const exp = expiringPlayers();
+  if (exp.length && S.week >= SEASON_LAST - 3) items.push(["⏳", `${exp.length} joueur(s) en fin de contrat`, "Prolongez-les ou laissez-les partir (les libérer).", "contracts", "Prolonger ou libérer"]);
+  const inc = incompleteGames();
+  if (inc.length) items.push(["⚠️", `Effectif incomplet : ${inc.map(g => GAMES[g].short).join(", ")}`, "Recrutez au mercato ou fermez la division. Sinon vos équipes jouent en sous-nombre.", "goto-market", "Recruter", inc.length === 1 ? inc[0] : "all"]);
+  const spon = u.sponsorDeals.filter(d => d.weeks <= 2 && !d.renew);
+  if (spon.length) items.push(["🤝", `${spon.length} contrat(s) de sponsor se terminent`, "Décidez de les renouveler ou non (onglet Sponsors).", "view", "Voir les sponsors", "sponsors"]);
+  const left = weekEvents().filter(e => !e.done).length;
+  if (left) items.push(["🎮", `${left} match(s) à jouer cette semaine`, "Lancez-les un par un ou tous d'un coup.", "md-open", "Jouer les matchs"]);
+  modal(`<h2>🚧 Qu'est-ce qui bloque ?</h2>
+    ${err ? `<p class="bad">Une erreur s'est produite : <code>${esc(String(err && err.message || err))}</code>. Vous pouvez forcer le passage à la semaine suivante.</p>` : `<p class="muted" style="margin-top:-6px">La semaine n'a pas avancé. Voici ce qui demande votre attention :</p>`}
+    ${items.length ? `<div class="blk-list">${items.map(([ic, t, d, act, lbl, v]) => `<div class="blk"><span class="blk-ic">${ic}</span><div><b>${t}</b><div class="muted" style="font-size:12px">${d}</div></div><button class="small primary" data-act="${act}" ${v ? `data-v="${v}"` : ""}>${lbl}</button></div>`).join("")}</div>` : "<p>Rien de particulier n'est en attente.</p>"}
+    <div class="actions"><button data-act="close-modal">Fermer</button><button class="primary" data-act="force-week">⏭ Forcer la semaine suivante</button></div>`);
+}
+ACTIONS["md-open"] = () => matchDayModal();
+ACTIONS["force-week"] = () => { closeModal(); pendingEvents = []; UI.ctFlow = false; try { playWeek(); } catch (e) { console.error(e); toast("⚠️ Erreur : " + e.message); } };
 // avance jusqu'à la prochaine semaine où le club joue (les semaines vides passent d'un coup)
 ACTIONS["skip"] = () => {
   if (pendingOffers().length) return offersModal();
