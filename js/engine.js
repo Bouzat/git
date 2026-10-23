@@ -2230,6 +2230,7 @@ function growthOf(p, c = p.club && S.clubs[p.club], f = c ? facOf(c) : null) {
 }
 function advanceWeek() {
   if (S.over) return;
+  try { sanitizeWorld(); } catch (e) { console.error(e); }
   const u = user(), w = S.week, report = weekReport();
   for (const aca of userAcademies()) autoStarters(aca.id, aca.academyOf);
   for (const g of Object.keys(u.divisions)) arrangeUnits(g);
@@ -2566,7 +2567,38 @@ function finalOrder(L) {
   let head = [];
   if (GAMES[L.game].fmt === "br") head = (L.playoffs && L.playoffs.order) || [];
   else if (L.playoffs && L.playoffs.final) { const f = L.playoffs.final; head = [f.winner, f.loser]; }
-  return head.concat(st.filter(id => !head.includes(id)));
+  // les clubs qui n'existent plus (équipe dissoute, académie fermée…) sont ignorés
+  const ok = id => S.clubs[id] && S.clubs[id].divisions[L.game];
+  return [...new Set(head.concat(st.filter(id => !head.includes(id))))].filter(ok);
+}
+// répare les références vers des clubs ou des joueurs disparus (vieille sauvegarde, équipe dissoute) : sans cela,
+// une fin de saison peut planter en cherchant un club qui n'existe plus
+function sanitizeWorld() {
+  let fixed = 0;
+  const has = (id, g) => S.clubs[id] && S.clubs[id].divisions[g];
+  for (const L of Object.values(S.leagues)) {
+    const n = L.teams.length; L.teams = [...new Set(L.teams.filter(id => has(id, L.game)))]; fixed += n - L.teams.length;
+    for (const id of Object.keys(L.table)) if (!has(id, L.game)) { delete L.table[id]; fixed++; }
+    const P = L.playoffs;
+    if (P) {
+      if (P.finalists) P.finalists = P.finalists.filter(id => S.clubs[id]);
+      if (P.order) P.order = P.order.filter(id => S.clubs[id]);
+      for (const k of ["semis"]) if (P[k]) P[k] = P[k].filter(r => r && S.clubs[r.a] && S.clubs[r.b]);
+      if (P.final && (!S.clubs[P.final.winner] || !S.clubs[P.final.loser])) P.final = null;
+    }
+    if (L.champion && !S.clubs[L.champion]) L.champion = null;
+  }
+  for (const c of Object.values(S.clubs)) for (const [g, d] of Object.entries(c.divisions)) {
+    const n = d.players.length; d.players = d.players.filter(id => S.players[id] && S.players[id].club === c.id); fixed += n - d.players.length;
+    if (d.mates) d.mates = d.mates.filter(id => S.players[id]);
+  }
+  for (const p of Object.values(S.players)) {
+    if (p.club && !has(p.club, p.game)) { p.club = null; p.starter = false; fixed++; }
+    if (p.offers) p.offers = p.offers.filter(o => S.clubs[o.club]);
+  }
+  if (S.ewc) for (const id of Object.keys(S.ewc)) if (!S.clubs[id]) delete S.ewc[id];
+  if (fixed) console.warn("sanitizeWorld : " + fixed + " référence(s) réparée(s)");
+  return fixed;
 }
 
 // montées et descentes quand un tier est découpé en ligues nationales : les 2 derniers de chaque ligue descendent,
@@ -2685,7 +2717,7 @@ function endSeason() {
     if (at < 3) {
       // l'académie descend d'un tier ; le meilleur club du tier inférieur prend sa place
       const up = S.leagues[lkey(game, at, zone)], low = S.leagues[lkey(game, at + 1, zone)];
-      const swap = finalOrder(low).find(id => id !== aca.id && !S.clubs[id].parent);
+      const swap = finalOrder(low).find(id => id !== aca.id && S.clubs[id] && !S.clubs[id].parent);
       up.teams = up.teams.filter(x => x !== aca.id); low.teams.push(aca.id); aca.divisions[game].tier = at + 1;
       if (swap) { low.teams = low.teams.filter(x => x !== swap); up.teams.push(swap); S.clubs[swap].divisions[game].tier = at; }
       moves.push(`🎓 ${GAMES[game].short} : l'équipe première est descendue dans la division de l'académie, qui est rétrogradée en ${TIER_LABEL[at]}.`);
@@ -3351,6 +3383,7 @@ function load(raw) {
   catch (e) { LOAD_ERROR = e.message || String(e); S = null; return false; }
   try { applySeasonFormats(); } catch (e) { console.error(e); }
   try { addMissingGames(); } catch (e) { console.error(e); S.loadWarning = "Les nouveaux jeux n'ont pas pu être ajoutés : " + e.message; }
+  try { sanitizeWorld(); } catch (e) { console.error(e); }
   if (!S.gameId) S.gameId = uid("g");
   return true;
 }
