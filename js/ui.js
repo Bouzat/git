@@ -1539,7 +1539,8 @@ Object.assign(ACTIONS, {
   "m-reset": () => { UI.market = { ...MARKET_DEFAULT, game: UI.market.game, per: UI.market.per, sort: UI.market.sort, dir: UI.market.dir }; render(); },
   "m-page": v => { UI.market.page = +v; render(); window.scrollTo(0, 0); },
   "auto-lineup": () => { autoStarters(S.userId, UI.rosterGame); render(); },
-  "renew": v => openNego(startNegotiation(v, "renew")),
+  // depuis la liste des fins de contrat, on y revient après la négociation ; ailleurs, la fenêtre se ferme simplement
+  "renew": v => { UI.ctFlow = !!document.querySelector('#modal:not(.hidden) [data-act="ct-continue"]'); openNego(startNegotiation(v, "renew")); },
   "contract": v => contractModal(v),
   "sell": v => sellModal(v),
   "do-list": v => {
@@ -1695,9 +1696,9 @@ ACTIONS["nego-propose"] = () => {
   if (r.status === "accept") {
     const e = acceptContract(NEGO, offer);
     if (e) return negoModal(e, "bad");
-    const h = S.players[NEGO.pid].handle; NEGO = null; closeModal(); toast(`${h} signe ! ✍️ ${r.msg}`); save(); return render();
+    const h = S.players[NEGO.pid].handle; NEGO = null; negoClosed(); toast(`${h} signe ! ✍️ ${r.msg}`); save(); return render();
   }
-  if (r.status === "walk") { mail(`Négociations rompues : ${S.players[NEGO.pid].handle}`, r.msg, "transfer"); NEGO = null; closeModal(); toast("Le joueur a quitté la table des négociations."); save(); return render(); }
+  if (r.status === "walk") { mail(`Négociations rompues : ${S.players[NEGO.pid].handle}`, r.msg, "transfer"); NEGO = null; negoClosed(); toast("Le joueur a quitté la table des négociations."); save(); return render(); }
   // l'agent répond par sa propre offre : le contrat affiché devient sa contre-proposition
   if (r.counter) { NEGO.draft = r.counter; NEGO.counter = r.counter; }
   const c = r.counter, sum = c ? `<div class="counter-box"><b>Contre-proposition de l'agent :</b> ${money(c.salary)}/sem · ${c.years} an(s) · statut « ${c.status} » · prime ${money(c.bonus)} · commission ${money(c.agentFee)} · ${c.prizeShare} % des gains${c.clause ? " · clause " + money(c.clause) : ""}
@@ -1710,11 +1711,11 @@ ACTIONS["nego-take"] = () => {
   if (r.status === "accept") {
     const e = acceptContract(NEGO, offer);
     if (e) return negoModal(e, "bad");
-    const h = S.players[NEGO.pid].handle; NEGO = null; closeModal(); toast(`${h} signe ! ✍️ ${r.msg}`); save(); return render();
+    const h = S.players[NEGO.pid].handle; NEGO = null; negoClosed(); toast(`${h} signe ! ✍️ ${r.msg}`); save(); return render();
   }
   NEGO.draft = r.counter || offer; NEGO.counter = r.counter || null; negoModal(r.msg, r.tone);
 };
-ACTIONS["nego-quit"] = () => { NEGO = null; closeModal(); };
+ACTIONS["nego-quit"] = () => { NEGO = null; negoClosed(); };
 ACTIONS["fix-alloc"] = v => {
   const [game, back] = v.split("|"), r = adjustAlloc(game, +document.getElementById("fx-t").value || 0, +document.getElementById("fx-w").value || 0);
   if (r.err) return toast(r.err);
@@ -2291,16 +2292,25 @@ function preWeekChecks(act) {
   return mercatoCloseWarning();
 }
 // fin de saison : les joueurs dont le contrat se termine partiront s'ils ne sont pas prolongés
+// fin d'une négociation : si elle a été lancée depuis la liste des fins de contrat, on y revient (liste à jour)
+function negoClosed() { if (UI.ctFlow) contractsModal(); else closeModal(); }
 function contractsModal() {
   const exp = expiringPlayers().sort((a, b) => b.rating - a.rating);
+  UI.ctFlow = true;
+  if (!exp.length) {
+    return modal(`<h2>✅ Tous les contrats sont réglés</h2><p>Plus aucun joueur ne quittera le club à la fin de la saison.</p>
+      <div class="actions"><button data-act="ct-stay">Rester sur cette semaine</button><button class="primary" data-act="ct-continue">Continuer ▶</button></div>`);
+  }
   modal(`<h2>⏳ Fin de saison : ${exp.length} contrat(s) se terminent</h2>
     <p class="muted" style="margin-top:-6px">Ces joueurs quitteront le club à la fin de la saison s'ils ne sont pas prolongés. Vérifiez qu'il vous restera assez de joueurs dans chaque jeu.</p>
     <div class="table-wrap"><table><tr><th>Joueur</th><th>Jeu</th><th>Âge</th><th>Note</th><th>Salaire</th><th>Statut</th><th></th></tr>
     ${exp.map(p => `<tr><td>${flag(p.nat)} <b class="link" data-act="player-info" data-v="${p.id}">${esc(p.handle)}</b></td><td>${gchip(p.game)}</td><td>${ageTxt(p)}</td><td>${R(p.rating)}</td><td>${money(p.salary)}/sem</td><td>${p.starter ? "⭐ Titulaire" : "Remplaçant"}</td>
       <td><button class="small primary" data-act="renew" data-v="${p.id}">✍️ Prolonger</button></td></tr>`).join("")}</table></div>
-    <div class="actions"><button data-act="close-modal">Rester sur cette semaine</button><button class="primary" data-act="check-continue">Les laisser partir et continuer ▶</button></div>`);
+    <div class="actions"><button data-act="ct-stay">Rester sur cette semaine</button><button class="primary" data-act="ct-continue">Les laisser partir et continuer ▶</button></div>`);
 }
 ACTIONS["contracts"] = () => contractsModal();
+ACTIONS["ct-stay"] = () => { UI.ctFlow = false; closeModal(); render(); };
+ACTIONS["ct-continue"] = () => { UI.ctFlow = false; ACTIONS["check-continue"](); };
 ACTIONS["roster-full"] = () => { UI.rosterFull = !UI.rosterFull; try { localStorage.setItem("em-rosterFull", UI.rosterFull ? "1" : ""); } catch (e) { } render(); };
 const setM = f => { f(UI.market); UI.market.page = 0; render(); };
 ACTIONS["m-qfree"] = () => setM(m => m.status = m.status === "free" ? "all" : "free");
